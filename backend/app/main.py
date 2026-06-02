@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Celerius Clinical Trial Lifecycle Platform",
+    title="TrialGenesis Clinical Trial Lifecycle Platform",
     version=settings.APP_VERSION,
     description="AI-native multi-tenant platform for clinical trial lifecycle management.",
     docs_url="/docs" if not settings.is_production else None,

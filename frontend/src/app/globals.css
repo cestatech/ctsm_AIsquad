@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap");
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: "DM Sans", system-ui, sans-serif;
+    @apply text-slate-900 bg-white antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+  }
+}
+
+@layer utilities {
+  .mesh-bg {
+    background-color: #1e1b4b;
+    background-image:
+      radial-gradient(at 40% 20%, hsla(249, 100%, 64%, 0.5) 0px, transparent 50%),
+      radial-gradient(at 80% 0%, hsla(265, 100%, 60%, 0.4) 0px, transparent 50%),
+      radial-gradient(at 0% 50%, hsla(230, 100%, 60%, 0.3) 0px, transparent 60%),
+      radial-gradient(at 60% 80%, hsla(290, 80%, 55%, 0.3) 0px, transparent 50%);
+  }
+
+  .dot-grid {
+    background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .font-display {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+  }
+
+  .font-mono-dm {
+    font-family: "DM Mono", monospace;
+  }
+}

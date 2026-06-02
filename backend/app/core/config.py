@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # Application
     APP_ENV: Literal["development", "staging", "production"] = "development"
-    APP_NAME: str = "Celerius Clinical Trial Platform"
+    APP_NAME: str = "TrialGenesis Clinical Trial Platform"
     APP_VERSION: str = "0.1.0"
     APP_SECRET_KEY: str
     APP_ALLOWED_ORIGINS: list[AnyHttpUrl] = []
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     # Email
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 1025
-    SMTP_FROM: str = "noreply@celerius.dev"
+    SMTP_FROM: str = "noreply@trialgenesis.dev"
     SMTP_TLS: bool = False
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""

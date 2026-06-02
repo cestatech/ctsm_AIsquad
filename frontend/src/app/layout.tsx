@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Celerius",
+  title: "TrialGenesis",
   description: "Clinical Trial Lifecycle Platform",
 };
 
