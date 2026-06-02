@@ -1,0 +1,59 @@
+# Environment files — NEVER commit these
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.pnpm-store/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes (local)
+postgres_data/
+
+# Storage (local dev)
+/tmp/celerius-storage/
+
+# Playwright
+playwright-report/
+test-results/
+
+# Secrets (belt-and-suspenders)
+*.pem
+*.key
+*.crt
+*.pfx
+secrets/
+credentials/

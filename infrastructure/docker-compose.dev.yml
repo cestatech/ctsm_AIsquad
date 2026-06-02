@@ -1,0 +1,91 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: celerius_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: celerius
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-celerius_dev}
+      POSTGRES_DB: celerius_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U celerius -d celerius_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: celerius_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: celerius_mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../infrastructure/docker/backend/Dockerfile.dev
+    container_name: celerius_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://celerius:${POSTGRES_PASSWORD:-celerius_dev}@postgres:5432/celerius_dev
+      REDIS_URL: redis://redis:6379/0
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-dev-secret-key-change-in-prod-32ch}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-prod-32ch}
+      APP_ALLOWED_ORIGINS: http://localhost:3000
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      STORAGE_BACKEND: filesystem
+      STORAGE_LOCAL_PATH: /tmp/celerius-storage
+    volumes:
+      - ../backend:/app
+      - /tmp/celerius-storage:/tmp/celerius-storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../infrastructure/docker/frontend/Dockerfile.dev
+    container_name: celerius_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_APP_NAME: Celerius
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    command: pnpm dev
+
+volumes:
+  postgres_data:
