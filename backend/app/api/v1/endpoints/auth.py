@@ -34,7 +34,9 @@ def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(key=_COOKIE, path="/api/v1/auth")
 
 
-@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED
+)
 async def register(
     body: RegisterRequest,
     request: Request,
@@ -90,7 +92,10 @@ async def refresh(
     if not token_value:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "NO_REFRESH_TOKEN", "message": "No refresh token provided."},
+            detail={
+                "code": "NO_REFRESH_TOKEN",
+                "message": "No refresh token provided.",
+            },
         )
     service = AuthService(db)
     new_access, new_refresh = await service.refresh(
