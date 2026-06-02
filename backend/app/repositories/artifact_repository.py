@@ -53,9 +53,9 @@ class ArtifactRepository:
         Note: This updates the is_current flag only, which is allowed.
         The content and other fields remain immutable per DB trigger.
         """
-        version = await self.get_version(version_id)
         # Bypass ORM to avoid triggering the immutability check (only is_current changes)
         from sqlalchemy import update
+
         await self._db.execute(
             update(ArtifactVersion)
             .where(ArtifactVersion.id == version_id)

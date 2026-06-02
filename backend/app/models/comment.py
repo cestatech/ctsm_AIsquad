@@ -61,10 +61,15 @@ class Comment(UUIDMixin, TimestampMixin, Base):
     artifact: Mapped["Artifact"] = relationship("Artifact", back_populates="comments")
     artifact_version: Mapped["ArtifactVersion | None"] = relationship("ArtifactVersion")
     author: Mapped["User"] = relationship("User", foreign_keys=[author_id])
-    resolver: Mapped["User | None"] = relationship("User", foreign_keys=[resolved_by_id])
+    resolver: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[resolved_by_id]
+    )
     replies: Mapped[list["Comment"]] = relationship(
         "Comment", foreign_keys=[parent_id], back_populates="parent"
     )
     parent: Mapped["Comment | None"] = relationship(
-        "Comment", foreign_keys=[parent_id], back_populates="replies", remote_side="Comment.id"
+        "Comment",
+        foreign_keys=[parent_id],
+        back_populates="replies",
+        remote_side="Comment.id",
     )

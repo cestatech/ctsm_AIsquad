@@ -7,6 +7,7 @@ Replace this implementation in Phase 7 with the real LLM-powered generator.
 The placeholder validates inputs, logs the job, and returns a realistic mock
 draft that demonstrates the intended data flow.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +18,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.artifact import ArtifactType
 from app.models.user import User
 
 

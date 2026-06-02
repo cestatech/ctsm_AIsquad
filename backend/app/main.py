@@ -23,6 +23,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     # Startup: verify DB connection, warm caches
     from app.db.session import engine
+
     async with engine.begin() as conn:
         await conn.run_sync(lambda c: None)  # connection check
     yield
@@ -57,6 +58,7 @@ app.include_router(api_v1_router, prefix="/api/v1")
 # Exception handlers — structured error responses, no stack traces to clients
 # ---------------------------------------------------------------------------
 
+
 @app.exception_handler(WorkflowError)
 async def workflow_error_handler(request: Request, exc: WorkflowError) -> JSONResponse:
     return JSONResponse(
@@ -66,7 +68,9 @@ async def workflow_error_handler(request: Request, exc: WorkflowError) -> JSONRe
 
 
 @app.exception_handler(ArtifactLockedError)
-async def locked_error_handler(request: Request, exc: ArtifactLockedError) -> JSONResponse:
+async def locked_error_handler(
+    request: Request, exc: ArtifactLockedError
+) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content={"detail": exc.message, "code": exc.code},
@@ -74,7 +78,9 @@ async def locked_error_handler(request: Request, exc: ArtifactLockedError) -> JS
 
 
 @app.exception_handler(AuthenticationError)
-async def auth_error_handler(request: Request, exc: AuthenticationError) -> JSONResponse:
+async def auth_error_handler(
+    request: Request, exc: AuthenticationError
+) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_401_UNAUTHORIZED,
         content={"detail": exc.message, "code": exc.code},

@@ -4,6 +4,7 @@ Unit tests for artifact workflow transitions.
 Every valid and invalid status transition is tested.
 This test suite is the executable specification of the workflow model.
 """
+
 import pytest
 
 from app.models.artifact import ArtifactStatus, VALID_TRANSITIONS

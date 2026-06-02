@@ -3,6 +3,7 @@ Audit log ingestion service. Every data-modifying operation must call this.
 
 COMPLIANCE-CRITICAL: Changes require review by audit-compliance-agent + architect-agent.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -37,7 +38,7 @@ class AuditService:
         ip_address: str | None = None,
         user_agent: str | None = None,
         session_id: str | None = None,
-        metadata: dict | None = None,
+        extra_data: dict | None = None,
     ) -> AuditLog:
         """
         Create an immutable audit log record.
@@ -56,7 +57,7 @@ class AuditService:
             ip_address=ip_address,
             user_agent=user_agent,
             session_id=session_id,
-            metadata=metadata or {},
+            extra_data=extra_data or {},
             created_at=datetime.now(UTC),
         )
         self._db.add(entry)

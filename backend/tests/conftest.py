@@ -6,6 +6,7 @@ Provides:
 - Factory fixtures for organizations, users (all roles), studies, artifacts
 - Authenticated test clients for each role
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +23,7 @@ from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models.base import Base
 from app.models.organization import Organization
-from app.models.study import Study, StudyMember, StudyStatus
+from app.models.study import Study, StudyStatus
 from app.models.user import User
 
 settings = get_settings()
@@ -149,7 +150,9 @@ async def reviewer_token(reviewer_user: User) -> str:
 
 
 @pytest_asyncio.fixture
-async def study(db: AsyncSession, organization: Organization, admin_user: User) -> Study:
+async def study(
+    db: AsyncSession, organization: Organization, admin_user: User
+) -> Study:
     s = Study(
         id=uuid4(),
         organization_id=organization.id,

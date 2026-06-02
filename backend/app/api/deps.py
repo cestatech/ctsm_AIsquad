@@ -3,6 +3,7 @@ FastAPI dependency injection for authentication and database sessions.
 
 SECURITY-CRITICAL: Changes require review by rbac-agent + architect-agent.
 """
+
 from __future__ import annotations
 
 from typing import AsyncGenerator
@@ -65,6 +66,7 @@ async def get_current_user(
         raise credentials_exception
 
     from sqlalchemy import select
+
     result = await db.execute(
         select(User).where(
             User.id == UUID(user_id),
@@ -80,7 +82,10 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "USER_DEACTIVATED", "message": "This account has been deactivated."},
+            detail={
+                "code": "USER_DEACTIVATED",
+                "message": "This account has been deactivated.",
+            },
         )
 
     return user

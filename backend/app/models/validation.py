@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -61,13 +61,21 @@ class ValidationRun(UUIDMixin, Base):
     warnings: Mapped[int | None] = mapped_column(Integer, nullable=True)
     results: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     report_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     triggered_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
-    artifact: Mapped["Artifact"] = relationship("Artifact", back_populates="validation_runs")
+    artifact: Mapped["Artifact"] = relationship(
+        "Artifact", back_populates="validation_runs"
+    )
     artifact_version: Mapped["ArtifactVersion"] = relationship("ArtifactVersion")
     triggered_by: Mapped["User"] = relationship("User")

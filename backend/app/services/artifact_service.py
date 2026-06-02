@@ -1,6 +1,7 @@
 """
 Artifact lifecycle service. Enforces workflow transitions and versioning.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ArtifactLockedError, WorkflowError
 from app.core.permissions import Permission, check_permission
-from app.models.artifact import Artifact, ArtifactStatus, ArtifactType, ArtifactVersion, VALID_TRANSITIONS
+from app.models.artifact import Artifact, ArtifactStatus, ArtifactType, ArtifactVersion
 from app.models.audit import AuditAction
 from app.models.user import User
 from app.repositories.artifact_repository import ArtifactRepository
@@ -159,8 +160,11 @@ class ArtifactService:
         """Transition artifact from DRAFT to IN_REVIEW."""
         check_permission(user, Permission.ARTIFACT_SUBMIT)
         return await self._transition(
-            artifact_id, organization_id, user,
-            ArtifactStatus.IN_REVIEW, AuditAction.ARTIFACT_SUBMITTED,
+            artifact_id,
+            organization_id,
+            user,
+            ArtifactStatus.IN_REVIEW,
+            AuditAction.ARTIFACT_SUBMITTED,
         )
 
     async def approve(
@@ -173,9 +177,12 @@ class ArtifactService:
         """Transition artifact from IN_REVIEW to APPROVED."""
         check_permission(user, Permission.ARTIFACT_APPROVE)
         artifact = await self._transition(
-            artifact_id, organization_id, user,
-            ArtifactStatus.APPROVED, AuditAction.ARTIFACT_APPROVED,
-            metadata={"comments": comments},
+            artifact_id,
+            organization_id,
+            user,
+            ArtifactStatus.APPROVED,
+            AuditAction.ARTIFACT_APPROVED,
+            extra_data={"comments": comments},
         )
         await self._create_approval_record(artifact, user, "APPROVED", comments)
         return artifact
@@ -190,9 +197,12 @@ class ArtifactService:
         """Transition artifact from IN_REVIEW to REJECTED. Comment is required."""
         check_permission(user, Permission.ARTIFACT_REJECT)
         artifact = await self._transition(
-            artifact_id, organization_id, user,
-            ArtifactStatus.REJECTED, AuditAction.ARTIFACT_REJECTED,
-            metadata={"comments": comments},
+            artifact_id,
+            organization_id,
+            user,
+            ArtifactStatus.REJECTED,
+            AuditAction.ARTIFACT_REJECTED,
+            extra_data={"comments": comments},
         )
         await self._create_approval_record(artifact, user, "REJECTED", comments)
         return artifact
@@ -206,8 +216,11 @@ class ArtifactService:
         """Lock an APPROVED artifact, making it permanently immutable."""
         check_permission(user, Permission.ARTIFACT_LOCK)
         artifact = await self._transition(
-            artifact_id, organization_id, user,
-            ArtifactStatus.LOCKED, AuditAction.ARTIFACT_LOCKED,
+            artifact_id,
+            organization_id,
+            user,
+            ArtifactStatus.LOCKED,
+            AuditAction.ARTIFACT_LOCKED,
         )
         artifact.locked_at = datetime.now(UTC)
         artifact.locked_by_id = user.id
@@ -240,7 +253,7 @@ class ArtifactService:
             resource_id=artifact.id,
             before_state=before_state,
             after_state=artifact.to_audit_dict(),
-            metadata=metadata or {},
+            extra_data=metadata or {},
         )
 
         return artifact
@@ -253,6 +266,7 @@ class ArtifactService:
         comments: str | None,
     ) -> None:
         from app.models.approval import Approval, ApprovalDecision
+
         approval = Approval(
             organization_id=artifact.organization_id,
             artifact_id=artifact.id,
@@ -284,6 +298,7 @@ class ArtifactService:
         """
         try:
             import jsonpatch
+
             patch = jsonpatch.make_patch(old, new)
             patch_list = list(patch)
             return patch_list if patch_list else None

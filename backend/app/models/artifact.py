@@ -5,7 +5,16 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -99,11 +108,17 @@ class Artifact(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     )
     current_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("artifact_versions.id", use_alter=True, name="fk_artifacts_current_version"),
+        ForeignKey(
+            "artifact_versions.id", use_alter=True, name="fk_artifacts_current_version"
+        ),
         nullable=True,
     )
-    current_version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_version_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     locked_by_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
@@ -114,7 +129,9 @@ class Artifact(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
         UUID(as_uuid=True), ForeignKey("artifacts.id"), nullable=True
     )
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String(100)), nullable=True)
-    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    extra_data: Mapped[dict] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict
+    )
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
@@ -128,8 +145,12 @@ class Artifact(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
         back_populates="artifact",
         order_by="ArtifactVersion.version_number",
     )
-    approvals: Mapped[list["Approval"]] = relationship("Approval", back_populates="artifact")
-    comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="artifact")
+    approvals: Mapped[list["Approval"]] = relationship(
+        "Approval", back_populates="artifact"
+    )
+    comments: Mapped[list["Comment"]] = relationship(
+        "Comment", back_populates="artifact"
+    )
     validation_runs: Mapped[list["ValidationRun"]] = relationship(
         "ValidationRun", back_populates="artifact"
     )
@@ -189,7 +210,9 @@ class ArtifactVersion(UUIDMixin, Base):
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     artifact: Mapped["Artifact"] = relationship(
         "Artifact",

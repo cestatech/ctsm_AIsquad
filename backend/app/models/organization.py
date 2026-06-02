@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin, UUIDMixin
@@ -33,7 +32,9 @@ class Organization(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     users: Mapped[list["User"]] = relationship("User", back_populates="organization")
-    studies: Mapped[list["Study"]] = relationship("Study", back_populates="organization")
+    studies: Mapped[list["Study"]] = relationship(
+        "Study", back_populates="organization"
+    )
 
     def to_audit_dict(self) -> dict:
         return {

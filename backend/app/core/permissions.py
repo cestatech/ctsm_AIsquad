@@ -3,6 +3,7 @@ RBAC permission model. Authoritative source for all role-based access rules.
 
 SECURITY-CRITICAL: Changes require review by rbac-agent + architect-agent.
 """
+
 from __future__ import annotations
 
 from enum import Enum
@@ -40,21 +41,21 @@ class Permission(str, Enum):
 
 
 PERMISSION_MATRIX: dict[Permission, list[Role]] = {
-    Permission.ARTIFACT_CREATE:       [Role.ADMIN, Role.CONTRIBUTOR],
-    Permission.ARTIFACT_EDIT:         [Role.ADMIN, Role.CONTRIBUTOR],
-    Permission.ARTIFACT_SUBMIT:       [Role.ADMIN, Role.CONTRIBUTOR],
-    Permission.ARTIFACT_APPROVE:      [Role.ADMIN, Role.REVIEWER],
-    Permission.ARTIFACT_REJECT:       [Role.ADMIN, Role.REVIEWER],
-    Permission.ARTIFACT_LOCK:         [Role.ADMIN],
-    Permission.ARTIFACT_AMEND:        [Role.ADMIN],
+    Permission.ARTIFACT_CREATE: [Role.ADMIN, Role.CONTRIBUTOR],
+    Permission.ARTIFACT_EDIT: [Role.ADMIN, Role.CONTRIBUTOR],
+    Permission.ARTIFACT_SUBMIT: [Role.ADMIN, Role.CONTRIBUTOR],
+    Permission.ARTIFACT_APPROVE: [Role.ADMIN, Role.REVIEWER],
+    Permission.ARTIFACT_REJECT: [Role.ADMIN, Role.REVIEWER],
+    Permission.ARTIFACT_LOCK: [Role.ADMIN],
+    Permission.ARTIFACT_AMEND: [Role.ADMIN],
     Permission.ARTIFACT_DELETE_DRAFT: [Role.ADMIN, Role.CONTRIBUTOR],
-    Permission.STUDY_CREATE:          [Role.ADMIN],
-    Permission.STUDY_ARCHIVE:         [Role.ADMIN],
-    Permission.STUDY_MANAGE_MEMBERS:  [Role.ADMIN],
-    Permission.USER_MANAGE:           [Role.ADMIN],
-    Permission.ORG_MANAGE_SETTINGS:   [Role.ADMIN],
-    Permission.AUDIT_READ:            [Role.ADMIN, Role.REVIEWER],
-    Permission.VALIDATION_RUN:        [Role.ADMIN, Role.CONTRIBUTOR, Role.REVIEWER],
+    Permission.STUDY_CREATE: [Role.ADMIN],
+    Permission.STUDY_ARCHIVE: [Role.ADMIN],
+    Permission.STUDY_MANAGE_MEMBERS: [Role.ADMIN],
+    Permission.USER_MANAGE: [Role.ADMIN],
+    Permission.ORG_MANAGE_SETTINGS: [Role.ADMIN],
+    Permission.AUDIT_READ: [Role.ADMIN, Role.REVIEWER],
+    Permission.VALIDATION_RUN: [Role.ADMIN, Role.CONTRIBUTOR, Role.REVIEWER],
     Permission.AI_GENERATION_TRIGGER: [Role.ADMIN, Role.CONTRIBUTOR],
 }
 
@@ -64,7 +65,9 @@ def has_permission(role: Role, permission: Permission) -> bool:
     return role in PERMISSION_MATRIX.get(permission, [])
 
 
-def check_permission(user: "User", permission: Permission, study_role: Role | None = None) -> None:
+def check_permission(
+    user: "User", permission: Permission, study_role: Role | None = None
+) -> None:
     """
     Enforce a permission check. Raises HTTP 403 if unauthorized.
 

@@ -64,7 +64,9 @@ class Approval(UUIDMixin, Base):
     )
     comments: Mapped[str | None] = mapped_column(Text, nullable=True)
     electronic_signature: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     # NO updated_at — immutable once created
 
     artifact: Mapped["Artifact"] = relationship("Artifact", back_populates="approvals")

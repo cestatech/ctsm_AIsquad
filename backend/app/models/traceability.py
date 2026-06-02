@@ -53,7 +53,9 @@ class TraceabilityLink(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     target_element_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
     link_type: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    extra_data: Mapped[dict] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict
+    )
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )

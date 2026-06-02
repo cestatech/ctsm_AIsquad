@@ -79,15 +79,23 @@ class Study(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     )
     start_date = mapped_column(Date, nullable=True)
     end_date = mapped_column(Date, nullable=True)
-    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    extra_data: Mapped[dict] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict
+    )
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
 
-    organization: Mapped["Organization"] = relationship("Organization", back_populates="studies")
+    organization: Mapped["Organization"] = relationship(
+        "Organization", back_populates="studies"
+    )
     created_by: Mapped["User"] = relationship("User", foreign_keys=[created_by_id])
-    members: Mapped[list["StudyMember"]] = relationship("StudyMember", back_populates="study")
-    artifacts: Mapped[list["Artifact"]] = relationship("Artifact", back_populates="study")
+    members: Mapped[list["StudyMember"]] = relationship(
+        "StudyMember", back_populates="study"
+    )
+    artifacts: Mapped[list["Artifact"]] = relationship(
+        "Artifact", back_populates="study"
+    )
 
     def is_editable(self) -> bool:
         return self.status not in (StudyStatus.ARCHIVED, StudyStatus.TERMINATED)
@@ -134,4 +142,6 @@ class StudyMember(UUIDMixin, TimestampMixin, Base):
 
     study: Mapped["Study"] = relationship("Study", back_populates="members")
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
-    invited_by: Mapped["User | None"] = relationship("User", foreign_keys=[invited_by_id])
+    invited_by: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[invited_by_id]
+    )
