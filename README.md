@@ -77,9 +77,23 @@ The **Celerius Intelligence Platform** layer makes every AI action and data tran
 - `SyntheticDataRun` + `SimulationAssumption` — every distributional assumption documented with source citation
 - Output always labeled `SYNTHETIC`; random seed required for reproducibility
 
+### CIP Phase 6 — Frontend Intelligence Screens (complete)
+
+8 screens under `/intelligence`:
+
+| Screen | Path |
+|--------|------|
+| Intelligence Hub | `/intelligence` |
+| Context Graph Explorer | `/intelligence/graph` |
+| Traceability Matrix | `/intelligence/traceability` |
+| AI Decisions | `/intelligence/decisions` |
+| Human Overrides | `/intelligence/overrides` |
+| Lineage Explorer | `/intelligence/lineage` |
+| Validation Evidence | `/intelligence/validation` |
+| Synthetic Data Runs | `/intelligence/synthetic` |
+
 ### What is NOT yet implemented
 - AI generation modules (Protocol, ICF, SAP, SDTM, ADaM, TLF, CSR) — Phase 7+
-- Frontend Intelligence Screens (Context Graph Explorer, AI Decisions review, Lineage Explorer) — Phase 6
 - Graph visualization (React Flow / Cytoscape) — Phase 7
 - Pinnacle 21 integration
 - Regulatory submission packaging
@@ -384,7 +398,7 @@ Required secrets in GitHub:
 | CIP Phase 3 | Human Override Framework (immutable corrections + justification) | ✅ Complete |
 | CIP Phase 4 | Data Lineage Engine (field-level + artifact-level) | ✅ Complete |
 | CIP Phase 5 | Validation Intelligence + Synthetic Data models | ✅ Complete |
-| CIP Phase 6 | Frontend Intelligence Screens (Graph Explorer, AI Decisions, Lineage) | 🔲 Next |
+| CIP Phase 6 | Frontend Intelligence Screens (Graph Explorer, AI Decisions, Lineage) | ✅ Complete |
 | CIP Phase 7 | Graph Visualization (React Flow / Cytoscape) | 🔲 Planned |
 | M1–M15 Backend | Implement domain API endpoints (studies, artifacts, approvals, etc.) | 🔲 Planned |
 | AI Modules | Protocol, ICF, SAP, SDTM, ADaM, TLF, CSR generators | 🔲 Planned |
