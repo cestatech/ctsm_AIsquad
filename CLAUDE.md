@@ -28,6 +28,78 @@ This is not a typical web application. Mistakes in this codebase can affect pati
 
 ---
 
+## Celerius Intelligence Platform (CIP) — Core USP
+
+The CIP layer is **the primary differentiator** of this platform. It makes every AI action, data transformation, and mapping decision explainable, auditable, and defensible to regulators. It is not optional infrastructure — it is the product.
+
+The full intelligence chain:
+
+```
+ContextGraphService  ←  registers every entity as a graph node
+AIDecisionService    ←  logs every AI inference before it executes
+HumanOverrideService ←  records every human correction immutably
+DataLineageService   ←  traces field-level and artifact-level provenance
+ValidationIntelligenceService ← stores per-rule CDISC evidence
+```
+
+### Mandatory CIP Compliance Rules
+
+**Every AI agent that generates, derives, or maps clinical data MUST:**
+
+1. **Log the decision before acting.**
+   Call `AIDecisionService.begin_decision()` before executing any AI inference.
+   Call `complete_decision()` with the output after. Never silently execute AI work.
+
+2. **Register entities in the Context Graph.**
+   Any new clinical entity (objective, endpoint, ECR field, SDTM variable, ADaM variable, TLF, CSR section) must be registered via `ContextGraphService.register_domain_record()` before use.
+
+3. **Link entities in the Context Graph.**
+   Any relationship established (e.g., mapping an ECR field to a SDTM variable) must be recorded via `ContextGraphService.create_relationship()` or a named shortcut (`link_ecr_to_sdtm()`, etc.) with `is_ai_generated=True` and `ai_decision_id` populated.
+
+4. **Record field-level lineage.**
+   Any data transformation (ECR → SDTM, SDTM → ADaM, ADaM → TLF) must produce a `DataLineage` record via `DataLineageService.record_field_lineage()` with the transformation logic stored as code or a formula string.
+
+5. **Expose AI outputs as PENDING_REVIEW.**
+   All AI-generated values surface in the frontend at `/intelligence/decisions` with status `PENDING_REVIEW` until a Reviewer or Admin accepts or rejects them. Accepted AI outputs can be used; rejected outputs must not flow downstream.
+
+6. **Capture human corrections as overrides.**
+   If a user edits any AI-generated value, the frontend must call `POST /api/v1/intelligence/overrides` with `original_value`, `new_value`, and a mandatory `reason`. This is enforced in the UI and must not be skipped.
+
+### CIP Service Entry Points
+
+| Service | File | Use for |
+|---------|------|---------|
+| `ContextGraphService` | `services/context_graph_service.py` | Register nodes, create edges, query lineage path |
+| `AIDecisionService` | `services/intelligence_service.py` | Log AI decisions, review lifecycle |
+| `HumanOverrideService` | `services/intelligence_service.py` | Record human corrections |
+| `DataLineageService` | `services/intelligence_service.py` | Field-level and artifact-level lineage |
+| `ValidationIntelligenceService` | `services/intelligence_service.py` | CDISC rule evidence, waivers |
+
+### CIP Frontend Screens
+
+All CIP data surfaces at `/intelligence/*`. These screens are the primary interface for human oversight of AI:
+
+- `/intelligence/decisions` — review queue; Reviewers and Admins accept/reject AI work here
+- `/intelligence/overrides` — immutable correction log
+- `/intelligence/graph` — context graph node/edge browser
+- `/intelligence/traceability` — full Objective→CSR chain with gap detection
+- `/intelligence/lineage` — upstream/downstream lineage explorer
+- `/intelligence/validation` — CDISC conformance findings; waiver workflow
+- `/intelligence/synthetic` — synthetic data run log
+
+### CIP Invariants (never violate)
+
+- `AIDecision` records are append-only. No update or delete.
+- `HumanOverride` records are append-only. No update or delete.
+- `DataLineage` records are append-only. No update or delete.
+- `GraphEvent` records are append-only. No update or delete.
+- A `HumanOverride` with an empty `reason` must be rejected at the service layer (HTTP 422).
+- An AI decision rejection with an empty `notes` must be rejected at the service layer (HTTP 422).
+- Synthetic data output is always labeled `SYNTHETIC`. It must never be submitted to regulators as real data.
+- Every `SyntheticDataRun` must have a `random_seed` for reproducibility.
+
+---
+
 ## Architecture Rules
 
 ### Multi-Tenancy

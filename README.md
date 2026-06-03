@@ -14,6 +14,21 @@ Objective → Endpoint → eCRF → SDTM → ADaM → TLF → CSR
 
 Every artifact is versioned, auditable, approval-controlled, and reproducible. The platform is designed for eventual FDA, EMA, GxP, and 21 CFR Part 11 compliance.
 
+### The Core USP: Celerius Intelligence Platform (CIP)
+
+The **Celerius Intelligence Platform** is the primary differentiator. Where other clinical data platforms use AI as a black box, Celerius makes every AI action fully explainable and defensible:
+
+| Layer | What it does | Why it matters |
+|-------|-------------|----------------|
+| **AI Decision Logging** | Every AI inference is recorded *before* it executes — agent, model, prompt hash, reasoning, confidence, input/output | FDA can ask "why did your AI map this field this way?" — answer is in the record |
+| **Human Override Framework** | Every human correction to an AI value is immutably logged with mandatory justification | Complete before/after audit trail; no correction is ever lost |
+| **Context Graph** | Every clinical entity (objective → endpoint → ECR → SDTM → ADaM → TLF → CSR) is a graph node; every relationship is a graph edge | One API call traces any value to its original source |
+| **Data Lineage Engine** | Field-level and artifact-level provenance with transformation logic stored as code | Answers "where does ADTTE.AVAL come from?" with the actual derivation formula |
+| **Validation Intelligence** | Per-rule CDISC evidence with structured waiver workflow | Waivers are regulatory-grade records, not emails — flows directly into submission package |
+| **Human Review Queue** | All AI outputs surface as PENDING_REVIEW before downstream use | No AI decision reaches a submission without human sign-off |
+
+No AI output can silently enter a regulatory submission. Every step is logged, every correction is recorded, every link is queryable.
+
 ---
 
 ## Current State
