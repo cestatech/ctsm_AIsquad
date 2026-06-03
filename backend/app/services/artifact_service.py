@@ -182,7 +182,7 @@ class ArtifactService:
             user,
             ArtifactStatus.APPROVED,
             AuditAction.ARTIFACT_APPROVED,
-            extra_data={"comments": comments},
+            metadata={"comments": comments},
         )
         await self._create_approval_record(artifact, user, "APPROVED", comments)
         return artifact
@@ -202,10 +202,26 @@ class ArtifactService:
             user,
             ArtifactStatus.REJECTED,
             AuditAction.ARTIFACT_REJECTED,
-            extra_data={"comments": comments},
+            metadata={"comments": comments},
         )
         await self._create_approval_record(artifact, user, "REJECTED", comments)
         return artifact
+
+    async def amend(
+        self,
+        artifact_id: UUID,
+        organization_id: UUID,
+        user: User,
+    ) -> Artifact:
+        """Begin amendment of a LOCKED artifact. Admin only."""
+        check_permission(user, Permission.ARTIFACT_LOCK)
+        return await self._transition(
+            artifact_id,
+            organization_id,
+            user,
+            ArtifactStatus.AMENDED,
+            AuditAction.ARTIFACT_AMENDED,
+        )
 
     async def lock(
         self,

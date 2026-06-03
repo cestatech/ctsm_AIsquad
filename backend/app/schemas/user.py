@@ -27,6 +27,15 @@ class OrganizationResponse(BaseModel):
     slug: str
 
 
+class UserListResponse(BaseModel):
+    items: list[UserResponse]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
+    has_prev: bool
+
+
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

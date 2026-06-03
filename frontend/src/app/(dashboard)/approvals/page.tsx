@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { approvalsApi } from "@/lib/api/approvals";
-import { MOCK_PENDING_APPROVALS } from "@/lib/mockData";
+import type { ApprovalQueueItem } from "@/types";
 
 const TYPE_LABELS: Record<string, string> = {
   PROTOCOL: "Protocol", ICF: "ICF", SAP: "SAP", EDC_CRF: "eCRF",
@@ -22,59 +22,49 @@ function rel(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-type PendingItem = (typeof MOCK_PENDING_APPROVALS)[number];
-
 export default function ApprovalsPage() {
   const { token, role } = useAuthStore();
   const perms = usePermissions(role);
+  const queryClient = useQueryClient();
 
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const [activeItem, setActiveItem] = useState<PendingItem | null>(null);
+  const [activeItem, setActiveItem] = useState<ApprovalQueueItem | null>(null);
   const [decision, setDecision] = useState<"APPROVED" | "REJECTED" | null>(null);
   const [comment, setComment] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["approvals-queue", token],
+    queryFn: () => approvalsApi.queue({ page_size: 50 }, token!),
+    enabled: !!token && perms.canApproveArtifact,
+    staleTime: 30_000,
+  });
 
   const reviewMutation = useMutation({
     mutationFn: async ({
       item,
       dec,
     }: {
-      item: PendingItem;
+      item: ApprovalQueueItem;
       dec: "APPROVED" | "REJECTED";
     }) =>
       approvalsApi.create(
         {
           artifact_id: item.artifact_id,
-          artifact_version_id: item.artifact_version_id,
+          artifact_version_id: item.artifact_version_id!,
           decision: dec,
           comments: comment || undefined,
         },
         token!
       ),
-    onSuccess: (_, variables) => {
-      setDismissed((prev) => {
-        const next = new Set(Array.from(prev));
-        next.add(variables.item.artifact_id);
-        return next;
-      });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["approvals-queue"] });
       setActiveItem(null);
       setDecision(null);
       setComment("");
       setActionError(null);
     },
     onError: (err) => {
-      const id = activeItem?.artifact_id;
-      setActionError(err instanceof Error ? err.message : "Action failed. The decision was still recorded locally.");
-      if (id) {
-        setDismissed((prev) => {
-          const next = new Set(Array.from(prev));
-          next.add(id);
-          return next;
-        });
-      }
-      setActiveItem(null);
-      setDecision(null);
-      setComment("");
+      setActionError(err instanceof Error ? err.message : "Action failed.");
     },
   });
 
@@ -86,27 +76,27 @@ export default function ApprovalsPage() {
     );
   }
 
-  const pendingItems = MOCK_PENDING_APPROVALS.filter(
-    (item) => !dismissed.has(item.artifact_id)
-  );
+  const pendingItems = data?.items ?? [];
 
   return (
     <div>
       <div className="px-8 py-5 border-b border-slate-200 bg-white">
         <h1 className="font-display text-xl font-bold text-slate-900">Approval Queue</h1>
         <p className="text-slate-500 text-sm mt-0.5">
-          {pendingItems.length} artifact{pendingItems.length !== 1 ? "s" : ""} awaiting your review
+          {isLoading ? "Loading…" : `${data?.total ?? 0} artifact${(data?.total ?? 0) !== 1 ? "s" : ""} awaiting your review`}
         </p>
       </div>
 
       {actionError && (
-        <div className="mx-8 mt-4 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3">
+        <div className="mx-8 mt-4 bg-red-50 border border-red-200 text-red-800 text-sm px-4 py-3">
           {actionError}
         </div>
       )}
 
       <div className="px-8 py-6">
-        {pendingItems.length === 0 ? (
+        {isLoading ? (
+          <div className="text-center py-12 text-slate-400 text-sm">Loading approval queue…</div>
+        ) : pendingItems.length === 0 ? (
           <div className="bg-white border border-slate-200 px-8 py-14 text-center">
             <p className="font-display font-semibold text-slate-900 mb-1">Queue is clear</p>
             <p className="text-slate-500 text-sm">All submitted artifacts have been reviewed.</p>
@@ -247,6 +237,10 @@ export default function ApprovalsPage() {
                     className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none"
                   />
                 </div>
+              )}
+
+              {actionError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2">{actionError}</div>
               )}
             </div>
 

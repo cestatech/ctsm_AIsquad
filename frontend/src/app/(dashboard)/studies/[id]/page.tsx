@@ -6,7 +6,6 @@ import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { studiesApi } from "@/lib/api/studies";
 import { artifactsApi } from "@/lib/api/artifacts";
-import { MOCK_STUDIES, MOCK_ARTIFACTS, MOCK_STUDY_MEMBERS } from "@/lib/mockData";
 
 const ARTIFACT_STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600",
@@ -53,38 +52,19 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
 
   const { data: study, isLoading: studyLoading } = useQuery({
     queryKey: ["study", studyId, token],
-    queryFn: async () => {
-      try {
-        return await studiesApi.get(studyId, token!);
-      } catch {
-        return MOCK_STUDIES.find((s) => s.id === studyId) ?? MOCK_STUDIES[0];
-      }
-    },
+    queryFn: () => studiesApi.get(studyId, token!),
     enabled: !!token,
   });
 
   const { data: artifactsData } = useQuery({
     queryKey: ["artifacts", studyId, token],
-    queryFn: async () => {
-      try {
-        return await artifactsApi.list({ study_id: studyId, page_size: 50 }, token!);
-      } catch {
-        const items = MOCK_ARTIFACTS.filter((a) => a.study_id === studyId);
-        return { items, total: items.length, page: 1, page_size: 50, has_next: false, has_prev: false };
-      }
-    },
+    queryFn: () => artifactsApi.list({ study_id: studyId, page_size: 50 }, token!),
     enabled: !!token,
   });
 
   const { data: members } = useQuery({
     queryKey: ["study-members", studyId, token],
-    queryFn: async () => {
-      try {
-        return await studiesApi.getMembers(studyId, token!);
-      } catch {
-        return MOCK_STUDY_MEMBERS.filter((m) => m.study_id === studyId);
-      }
-    },
+    queryFn: () => studiesApi.getMembers(studyId, token!),
     enabled: !!token,
   });
 

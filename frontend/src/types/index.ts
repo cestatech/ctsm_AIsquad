@@ -144,6 +144,19 @@ export interface Approval {
   created_at: string;
 }
 
+export interface ApprovalQueueItem {
+  artifact_id: string;
+  artifact_version_id: string | null;
+  artifact_name: string;
+  artifact_type: ArtifactType;
+  study_id: string;
+  study_name: string;
+  protocol_number: string;
+  version_number: number;
+  submitted_by: { id: string; full_name: string; email: string };
+  submitted_at: string;
+}
+
 export interface Comment {
   id: string;
   artifact_id: string;

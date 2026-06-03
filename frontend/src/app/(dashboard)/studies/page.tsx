@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { studiesApi } from "@/lib/api/studies";
-import { MOCK_STUDIES } from "@/lib/mockData";
 import type { StudyStatus } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -39,19 +38,11 @@ export default function StudiesPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["studies", token, statusFilter],
-    queryFn: async () => {
-      try {
-        return await studiesApi.list(
-          { status: statusFilter !== "ALL" ? statusFilter : undefined, page_size: 50 },
-          token!
-        );
-      } catch {
-        const filtered = statusFilter === "ALL"
-          ? MOCK_STUDIES
-          : MOCK_STUDIES.filter((s) => s.status === statusFilter);
-        return { items: filtered, total: filtered.length, page: 1, page_size: 50, has_next: false, has_prev: false };
-      }
-    },
+    queryFn: () =>
+      studiesApi.list(
+        { status: statusFilter !== "ALL" ? statusFilter : undefined, page_size: 50 },
+        token!
+      ),
     enabled: !!token,
   });
 
@@ -63,7 +54,7 @@ export default function StudiesPage() {
         <div>
           <h1 className="font-display text-xl font-bold text-slate-900">Studies</h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            {data?.total ?? MOCK_STUDIES.length} studies in your organization
+            {data?.total ?? 0} studies in your organization
           </p>
         </div>
         {perms.isAdmin && (

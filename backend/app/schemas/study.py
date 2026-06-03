@@ -44,12 +44,22 @@ class StudyUpdate(BaseModel):
     end_date: date | None = None
 
 
+class UserBrief(BaseModel):
+    id: UUID
+    full_name: str
+    email: str
+    title: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class StudyMemberResponse(BaseModel):
     id: UUID
     study_id: UUID
     user_id: UUID
     organization_id: UUID
     role: str
+    user: UserBrief
     invited_by_id: UUID | None
     created_at: datetime
 

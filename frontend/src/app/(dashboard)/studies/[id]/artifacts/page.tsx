@@ -7,7 +7,6 @@ import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { studiesApi } from "@/lib/api/studies";
 import { artifactsApi } from "@/lib/api/artifacts";
-import { MOCK_STUDIES, MOCK_ARTIFACTS } from "@/lib/mockData";
 import type { ArtifactType } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -51,26 +50,13 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
 
   const { data: study } = useQuery({
     queryKey: ["study", studyId, token],
-    queryFn: async () => {
-      try {
-        return await studiesApi.get(studyId, token!);
-      } catch {
-        return MOCK_STUDIES.find((s) => s.id === studyId) ?? MOCK_STUDIES[0];
-      }
-    },
+    queryFn: () => studiesApi.get(studyId, token!),
     enabled: !!token,
   });
 
   const { data, isLoading } = useQuery({
     queryKey: ["artifacts", studyId, token],
-    queryFn: async () => {
-      try {
-        return await artifactsApi.list({ study_id: studyId, page_size: 100 }, token!);
-      } catch {
-        const items = MOCK_ARTIFACTS.filter((a) => a.study_id === studyId);
-        return { items, total: items.length, page: 1, page_size: 100, has_next: false, has_prev: false };
-      }
-    },
+    queryFn: () => artifactsApi.list({ study_id: studyId, page_size: 100 }, token!),
     enabled: !!token,
   });
 

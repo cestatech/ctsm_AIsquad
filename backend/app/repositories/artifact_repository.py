@@ -3,10 +3,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.models.artifact import Artifact, ArtifactVersion
+from app.models.artifact import Artifact, ArtifactStatus, ArtifactVersion
 
 
 class ArtifactRepository:
@@ -68,19 +69,74 @@ class ArtifactRepository:
         organization_id: UUID,
         limit: int = 25,
         offset: int = 0,
-    ) -> list[Artifact]:
+    ) -> tuple[list[Artifact], int]:
+        filters = [
+            Artifact.study_id == study_id,
+            Artifact.organization_id == organization_id,
+            Artifact.deleted_at.is_(None),
+        ]
+        count_result = await self._db.execute(
+            select(func.count()).select_from(Artifact).where(*filters)
+        )
+        total = count_result.scalar_one()
         result = await self._db.execute(
             select(Artifact)
-            .where(
-                Artifact.study_id == study_id,
-                Artifact.organization_id == organization_id,
-                Artifact.deleted_at.is_(None),
-            )
+            .where(*filters)
             .order_by(Artifact.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
-        return list(result.scalars().all())
+        return list(result.scalars().all()), total
+
+    async def list_all(
+        self,
+        organization_id: UUID,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[Artifact], int]:
+        """List all artifacts for an org, ordered by most recently updated."""
+        filters = [
+            Artifact.organization_id == organization_id,
+            Artifact.deleted_at.is_(None),
+        ]
+        count_result = await self._db.execute(
+            select(func.count()).select_from(Artifact).where(*filters)
+        )
+        total = count_result.scalar_one()
+        result = await self._db.execute(
+            select(Artifact)
+            .where(*filters)
+            .order_by(Artifact.updated_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(result.scalars().all()), total
+
+    async def list_in_review(
+        self,
+        organization_id: UUID,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[Artifact], int]:
+        """List all IN_REVIEW artifacts with study and creator eagerly loaded."""
+        filters = [
+            Artifact.organization_id == organization_id,
+            Artifact.status == ArtifactStatus.IN_REVIEW,
+            Artifact.deleted_at.is_(None),
+        ]
+        count_result = await self._db.execute(
+            select(func.count()).select_from(Artifact).where(*filters)
+        )
+        total = count_result.scalar_one()
+        result = await self._db.execute(
+            select(Artifact)
+            .where(*filters)
+            .options(selectinload(Artifact.study), selectinload(Artifact.creator))
+            .order_by(Artifact.updated_at.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(result.scalars().all()), total
 
     async def list_versions(
         self, artifact_id: UUID, organization_id: UUID

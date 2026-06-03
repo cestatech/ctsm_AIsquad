@@ -7,7 +7,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { studiesApi } from "@/lib/api/studies";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { approvalsApi } from "@/lib/api/approvals";
-import { MOCK_STUDIES, MOCK_ARTIFACTS, MOCK_PENDING_APPROVALS } from "@/lib/mockData";
+import { usersApi } from "@/lib/api/users";
 
 function rel(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -43,43 +43,32 @@ export default function DashboardPage() {
 
   const { data: studiesData } = useQuery({
     queryKey: ["studies", token],
-    queryFn: async () => {
-      try {
-        return await studiesApi.list({ page_size: 4 }, token!);
-      } catch {
-        return { items: MOCK_STUDIES.slice(0, 4), total: MOCK_STUDIES.length, page: 1, page_size: 4, has_next: false, has_prev: false };
-      }
-    },
+    queryFn: () => studiesApi.list({ page_size: 4 }, token!),
     enabled: !!token,
   });
 
   const { data: artifactsData } = useQuery({
     queryKey: ["artifacts-all", token],
-    queryFn: async () => {
-      try {
-        return await artifactsApi.list({ page_size: 5 }, token!);
-      } catch {
-        return { items: MOCK_ARTIFACTS.slice(0, 5), total: MOCK_ARTIFACTS.length, page: 1, page_size: 5, has_next: false, has_prev: false };
-      }
-    },
+    queryFn: () => artifactsApi.list({ page_size: 5 }, token!),
     enabled: !!token,
   });
 
   const { data: approvalsData } = useQuery({
     queryKey: ["approvals-queue", token],
-    queryFn: async () => {
-      try {
-        return await approvalsApi.queue({ page_size: 5 }, token!);
-      } catch {
-        return { items: [], total: MOCK_PENDING_APPROVALS.length, page: 1, page_size: 5, has_next: false, has_prev: false };
-      }
-    },
+    queryFn: () => approvalsApi.queue({ page_size: 5 }, token!),
     enabled: !!token,
+  });
+
+  const { data: usersData } = useQuery({
+    queryKey: ["users-count", token],
+    queryFn: () => usersApi.list({ page_size: 1 }, token!),
+    enabled: !!token,
+    staleTime: 300_000,
   });
 
   const studies = studiesData?.items ?? [];
   const artifacts = artifactsData?.items ?? [];
-  const pendingCount = approvalsData?.total ?? MOCK_PENDING_APPROVALS.length;
+  const pendingCount = approvalsData?.total ?? 0;
   const activeStudies = studies.filter((s) => s.status === "ACTIVE").length;
 
   if (!user) return null;
@@ -98,9 +87,9 @@ export default function DashboardPage() {
         <div className="grid grid-cols-4 gap-px bg-slate-200 border border-slate-200">
           {[
             { label: "Active Studies", value: activeStudies || studiesData?.total || 0 },
-            { label: "Total Artifacts", value: artifactsData?.total ?? MOCK_ARTIFACTS.length },
+            { label: "Total Artifacts", value: artifactsData?.total ?? 0 },
             { label: "Pending Approvals", value: pendingCount },
-            { label: "Team Members", value: 4 },
+            { label: "Team Members", value: usersData?.total ?? 0 },
           ].map((stat) => (
             <div key={stat.label} className="bg-white px-6 py-5">
               <p className="font-display text-2xl font-bold text-slate-900">{stat.value}</p>

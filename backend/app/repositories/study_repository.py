@@ -109,12 +109,15 @@ class StudyRepository:
     async def list_members(
         self, study_id: UUID, organization_id: UUID
     ) -> list[StudyMember]:
+        from sqlalchemy.orm import selectinload
+
         result = await self._db.execute(
             select(StudyMember)
             .where(
                 StudyMember.study_id == study_id,
                 StudyMember.organization_id == organization_id,
             )
+            .options(selectinload(StudyMember.user))
             .order_by(StudyMember.created_at.asc())
         )
         return list(result.scalars().all())

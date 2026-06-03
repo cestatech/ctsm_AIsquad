@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { Approval, PaginatedResponse } from "@/types";
+import type { Approval, ApprovalQueueItem, PaginatedResponse } from "@/types";
 
 interface ApprovalQueueParams {
   page?: number;
@@ -15,7 +15,7 @@ interface CreateApprovalBody {
 
 export const approvalsApi = {
   queue: (params: ApprovalQueueParams, token: string) =>
-    apiClient.get<PaginatedResponse<Approval>>("/approvals/queue", {
+    apiClient.get<PaginatedResponse<ApprovalQueueItem>>("/approvals/queue", {
       params: params as Record<string, string | number | boolean | undefined>,
       token,
     }),

@@ -7,7 +7,6 @@ import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { approvalsApi } from "@/lib/api/approvals";
-import { MOCK_ARTIFACTS, MOCK_USERS } from "@/lib/mockData";
 import type { Artifact } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -63,13 +62,7 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
 
   const { data: artifact, isLoading } = useQuery({
     queryKey: ["artifact", artifactId, token],
-    queryFn: async () => {
-      try {
-        return await artifactsApi.get(artifactId, token!);
-      } catch {
-        return MOCK_ARTIFACTS.find((a) => a.id === artifactId) ?? MOCK_ARTIFACTS[0];
-      }
-    },
+    queryFn: () => artifactsApi.get(artifactId, token!),
     enabled: !!token,
   });
 
@@ -122,8 +115,6 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
   if (!artifact) {
     return <div className="px-8 py-16 text-center text-slate-400 text-sm">Artifact not found.</div>;
   }
-
-  const mockCreator = MOCK_USERS.find((u) => u.id === artifact.created_by_id) ?? MOCK_USERS[0];
 
   function renderActions(a: Artifact) {
     const actions: React.ReactNode[] = [];
@@ -265,7 +256,9 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
             <dl className="space-y-3 text-xs">
               <div>
                 <dt className="text-slate-400 mb-0.5">Created by</dt>
-                <dd className="text-slate-700 font-medium">{mockCreator.full_name}</dd>
+                <dd className="text-slate-700 font-medium font-mono text-[11px]">
+                  {artifact.created_by_id.slice(0, 8)}…
+                </dd>
               </div>
               <div>
                 <dt className="text-slate-400 mb-0.5">Created</dt>
