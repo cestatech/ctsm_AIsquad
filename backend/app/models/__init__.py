@@ -3,6 +3,17 @@ from app.models.artifact import Artifact, ArtifactVersion
 from app.models.approval import Approval
 from app.models.comment import Comment
 from app.models.generation import GenerationJob
+from app.models.graph import GraphNode, GraphEdge, GraphEvent
+from app.models.intelligence import (
+    AIDecision,
+    HumanOverride,
+    DataLineage,
+    ArtifactLineage,
+    ValidationEvidence,
+    SyntheticDataRun,
+    SimulationAssumption,
+    ExternalSource,
+)
 from app.models.notification import Notification
 from app.models.organization import Organization
 from app.models.study import Study, StudyMember
@@ -17,6 +28,17 @@ __all__ = [
     "Approval",
     "Comment",
     "GenerationJob",
+    "GraphNode",
+    "GraphEdge",
+    "GraphEvent",
+    "AIDecision",
+    "HumanOverride",
+    "DataLineage",
+    "ArtifactLineage",
+    "ValidationEvidence",
+    "SyntheticDataRun",
+    "SimulationAssumption",
+    "ExternalSource",
     "Notification",
     "Organization",
     "Study",

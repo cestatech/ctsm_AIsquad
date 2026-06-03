@@ -2,12 +2,13 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { User } from "@/types";
+import type { Role, User } from "@/types";
 
 interface AuthState {
   token: string | null;
   user: User | null;
-  setAuth: (token: string, user: User) => void;
+  role: Role;
+  setAuth: (token: string, user: User, role?: Role) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
 }
@@ -17,16 +18,17 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       token: null,
       user: null,
+      role: "ADMIN" as Role,
 
-      setAuth: (token, user) => set({ token, user }),
+      setAuth: (token, user, role = "ADMIN") => set({ token, user, role }),
 
-      clearAuth: () => set({ token: null, user: null }),
+      clearAuth: () => set({ token: null, user: null, role: "ADMIN" }),
 
       isAuthenticated: () => !!get().token,
     }),
     {
       name: "trialgenesis-auth",
-      partialize: (state) => ({ token: state.token, user: state.user }),
+      partialize: (state) => ({ token: state.token, user: state.user, role: state.role }),
     }
   )
 );

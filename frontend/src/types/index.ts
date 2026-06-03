@@ -65,6 +65,7 @@ export interface User {
   full_name: string;
   title: string | null;
   is_active: boolean;
+  is_system_admin: boolean;
   last_login_at: string | null;
   created_at: string;
 }

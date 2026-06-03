@@ -11,6 +11,8 @@ from app.api.v1.endpoints import (
     audit,
     validation,
     generation,
+    graph,
+    intelligence,
 )
 
 api_v1_router = APIRouter()
@@ -30,4 +32,10 @@ api_v1_router.include_router(
 )
 api_v1_router.include_router(
     generation.router, prefix="/generation", tags=["AI Generation"]
+)
+api_v1_router.include_router(
+    graph.router, prefix="/graph", tags=["Context Graph"]
+)
+api_v1_router.include_router(
+    intelligence.router, prefix="/intelligence", tags=["Intelligence"]
 )
