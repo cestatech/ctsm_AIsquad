@@ -16,48 +16,74 @@ Every artifact is versioned, auditable, approval-controlled, and reproducible. T
 
 ---
 
-## Current State: MVP Foundation
+## Current State
 
-The current codebase implements the **platform foundation only**. Full AI generation modules are planned for future phases.
+### Frontend (complete)
+11 fully functional screens with role-based navigation, TanStack Query data fetching, and mock-data fallback while backend endpoints are being implemented:
 
-**What is implemented (MVP):**
+| Screen | Path | Notes |
+|--------|------|-------|
+| Dashboard | `/dashboard` | Stats, recent studies/artifacts, approval banner |
+| Studies list | `/studies` | Status filters, protocol number, phase badges |
+| Create study | `/studies/new` | Admin-only; regulatory region toggles, phase select |
+| Study workspace | `/studies/[id]` | Artifacts, members, status summary |
+| Artifact list | `/studies/[id]/artifacts` | New artifact modal |
+| Artifact detail | `/studies/[id]/artifacts/[id]` | RBAC-gated workflow actions (submit, approve, lock, amend) |
+| Version history | `/studies/[id]/artifacts/[id]/versions` | Append-only, 21 CFR Part 11 notice |
+| Approval queue | `/approvals` | Inline review modal with mandatory rejection notes |
+| Audit log | `/audit` | Expandable rows showing before/after state |
+| User management | `/users` | Admin-only; invite modal, activate/deactivate |
+
+### Backend — Platform Foundation (complete)
 - Multi-tenant architecture with organization isolation
-- JWT authentication with refresh tokens
-- Role-Based Access Control (RBAC): Admin, Contributor, Reviewer
-- Study workspace framework
-- Artifact management with lifecycle status tracking
-- Artifact versioning system
-- Approval workflow engine
-- Comprehensive audit logging
-- Database models and migrations
-- REST API structure (FastAPI)
-- Frontend shell (Next.js App Router)
-- AI service placeholder interfaces
+- JWT authentication with 15-min access tokens + httpOnly refresh cookies
+- Role-Based Access Control: Admin, Contributor, Reviewer
+- Study, Artifact, Approval, Comment, Validation, AuditLog models
+- Artifact lifecycle enforcement (DRAFT → IN_REVIEW → APPROVED → LOCKED → AMENDED)
+- Append-only audit log and artifact versions
+- Alembic async migrations
 
-**What is NOT yet implemented:**
-- AI generation modules (Protocol, ICF, SAP, SDTM, ADaM, TLF, CSR)
+### CIP Intelligence Platform (Phases 1–5 complete)
+
+The **Celerius Intelligence Platform** layer makes every AI action and data transformation explainable and traceable:
+
+**Context Graph** (`/api/v1/graph`)
+- `GraphNode` / `GraphEdge` / `GraphEvent` models — 35 node types, 29 edge types
+- `ContextGraphService` — single entry point for all graph writes; idempotent upserts
+- Named lineage shortcuts: `link_ecr_to_sdtm()`, `link_sdtm_to_adam()`, etc.
+- Endpoints: list nodes, get neighbors, walk lineage path (BFS, configurable depth)
+
+**AI Decision Logging** (`/api/v1/intelligence/decisions`)
+- Every AI action creates an `AIDecision` record *before* executing — captures agent, model, prompt hash, reasoning, confidence, input/output JSONB
+- Status lifecycle: `PENDING_REVIEW → ACCEPTED / REJECTED / OVERRIDDEN`
+- Mandatory rejection notes; `AIDecisionService.begin_decision()` / `complete_decision()` pattern
+
+**Human Override Framework** (`/api/v1/intelligence/overrides`)
+- Immutable `HumanOverride` records for every AI-generated value a human corrects
+- Mandatory justification field — cannot be empty
+- Full before/after value capture with field-level path tracking
+
+**Data Lineage Engine** (`/api/v1/intelligence/lineage`)
+- `DataLineage` (field-level): raw ECR → SDTM → ADaM → TLF with transformation logic and code
+- `ArtifactLineage` (document-level): Protocol → SAP → ADaM spec → dataset → TLF → CSR
+- "Show Your Work" endpoint: given any target entity, returns full upstream + downstream chain
+
+**Validation Intelligence** (`/api/v1/intelligence/validation-evidence`)
+- `ValidationEvidence` model: per-rule evidence with `PASS / FAIL / WARNING / WAIVED` status
+- Waiver requires mandatory justification stored as both evidence update and `HumanOverride`
+- Linked to CDISC rule ID, standard, and the specific data element that was checked
+
+**Synthetic Data** (models complete, service endpoint in progress)
+- `SyntheticDataRun` + `SimulationAssumption` — every distributional assumption documented with source citation
+- Output always labeled `SYNTHETIC`; random seed required for reproducibility
+
+### What is NOT yet implemented
+- AI generation modules (Protocol, ICF, SAP, SDTM, ADaM, TLF, CSR) — Phase 7+
+- Frontend Intelligence Screens (Context Graph Explorer, AI Decisions review, Lineage Explorer) — Phase 6
+- Graph visualization (React Flow / Cytoscape) — Phase 7
 - Pinnacle 21 integration
-- Synthetic data generation
 - Regulatory submission packaging
-
----
-
-## Future Modules
-
-| Module | Description |
-|--------|-------------|
-| Protocol Generator | AI-assisted protocol drafting from study concepts |
-| ICF Generator | Informed consent form generation |
-| SAP Generator | Statistical Analysis Plan generation |
-| EDC/eCRF Designer | Electronic data capture form design |
-| Traceability Matrix | Objective → endpoint → variable mapping |
-| Synthetic Data | Test dataset generation |
-| SDTM Generator | Study Data Tabulation Model automation |
-| ADaM Generator | Analysis Dataset Model automation |
-| TLF Generator | Tables, Listings, Figures automation |
-| Pinnacle 21 | CDISC validation integration |
-| CSR Generator | Clinical Study Report drafting |
-| Submission Package | Regulatory submission assembly |
+- Backend domain endpoints (studies, artifacts, approvals, users) — placeholders only
 
 ---
 
@@ -285,7 +311,7 @@ NEXT_PUBLIC_APP_VERSION=0.1.0
 ```
 celerius/
 ├── .claude/                    # AI agent definitions and project rules
-│   └── agents/                 # 10 specialized agent definitions
+│   └── agents/                 # 14 specialized agent definitions
 ├── .github/
 │   └── workflows/              # CI/CD pipelines
 ├── backend/
@@ -351,19 +377,19 @@ Required secrets in GitHub:
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| 1 | Authentication + RBAC | Foundation complete |
-| 2 | Study Workspace | Foundation complete |
-| 3 | Artifact Management | Foundation complete |
-| 4 | Approval Workflow | Foundation complete |
-| 5 | Audit Logging | Foundation complete |
-| 6 | AI Module Placeholders | Foundation complete |
-| 7 | Protocol Generator | Planned |
-| 8 | SAP Generator | Planned |
-| 9 | SDTM Automation | Planned |
-| 10 | ADaM Automation | Planned |
-| 11 | TLF Automation | Planned |
-| 12 | Validation Engine | Planned |
-| 13 | CSR Generation | Planned |
+| Foundation | Auth, RBAC, Study/Artifact/Approval/Audit models | ✅ Complete |
+| Frontend MVP | 11 screens, role-based nav, mock-data fallback | ✅ Complete |
+| CIP Phase 1 | Context Graph (nodes, edges, events, lineage traversal) | ✅ Complete |
+| CIP Phase 2 | AI Decision Logging (provenance, review lifecycle) | ✅ Complete |
+| CIP Phase 3 | Human Override Framework (immutable corrections + justification) | ✅ Complete |
+| CIP Phase 4 | Data Lineage Engine (field-level + artifact-level) | ✅ Complete |
+| CIP Phase 5 | Validation Intelligence + Synthetic Data models | ✅ Complete |
+| CIP Phase 6 | Frontend Intelligence Screens (Graph Explorer, AI Decisions, Lineage) | 🔲 Next |
+| CIP Phase 7 | Graph Visualization (React Flow / Cytoscape) | 🔲 Planned |
+| M1–M15 Backend | Implement domain API endpoints (studies, artifacts, approvals, etc.) | 🔲 Planned |
+| AI Modules | Protocol, ICF, SAP, SDTM, ADaM, TLF, CSR generators | 🔲 Planned |
+| Validation Engine | Pinnacle 21 integration, CDISC conformance checks | 🔲 Planned |
+| Submission Package | Regulatory submission assembly (eCTD) | 🔲 Planned |
 
 ---
 
