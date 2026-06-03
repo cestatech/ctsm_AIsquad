@@ -4,8 +4,8 @@ graph_events.ai_decision_id lets the graph event log reference the exact
 AI decision that caused each event, making the "why" queryable by FK join
 rather than payload inspection.
 
-Revision ID: 20260603_0003
-Revises: 20260603_0002
+Revision ID: d4e5f6a7b8c9
+Revises: c2d3e4f5a6b7
 Create Date: 2026-06-03
 """
 
@@ -14,8 +14,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20260603_0003"
-down_revision = "20260603_0002"
+revision = "d4e5f6a7b8c9"
+down_revision = "c2d3e4f5a6b7"
 branch_labels = None
 depends_on = None
 
