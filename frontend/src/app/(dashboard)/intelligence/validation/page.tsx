@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
 import { intelligenceApi } from "@/lib/api/intelligence";
-import { MOCK_USERS, MOCK_VALIDATION_EVIDENCE } from "@/lib/mockData";
+import { StudyPicker } from "@/components/intelligence/StudyPicker";
 import type { ValidationEvidence, ValidationEvidenceStatus } from "@/types";
 
 const STATUS_STYLES: Record<ValidationEvidenceStatus, string> = {
@@ -24,76 +25,66 @@ const SEVERITY_STYLES: Record<string, string> = {
 export default function ValidationEvidencePage() {
   const { token, role } = useAuthStore();
   const perms = usePermissions(role);
+  const queryClient = useQueryClient();
+  const { studyId } = useIntelligenceStudy();
 
   const [statusFilter, setStatusFilter] = useState<ValidationEvidenceStatus | "ALL">("ALL");
   const [waiverTarget, setWaiverTarget] = useState<ValidationEvidence | null>(null);
   const [waiverReason, setWaiverReason] = useState("");
-  const [localWaivers, setLocalWaivers] = useState<Record<string, { reason: string; at: string }>>({});
 
-  const { data: evidence = MOCK_VALIDATION_EVIDENCE } = useQuery({
-    queryKey: ["validation-evidence"],
-    queryFn: async () => {
-      if (!token) return MOCK_VALIDATION_EVIDENCE;
-      try {
-        const res = await intelligenceApi.listValidationEvidence(
-          { study_id: "study-001" },
-          token
-        );
-        return res.items;
-      } catch {
-        return MOCK_VALIDATION_EVIDENCE;
-      }
-    },
+  const evidenceKey = ["validation-evidence", studyId, token];
+
+  const { data, isLoading } = useQuery({
+    queryKey: evidenceKey,
+    queryFn: () =>
+      intelligenceApi.listValidationEvidence({ study_id: studyId! }, token!),
+    enabled: !!token && !!studyId,
+    staleTime: 30_000,
   });
+
+  const evidence = data?.items ?? [];
 
   const waiveMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       intelligenceApi.waiveFinding(id, { reason }, token!),
-    onSuccess: (_, { id, reason }) => {
-      setLocalWaivers((prev) => ({ ...prev, [id]: { reason, at: new Date().toISOString() } }));
-      setWaiverTarget(null);
-      setWaiverReason("");
-    },
-    onError: (_, { id, reason }) => {
-      setLocalWaivers((prev) => ({ ...prev, [id]: { reason, at: new Date().toISOString() } }));
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: evidenceKey });
+      queryClient.invalidateQueries({ queryKey: ["validation-evidence-hub"] });
       setWaiverTarget(null);
       setWaiverReason("");
     },
   });
 
-  const displayEvidence = evidence.map((e) => ({
-    ...e,
-    status: (localWaivers[e.id] ? "WAIVED" : e.status) as ValidationEvidenceStatus,
-    waiver_reason: localWaivers[e.id]?.reason ?? e.waiver_reason,
-    waived_at: localWaivers[e.id]?.at ?? e.waived_at,
-    waived_by_id: localWaivers[e.id] ? "current-user" : e.waived_by_id,
-  }));
-
   const filtered =
     statusFilter === "ALL"
-      ? displayEvidence
-      : displayEvidence.filter((e) => e.status === statusFilter);
+      ? evidence
+      : evidence.filter((e) => e.status === statusFilter);
 
   const counts = {
-    FAIL: displayEvidence.filter((e) => e.status === "FAIL").length,
-    WARNING: displayEvidence.filter((e) => e.status === "WARNING").length,
-    PASS: displayEvidence.filter((e) => e.status === "PASS").length,
-    WAIVED: displayEvidence.filter((e) => e.status === "WAIVED").length,
+    FAIL: evidence.filter((e) => e.status === "FAIL").length,
+    WARNING: evidence.filter((e) => e.status === "WARNING").length,
+    PASS: evidence.filter((e) => e.status === "PASS").length,
+    WAIVED: evidence.filter((e) => e.status === "WAIVED").length,
   };
 
   return (
     <div>
       <div className="px-8 py-5 border-b border-slate-200 bg-white">
-        <h1 className="font-display text-xl font-bold text-slate-900">Validation Evidence</h1>
-        <p className="text-slate-500 text-sm mt-0.5">
-          CDISC conformance findings. {counts.FAIL} errors, {counts.WARNING} warnings, {counts.PASS} passing.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-display text-xl font-bold text-slate-900">Validation Evidence</h1>
+            <p className="text-slate-500 text-sm mt-0.5">
+              CDISC conformance findings. {counts.FAIL} errors, {counts.WARNING} warnings, {counts.PASS} passing.
+            </p>
+          </div>
+          <StudyPicker />
+        </div>
       </div>
 
       {/* Summary bar */}
       <div className="px-8 pt-5 pb-2 flex gap-3">
         {([
-          ["ALL", "All", displayEvidence.length, "bg-slate-600"],
+          ["ALL", "All", evidence.length, "bg-slate-600"],
           ["FAIL", "Errors", counts.FAIL, "bg-red-600"],
           ["WARNING", "Warnings", counts.WARNING, "bg-amber-500"],
           ["PASS", "Passing", counts.PASS, "bg-emerald-600"],
@@ -122,7 +113,14 @@ export default function ValidationEvidencePage() {
       </div>
 
       <div className="px-8 py-4">
-        {filtered.length === 0 ? (
+        {!studyId ? (
+          <div className="bg-white border border-slate-200 px-8 py-14 text-center">
+            <p className="font-display font-semibold text-slate-900 mb-1">Select a study</p>
+            <p className="text-slate-500 text-sm">Choose a study above to view validation evidence.</p>
+          </div>
+        ) : isLoading ? (
+          <div className="text-center py-12 text-slate-400 text-sm">Loading validation evidence…</div>
+        ) : filtered.length === 0 ? (
           <div className="bg-white border border-slate-200 px-8 py-14 text-center">
             <p className="font-display font-semibold text-slate-900 mb-1">No findings</p>
             <p className="text-slate-500 text-sm">No validation evidence matches the current filter.</p>

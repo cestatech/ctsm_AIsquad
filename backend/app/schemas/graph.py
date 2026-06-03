@@ -51,6 +51,13 @@ class GraphNodeListResponse(BaseModel):
     page_size: int
 
 
+class GraphEdgeListResponse(BaseModel):
+    items: list[GraphEdgeResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 class GraphNeighborsResponse(BaseModel):
     node: GraphNodeResponse
     outgoing: list[GraphEdgeResponse]

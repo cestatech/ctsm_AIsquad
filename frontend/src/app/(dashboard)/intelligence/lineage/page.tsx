@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { intelligenceApi } from "@/lib/api/intelligence";
-import { MOCK_DATA_LINEAGE } from "@/lib/mockData";
 import type { DataLineage } from "@/types";
 
 const EXAMPLE_ENTITIES = [
@@ -74,35 +73,15 @@ export default function LineageExplorerPage() {
     setTargetId(id);
   }
 
-  const { data, isFetching } = useQuery({
-    queryKey: ["lineage-chain", submitted?.type, submitted?.id],
-    enabled: !!submitted,
-    queryFn: async () => {
-      if (!submitted) return null;
-      if (!token) {
-        const up = MOCK_DATA_LINEAGE.filter(
-          (r) => r.target_type === submitted.type
-        );
-        const down = MOCK_DATA_LINEAGE.filter(
-          (r) => r.source_type === submitted.type
-        );
-        return { upstream: up, downstream: down };
-      }
-      try {
-        return await intelligenceApi.getLineageChain(
-          { target_type: submitted.type, target_id: submitted.id },
-          token
-        );
-      } catch {
-        const up = MOCK_DATA_LINEAGE.filter(
-          (r) => r.target_type === submitted.type
-        );
-        const down = MOCK_DATA_LINEAGE.filter(
-          (r) => r.source_type === submitted.type
-        );
-        return { upstream: up, downstream: down };
-      }
-    },
+  const { data, isFetching, isError } = useQuery({
+    queryKey: ["lineage-chain", submitted?.type, submitted?.id, token],
+    enabled: !!submitted && !!token,
+    queryFn: () =>
+      intelligenceApi.getLineageChain(
+        { target_type: submitted!.type, target_id: submitted!.id },
+        token!
+      ),
+    staleTime: 60_000,
   });
 
   return (
@@ -130,17 +109,17 @@ export default function LineageExplorerPage() {
               />
             </div>
             <div className="flex-1">
-              <label className="block text-xs text-slate-500 mb-1">Entity ID</label>
+              <label className="block text-xs text-slate-500 mb-1">Entity ID (UUID)</label>
               <input
                 value={targetId}
                 onChange={(e) => setTargetId(e.target.value)}
-                placeholder="UUID or identifier"
+                placeholder="UUID"
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-brand-500 font-mono"
               />
             </div>
             <div className="flex items-end">
               <button
-                disabled={!targetType.trim() || !targetId.trim()}
+                disabled={!targetType.trim() || !targetId.trim() || !token}
                 onClick={() => setSubmitted({ type: targetType.trim(), id: targetId.trim() })}
                 className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold font-display transition-colors disabled:opacity-50"
               >
@@ -165,6 +144,12 @@ export default function LineageExplorerPage() {
 
         {isFetching && (
           <div className="text-center py-8 text-slate-400 text-sm">Loading lineage chain…</div>
+        )}
+
+        {isError && (
+          <div className="bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-700">
+            Could not load lineage data. Verify the entity type and ID are correct.
+          </div>
         )}
 
         {data && !isFetching && (

@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
-import { MOCK_AI_DECISIONS, MOCK_VALIDATION_EVIDENCE } from "@/lib/mockData";
+import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
+import { intelligenceApi } from "@/lib/api/intelligence";
 
 const INTELLIGENCE_SCREENS = [
   {
@@ -59,15 +61,31 @@ const INTELLIGENCE_SCREENS = [
 ];
 
 export default function IntelligencePage() {
-  const { role } = useAuthStore();
+  const { token, role } = useAuthStore();
   const perms = usePermissions(role);
+  const { studyId } = useIntelligenceStudy();
 
-  const pendingDecisions = MOCK_AI_DECISIONS.filter((d) => d.status === "PENDING_REVIEW").length;
-  const failingEvidence = MOCK_VALIDATION_EVIDENCE.filter((e) => e.status === "FAIL").length;
+  const { data: pendingDecisions = [] } = useQuery({
+    queryKey: ["pending-decisions", token],
+    queryFn: () => intelligenceApi.listPendingDecisions(token!),
+    enabled: !!token,
+    staleTime: 30_000,
+  });
+
+  const { data: validationData } = useQuery({
+    queryKey: ["validation-evidence-hub", studyId, token],
+    queryFn: () =>
+      intelligenceApi.listValidationEvidence(
+        { study_id: studyId!, evidence_status: "FAIL", page_size: 1 },
+        token!
+      ),
+    enabled: !!token && !!studyId,
+    staleTime: 30_000,
+  });
 
   const badgeCounts: Record<string, number> = {
-    pending: pendingDecisions,
-    issues: failingEvidence,
+    pending: pendingDecisions.length,
+    issues: validationData?.total ?? 0,
   };
 
   const visibleScreens = INTELLIGENCE_SCREENS.filter((s) => {

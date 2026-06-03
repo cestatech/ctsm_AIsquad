@@ -19,8 +19,10 @@ from app.api.deps import get_current_user, get_db
 from app.core.permissions import Permission, check_permission
 from app.models.graph import GraphEdgeType, GraphNodeType
 from app.models.user import User
+from app.repositories.graph_repository import GraphRepository
 from app.schemas.graph import (
     CreateEdgeRequest,
+    GraphEdgeListResponse,
     GraphEdgeResponse,
     GraphLineageResponse,
     GraphNeighborsResponse,
@@ -170,6 +172,40 @@ async def get_lineage(
         node_id=node_id,
         upstream=lineage["upstream"],
         downstream=lineage["downstream"],
+    )
+
+
+@router.get(
+    "/edges",
+    response_model=GraphEdgeListResponse,
+    summary="List edges for a study",
+)
+async def list_edges(
+    study_id: UUID = Query(..., description="Study ID to scope the query"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(200, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GraphEdgeListResponse:
+    """
+    List all active graph edges for a study.
+
+    Used by traceability matrix and graph explorer to render relationships
+    between nodes without querying each node's neighbors individually.
+    """
+    repo = GraphRepository(db)
+    offset = (page - 1) * page_size
+    edges, total = await repo.list_edges_for_study(
+        organization_id=current_user.organization_id,
+        study_id=study_id,
+        limit=page_size,
+        offset=offset,
+    )
+    return GraphEdgeListResponse(
+        items=[GraphEdgeResponse.model_validate(e) for e in edges],
+        total=total,
+        page=page,
+        page_size=page_size,
     )
 
 

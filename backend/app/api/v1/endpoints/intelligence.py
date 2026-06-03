@@ -36,6 +36,8 @@ from app.schemas.intelligence import (
     ValidationEvidenceResponse,
     WaiveFindingRequest,
 )
+from app.repositories.intelligence_repository import SyntheticDataRunRepository
+from app.schemas.intelligence import SyntheticDataRunListResponse, SyntheticDataRunResponse
 from app.services.intelligence_service import (
     AIDecisionService,
     DataLineageService,
@@ -378,3 +380,37 @@ async def waive_finding(
         reason=body.reason,
     )
     return ValidationEvidenceResponse.model_validate(evidence)
+
+
+# ---------------------------------------------------------------------------
+# Synthetic Data Runs
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/synthetic-runs",
+    response_model=SyntheticDataRunListResponse,
+    summary="List synthetic data runs for a study",
+)
+async def list_synthetic_runs(
+    study_id: UUID = Query(...),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SyntheticDataRunListResponse:
+    """List all synthetic data runs for a study, newest first."""
+    repo = SyntheticDataRunRepository(db)
+    offset = (page - 1) * page_size
+    runs, total = await repo.list_for_study(
+        study_id=study_id,
+        organization_id=current_user.organization_id,
+        limit=page_size,
+        offset=offset,
+    )
+    return SyntheticDataRunListResponse(
+        items=[SyntheticDataRunResponse.model_validate(r) for r in runs],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )

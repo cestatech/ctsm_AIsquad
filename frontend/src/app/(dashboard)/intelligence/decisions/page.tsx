@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
 import { intelligenceApi } from "@/lib/api/intelligence";
-import { MOCK_AI_DECISIONS } from "@/lib/mockData";
+import { StudyPicker } from "@/components/intelligence/StudyPicker";
 import type { AIDecision, AIDecisionStatus } from "@/types";
 
 const STATUS_STYLES: Record<AIDecisionStatus, string> = {
@@ -32,39 +33,33 @@ function ConfidenceBadge({ value }: { value: number | null }) {
 export default function AIDecisionsPage() {
   const { token, role } = useAuthStore();
   const perms = usePermissions(role);
+  const queryClient = useQueryClient();
+  const { studyId } = useIntelligenceStudy();
 
   const [activeDecision, setActiveDecision] = useState<AIDecision | null>(null);
   const [rejectNotes, setRejectNotes] = useState("");
   const [acceptNotes, setAcceptNotes] = useState("");
   const [action, setAction] = useState<"accept" | "reject" | null>(null);
   const [statusFilter, setStatusFilter] = useState<AIDecisionStatus | "ALL">("ALL");
-  const [localStatuses, setLocalStatuses] = useState<Record<string, AIDecisionStatus>>({});
 
-  const { data: decisions = MOCK_AI_DECISIONS } = useQuery({
-    queryKey: ["ai-decisions"],
-    queryFn: async () => {
-      if (!token) return MOCK_AI_DECISIONS;
-      try {
-        const res = await intelligenceApi.listDecisions(
-          { study_id: "study-001" },
-          token
-        );
-        return res.items;
-      } catch {
-        return MOCK_AI_DECISIONS;
-      }
-    },
+  const decisionsKey = ["ai-decisions", studyId, token];
+
+  const { data, isLoading } = useQuery({
+    queryKey: decisionsKey,
+    queryFn: () =>
+      intelligenceApi.listDecisions({ study_id: studyId! }, token!),
+    enabled: !!token && !!studyId,
+    staleTime: 30_000,
   });
+
+  const decisions = data?.items ?? [];
 
   const acceptMutation = useMutation({
     mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
       intelligenceApi.acceptDecision(id, { notes }, token!),
-    onSuccess: (_, { id }) => {
-      setLocalStatuses((prev) => ({ ...prev, [id]: "ACCEPTED" }));
-      closeModal();
-    },
-    onError: (_, { id }) => {
-      setLocalStatuses((prev) => ({ ...prev, [id]: "ACCEPTED" }));
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: decisionsKey });
+      queryClient.invalidateQueries({ queryKey: ["pending-decisions"] });
       closeModal();
     },
   });
@@ -72,12 +67,9 @@ export default function AIDecisionsPage() {
   const rejectMutation = useMutation({
     mutationFn: ({ id, notes }: { id: string; notes: string }) =>
       intelligenceApi.rejectDecision(id, { notes }, token!),
-    onSuccess: (_, { id }) => {
-      setLocalStatuses((prev) => ({ ...prev, [id]: "REJECTED" }));
-      closeModal();
-    },
-    onError: (_, { id }) => {
-      setLocalStatuses((prev) => ({ ...prev, [id]: "REJECTED" }));
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: decisionsKey });
+      queryClient.invalidateQueries({ queryKey: ["pending-decisions"] });
       closeModal();
     },
   });
@@ -89,17 +81,12 @@ export default function AIDecisionsPage() {
     setAcceptNotes("");
   }
 
-  const displayDecisions = decisions.map((d) => ({
-    ...d,
-    status: (localStatuses[d.id] ?? d.status) as AIDecisionStatus,
-  }));
-
   const filtered =
     statusFilter === "ALL"
-      ? displayDecisions
-      : displayDecisions.filter((d) => d.status === statusFilter);
+      ? decisions
+      : decisions.filter((d) => d.status === statusFilter);
 
-  const pendingCount = displayDecisions.filter((d) => d.status === "PENDING_REVIEW").length;
+  const pendingCount = decisions.filter((d) => d.status === "PENDING_REVIEW").length;
 
   return (
     <div>
@@ -111,26 +98,36 @@ export default function AIDecisionsPage() {
               Audit and review every AI-generated decision. {pendingCount} pending review.
             </p>
           </div>
-          <div className="flex gap-2">
-            {(["ALL", "PENDING_REVIEW", "ACCEPTED", "REJECTED"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`text-xs px-3 py-1.5 border transition-colors ${
-                  statusFilter === s
-                    ? "bg-brand-600 border-brand-600 text-white"
-                    : "bg-white border-slate-200 text-slate-600 hover:border-brand-400"
-                }`}
-              >
-                {s === "ALL" ? "All" : s.replace("_", " ")}
-              </button>
-            ))}
+          <div className="flex items-center gap-4">
+            <StudyPicker />
+            <div className="flex gap-2">
+              {(["ALL", "PENDING_REVIEW", "ACCEPTED", "REJECTED"] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`text-xs px-3 py-1.5 border transition-colors ${
+                    statusFilter === s
+                      ? "bg-brand-600 border-brand-600 text-white"
+                      : "bg-white border-slate-200 text-slate-600 hover:border-brand-400"
+                  }`}
+                >
+                  {s === "ALL" ? "All" : s.replace("_", " ")}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
       <div className="px-8 py-6">
-        {filtered.length === 0 ? (
+        {!studyId ? (
+          <div className="bg-white border border-slate-200 px-8 py-14 text-center">
+            <p className="font-display font-semibold text-slate-900 mb-1">Select a study</p>
+            <p className="text-slate-500 text-sm">Choose a study above to view its AI decisions.</p>
+          </div>
+        ) : isLoading ? (
+          <div className="text-center py-12 text-slate-400 text-sm">Loading decisions…</div>
+        ) : filtered.length === 0 ? (
           <div className="bg-white border border-slate-200 px-8 py-14 text-center">
             <p className="font-display font-semibold text-slate-900 mb-1">No decisions found</p>
             <p className="text-slate-500 text-sm">No AI decisions match the current filter.</p>
@@ -208,8 +205,8 @@ export default function AIDecisionsPage() {
                 <h2 className="font-display font-semibold text-slate-900">AI Decision</h2>
                 <p className="text-xs text-slate-400 font-mono mt-0.5">{activeDecision.id}</p>
               </div>
-              <span className={`text-xs px-2 py-1 font-semibold ${STATUS_STYLES[localStatuses[activeDecision.id] ?? activeDecision.status as AIDecisionStatus]}`}>
-                {(localStatuses[activeDecision.id] ?? activeDecision.status).replace("_", " ")}
+              <span className={`text-xs px-2 py-1 font-semibold ${STATUS_STYLES[activeDecision.status]}`}>
+                {activeDecision.status.replace("_", " ")}
               </span>
             </div>
 
@@ -254,48 +251,47 @@ export default function AIDecisionsPage() {
                 </div>
               </div>
 
-              {(localStatuses[activeDecision.id] ?? activeDecision.status) === "PENDING_REVIEW" &&
-                perms.canApproveArtifact && (
-                  <div className="border-t border-slate-100 pt-4">
-                    <p className="text-xs font-semibold text-slate-700 mb-3">Review Decision</p>
-                    <div className="flex gap-2 mb-3">
-                      {(["accept", "reject"] as const).map((a) => (
-                        <button
-                          key={a}
-                          onClick={() => setAction(a)}
-                          className={`flex-1 py-2 text-sm font-semibold font-display border-2 transition-colors ${
-                            action === a
-                              ? a === "accept"
-                                ? "bg-emerald-600 border-emerald-600 text-white"
-                                : "bg-red-600 border-red-600 text-white"
-                              : "bg-white border-slate-200 text-slate-600 hover:border-brand-400"
-                          }`}
-                        >
-                          {a === "accept" ? "Accept" : "Reject"}
-                        </button>
-                      ))}
-                    </div>
-
-                    {action === "accept" && (
-                      <textarea
-                        value={acceptNotes}
-                        onChange={(e) => setAcceptNotes(e.target.value)}
-                        rows={2}
-                        placeholder="Optional review notes…"
-                        className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-brand-500 resize-none"
-                      />
-                    )}
-                    {action === "reject" && (
-                      <textarea
-                        value={rejectNotes}
-                        onChange={(e) => setRejectNotes(e.target.value)}
-                        rows={2}
-                        placeholder="Rejection reason (required)…"
-                        className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-brand-500 resize-none"
-                      />
-                    )}
+              {activeDecision.status === "PENDING_REVIEW" && perms.canApproveArtifact && (
+                <div className="border-t border-slate-100 pt-4">
+                  <p className="text-xs font-semibold text-slate-700 mb-3">Review Decision</p>
+                  <div className="flex gap-2 mb-3">
+                    {(["accept", "reject"] as const).map((a) => (
+                      <button
+                        key={a}
+                        onClick={() => setAction(a)}
+                        className={`flex-1 py-2 text-sm font-semibold font-display border-2 transition-colors ${
+                          action === a
+                            ? a === "accept"
+                              ? "bg-emerald-600 border-emerald-600 text-white"
+                              : "bg-red-600 border-red-600 text-white"
+                            : "bg-white border-slate-200 text-slate-600 hover:border-brand-400"
+                        }`}
+                      >
+                        {a === "accept" ? "Accept" : "Reject"}
+                      </button>
+                    ))}
                   </div>
-                )}
+
+                  {action === "accept" && (
+                    <textarea
+                      value={acceptNotes}
+                      onChange={(e) => setAcceptNotes(e.target.value)}
+                      rows={2}
+                      placeholder="Optional review notes…"
+                      className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-brand-500 resize-none"
+                    />
+                  )}
+                  {action === "reject" && (
+                    <textarea
+                      value={rejectNotes}
+                      onChange={(e) => setRejectNotes(e.target.value)}
+                      rows={2}
+                      placeholder="Rejection reason (required)…"
+                      className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-brand-500 resize-none"
+                    />
+                  )}
+                </div>
+              )}
 
               {activeDecision.review_notes && (
                 <div>
@@ -306,7 +302,7 @@ export default function AIDecisionsPage() {
             </div>
 
             <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
-              {(localStatuses[activeDecision.id] ?? activeDecision.status) === "PENDING_REVIEW" &&
+              {activeDecision.status === "PENDING_REVIEW" &&
                 perms.canApproveArtifact &&
                 action && (
                   <button

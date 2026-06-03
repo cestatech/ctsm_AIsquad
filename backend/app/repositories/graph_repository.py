@@ -225,6 +225,36 @@ class GraphRepository:
         )
         return list(result.scalars().all())
 
+    async def list_edges_for_study(
+        self,
+        organization_id: UUID,
+        study_id: UUID,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> tuple[list[GraphEdge], int]:
+        """List all active edges scoped to a study. Returns (items, total_count)."""
+        from sqlalchemy import func
+
+        filters = [
+            GraphEdge.organization_id == organization_id,
+            GraphEdge.study_id == study_id,
+            GraphEdge.is_active.is_(True),
+        ]
+
+        count_result = await self._db.execute(
+            select(func.count()).select_from(GraphEdge).where(and_(*filters))
+        )
+        total = count_result.scalar_one()
+
+        result = await self._db.execute(
+            select(GraphEdge)
+            .where(and_(*filters))
+            .order_by(GraphEdge.created_at.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(result.scalars().all()), total
+
     async def create_edge(self, edge: GraphEdge) -> GraphEdge:
         """Persist a new graph edge."""
         self._db.add(edge)

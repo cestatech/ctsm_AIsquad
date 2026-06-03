@@ -8,10 +8,22 @@ interface NodeListParams {
   page_size?: number;
 }
 
+interface EdgeListParams {
+  study_id: string;
+  page?: number;
+  page_size?: number;
+}
+
 export const graphApi = {
   listNodes: (params: NodeListParams, token: string) =>
     apiClient.get<PaginatedResponse<GraphNode>>("/graph", {
       params: params as Record<string, string | number | boolean | undefined>,
+      token,
+    }),
+
+  listEdges: (params: EdgeListParams, token: string) =>
+    apiClient.get<PaginatedResponse<GraphEdge>>("/graph/edges", {
+      params: params as unknown as Record<string, string | number | boolean | undefined>,
       token,
     }),
 

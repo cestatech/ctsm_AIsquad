@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { MOCK_SYNTHETIC_RUNS } from "@/lib/mockData";
+import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
+import { intelligenceApi } from "@/lib/api/intelligence";
+import { StudyPicker } from "@/components/intelligence/StudyPicker";
 import type { SyntheticDataRun } from "@/types";
 
 const STATUS_STYLES: Record<SyntheticDataRun["status"], string> = {
@@ -22,23 +24,31 @@ function rel(iso: string) {
 
 export default function SyntheticDataPage() {
   const { token } = useAuthStore();
+  const { studyId } = useIntelligenceStudy();
   const [activeRun, setActiveRun] = useState<SyntheticDataRun | null>(null);
 
-  const { data: runs = MOCK_SYNTHETIC_RUNS } = useQuery({
-    queryKey: ["synthetic-runs"],
-    queryFn: async () => {
-      if (!token) return MOCK_SYNTHETIC_RUNS;
-      return MOCK_SYNTHETIC_RUNS;
-    },
+  const { data, isLoading } = useQuery({
+    queryKey: ["synthetic-runs", studyId, token],
+    queryFn: () =>
+      intelligenceApi.listSyntheticRuns({ study_id: studyId! }, token!),
+    enabled: !!token && !!studyId,
+    staleTime: 30_000,
   });
+
+  const runs = data?.items ?? [];
 
   return (
     <div>
       <div className="px-8 py-5 border-b border-slate-200 bg-white">
-        <h1 className="font-display text-xl font-bold text-slate-900">Synthetic Data Runs</h1>
-        <p className="text-slate-500 text-sm mt-0.5">
-          Reproducible synthetic patient data for development and validation. All output is labeled SYNTHETIC.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-display text-xl font-bold text-slate-900">Synthetic Data Runs</h1>
+            <p className="text-slate-500 text-sm mt-0.5">
+              Reproducible synthetic patient data for development and validation. All output is labeled SYNTHETIC.
+            </p>
+          </div>
+          <StudyPicker />
+        </div>
       </div>
 
       <div className="px-8 py-6">
@@ -46,10 +56,17 @@ export default function SyntheticDataPage() {
           SYNTHETIC DATA — Not derived from real patients. Do not use in regulatory submissions without clearly labeled separation.
         </div>
 
-        {runs.length === 0 ? (
+        {!studyId ? (
+          <div className="bg-white border border-slate-200 px-8 py-14 text-center">
+            <p className="font-display font-semibold text-slate-900 mb-1">Select a study</p>
+            <p className="text-slate-500 text-sm">Choose a study above to view its synthetic data runs.</p>
+          </div>
+        ) : isLoading ? (
+          <div className="text-center py-12 text-slate-400 text-sm">Loading synthetic runs…</div>
+        ) : runs.length === 0 ? (
           <div className="bg-white border border-slate-200 px-8 py-14 text-center">
             <p className="font-display font-semibold text-slate-900 mb-1">No synthetic runs</p>
-            <p className="text-slate-500 text-sm">No synthetic data generation runs have been created.</p>
+            <p className="text-slate-500 text-sm">No synthetic data generation runs have been created for this study.</p>
           </div>
         ) : (
           <div className="bg-white border border-slate-200 overflow-hidden">
@@ -57,7 +74,6 @@ export default function SyntheticDataPage() {
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Run Name</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Study</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Target N</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Records</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Seed</th>
@@ -81,7 +97,6 @@ export default function SyntheticDataPage() {
                         </p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs font-mono text-slate-600">{run.study_id}</td>
                     <td className="px-4 py-3 text-xs text-slate-600">{run.target_n ?? "—"}</td>
                     <td className="px-4 py-3 text-xs font-mono font-semibold text-slate-700">
                       {run.records_generated?.toLocaleString() ?? "—"}
@@ -137,7 +152,7 @@ export default function SyntheticDataPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  ["Study", activeRun.study_id],
+                  ["Study ID", activeRun.study_id],
                   ["Target N", String(activeRun.target_n ?? "—")],
                   ["Records Generated", activeRun.records_generated?.toLocaleString() ?? "—"],
                   ["Random Seed", String(activeRun.random_seed ?? "—")],
