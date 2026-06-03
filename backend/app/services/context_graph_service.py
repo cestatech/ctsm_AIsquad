@@ -146,6 +146,7 @@ class ContextGraphService:
             edge_id=edge.id,
             actor_user_id=actor.id if actor else None,
             actor_agent_id=actor_agent_id,
+            ai_decision_id=ai_decision_id,
         )
 
         return edge, created
@@ -309,6 +310,41 @@ class ContextGraphService:
             actor_agent_id=actor_agent_id,
         )
         return edge
+
+    # ------------------------------------------------------------------
+    # Direct event emission
+    # ------------------------------------------------------------------
+
+    async def emit_event(
+        self,
+        organization_id: UUID,
+        event_type: str,
+        payload: dict,
+        study_id: UUID | None = None,
+        node_id: UUID | None = None,
+        edge_id: UUID | None = None,
+        actor_user_id: UUID | None = None,
+        actor_agent_id: str | None = None,
+        ai_decision_id: UUID | None = None,
+    ) -> None:
+        """
+        Emit a graph event directly without creating a node or edge.
+
+        Use this for system events (login, logout, validation runs,
+        AI decisions, human overrides) that need to be in the event log
+        but don't create new graph structure.
+        """
+        await self._repo.append_event(
+            organization_id=organization_id,
+            study_id=study_id,
+            event_type=event_type,
+            payload=payload,
+            node_id=node_id,
+            edge_id=edge_id,
+            actor_user_id=actor_user_id,
+            actor_agent_id=actor_agent_id,
+            ai_decision_id=ai_decision_id,
+        )
 
     # ------------------------------------------------------------------
     # Graph queries

@@ -394,6 +394,15 @@ class GraphEvent(UUIDMixin, Base):
         String(128), nullable=True
     )  # AI agent name, e.g. "sdtm-agent"
 
+    # Direct FK to the AI decision that caused this event (if AI-generated).
+    # Enables "show all graph changes caused by decision X" queries.
+    ai_decision_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("ai_decisions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     # Immutable — no updated_at

@@ -292,6 +292,7 @@ class GraphRepository:
         edge_id: UUID | None = None,
         actor_user_id: UUID | None = None,
         actor_agent_id: str | None = None,
+        ai_decision_id: UUID | None = None,
     ) -> GraphEvent:
         """Append an immutable event to the graph event log."""
         event = GraphEvent(
@@ -302,6 +303,7 @@ class GraphRepository:
             edge_id=edge_id,
             actor_user_id=actor_user_id,
             actor_agent_id=actor_agent_id,
+            ai_decision_id=ai_decision_id,
             payload=payload,
         )
         self._db.add(event)

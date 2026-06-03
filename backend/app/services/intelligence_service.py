@@ -32,11 +32,15 @@ from app.repositories.intelligence_repository import (
     HumanOverrideRepository,
     ValidationEvidenceRepository,
 )
+from app.services.context_graph_service import ContextGraphService
 
 
 class AIDecisionService:
     """
     Creates and manages AI decision records.
+
+    Every call to begin_decision() and complete_decision() emits a GraphEvent
+    so the Context Graph contains the full "why" for every AI action.
 
     Usage pattern in AI agents:
         decision = await ai_decision_svc.begin_decision(
@@ -53,6 +57,7 @@ class AIDecisionService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._repo = AIDecisionRepository(db)
+        self._graph = ContextGraphService(db)
 
     async def begin_decision(
         self,
@@ -91,7 +96,24 @@ class AIDecisionService:
             output={},
             status=AIDecisionStatus.PENDING_REVIEW,
         )
-        return await self._repo.create(decision)
+        decision = await self._repo.create(decision)
+
+        await self._graph.emit_event(
+            organization_id=organization_id,
+            study_id=study_id,
+            event_type="AI_DECISION_STARTED",
+            actor_agent_id=agent_name,
+            ai_decision_id=decision.id,
+            payload={
+                "agent_name": agent_name,
+                "agent_version": agent_version,
+                "decision_type": decision_type,
+                "module": module,
+                "model_id": model_id,
+                "input_context": input_context,
+            },
+        )
+        return decision
 
     async def complete_decision(
         self,
@@ -119,6 +141,25 @@ class AIDecisionService:
         if graph_node_id is not None:
             decision.graph_node_id = graph_node_id
         await self._db.flush()
+
+        # The reasoning payload is the "why" — this is the key event for AI
+        # introspection. Anyone querying the graph can find this event by
+        # ai_decision_id and read exactly why the AI produced this output.
+        await self._graph.emit_event(
+            organization_id=decision.organization_id,
+            study_id=decision.study_id,
+            event_type="AI_DECISION_COMPLETED",
+            actor_agent_id=decision.agent_name,
+            ai_decision_id=decision.id,
+            node_id=graph_node_id,
+            payload={
+                "agent_name": decision.agent_name,
+                "decision_type": decision.decision_type,
+                "reasoning": reasoning,
+                "confidence": confidence,
+                "output": output,
+            },
+        )
         return decision
 
     async def accept_decision(
@@ -129,13 +170,27 @@ class AIDecisionService:
         notes: str | None = None,
     ) -> AIDecision:
         """Human accepts an AI decision. Transitions to ACCEPTED."""
-        return await self._repo.update_status(
+        decision = await self._repo.update_status(
             decision_id=decision_id,
             organization_id=organization_id,
             new_status=AIDecisionStatus.ACCEPTED,
             reviewed_by_id=reviewed_by.id,
             review_notes=notes,
         )
+        await self._graph.emit_event(
+            organization_id=organization_id,
+            study_id=decision.study_id,
+            event_type="AI_DECISION_ACCEPTED",
+            actor_user_id=reviewed_by.id,
+            ai_decision_id=decision.id,
+            payload={
+                "agent_name": decision.agent_name,
+                "decision_type": decision.decision_type,
+                "review_notes": notes,
+                "reviewer_id": str(reviewed_by.id),
+            },
+        )
+        return decision
 
     async def reject_decision(
         self,
@@ -153,13 +208,27 @@ class AIDecisionService:
                     "message": "A reason is required when rejecting an AI decision.",
                 },
             )
-        return await self._repo.update_status(
+        decision = await self._repo.update_status(
             decision_id=decision_id,
             organization_id=organization_id,
             new_status=AIDecisionStatus.REJECTED,
             reviewed_by_id=reviewed_by.id,
             review_notes=notes,
         )
+        await self._graph.emit_event(
+            organization_id=organization_id,
+            study_id=decision.study_id,
+            event_type="AI_DECISION_REJECTED",
+            actor_user_id=reviewed_by.id,
+            ai_decision_id=decision.id,
+            payload={
+                "agent_name": decision.agent_name,
+                "decision_type": decision.decision_type,
+                "rejection_reason": notes,
+                "reviewer_id": str(reviewed_by.id),
+            },
+        )
+        return decision
 
     async def get_decision(
         self, decision_id: UUID, organization_id: UUID
@@ -199,11 +268,15 @@ class HumanOverrideService:
     Call this whenever a user edits a value that was AI-generated.
     The override is always recorded — even if the user is correcting
     their own previous override. The full chain of changes is preserved.
+
+    Every override emits a HUMAN_OVERRIDE GraphEvent with the reason in the
+    payload so the Context Graph contains the full correction history.
     """
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._repo = HumanOverrideRepository(db)
+        self._graph = ContextGraphService(db)
 
     async def record_override(
         self,
@@ -249,7 +322,26 @@ class HumanOverrideService:
             graph_node_id=graph_node_id,
             actor_user_id=actor.id,
         )
-        return await self._repo.create(override)
+        override = await self._repo.create(override)
+
+        await self._graph.emit_event(
+            organization_id=organization_id,
+            study_id=study_id,
+            event_type="HUMAN_OVERRIDE",
+            actor_user_id=actor.id,
+            ai_decision_id=ai_decision_id,
+            node_id=graph_node_id,
+            payload={
+                "override_type": override_type,
+                "context_type": context_type,
+                "field_path": field_path,
+                "reason": reason,
+                "original_value": original_value,
+                "new_value": new_value,
+                "override_id": str(override.id),
+            },
+        )
+        return override
 
     async def list_for_study(
         self,
@@ -393,11 +485,15 @@ class ValidationIntelligenceService:
     Each ValidationEvidence record ties a finding to the specific data element
     and CDISC rule that was checked. Findings can be waived with a mandatory
     justification recorded as a HumanOverride.
+
+    Every finding and waiver emits a GraphEvent so the Context Graph contains
+    the full validation history for each data element.
     """
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._repo = ValidationEvidenceRepository(db)
+        self._graph = ContextGraphService(db)
 
     async def record_evidence(
         self,
@@ -440,7 +536,26 @@ class ValidationIntelligenceService:
             ai_decision_id=ai_decision_id,
             graph_node_id=graph_node_id,
         )
-        return await self._repo.create(evidence)
+        evidence = await self._repo.create(evidence)
+
+        await self._graph.emit_event(
+            organization_id=organization_id,
+            study_id=study_id,
+            event_type="VALIDATION_FINDING",
+            ai_decision_id=ai_decision_id,
+            node_id=graph_node_id,
+            payload={
+                "rule_id": rule_id,
+                "rule_name": rule_name,
+                "cdisc_standard": cdisc_standard,
+                "subject_field": subject_field,
+                "status": evidence_status.value,
+                "finding_severity": finding_severity,
+                "finding_message": finding_message,
+                "is_ai_evaluated": is_ai_evaluated,
+            },
+        )
+        return evidence
 
     async def waive_finding(
         self,
@@ -457,12 +572,27 @@ class ValidationIntelligenceService:
                     "message": "A justification is required to waive a validation finding.",
                 },
             )
-        return await self._repo.waive(
+        evidence = await self._repo.waive(
             evidence_id=evidence_id,
             organization_id=organization_id,
             waived_by_id=waived_by.id,
             reason=reason,
         )
+        await self._graph.emit_event(
+            organization_id=organization_id,
+            study_id=evidence.study_id,
+            event_type="VALIDATION_WAIVED",
+            actor_user_id=waived_by.id,
+            payload={
+                "evidence_id": str(evidence_id),
+                "rule_id": evidence.rule_id,
+                "rule_name": evidence.rule_name,
+                "subject_field": evidence.subject_field,
+                "waiver_reason": reason,
+                "waived_by": str(waived_by.id),
+            },
+        )
+        return evidence
 
     async def list_for_run(
         self,

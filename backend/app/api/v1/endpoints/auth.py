@@ -10,6 +10,7 @@ from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.user import AuthResponse, UserResponse
 from app.services.auth_service import AuthService
+from app.services.context_graph_service import ContextGraphService
 
 router = APIRouter()
 settings = get_settings()
@@ -50,6 +51,16 @@ async def register(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    await ContextGraphService(db).emit_event(
+        organization_id=user.organization_id,
+        event_type="USER_REGISTERED",
+        actor_user_id=user.id,
+        payload={
+            "user_id": str(user.id),
+            "email": user.email,
+            "ip_address": request.client.host if request.client else None,
+        },
+    )
     _set_refresh_cookie(response, refresh_token)
     return AuthResponse(
         access_token=access_token,
@@ -72,6 +83,17 @@ async def login(
         body.password,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
+    )
+    await ContextGraphService(db).emit_event(
+        organization_id=user.organization_id,
+        event_type="USER_LOGIN",
+        actor_user_id=user.id,
+        payload={
+            "user_id": str(user.id),
+            "email": user.email,
+            "ip_address": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+        },
     )
     _set_refresh_cookie(response, refresh_token)
     return AuthResponse(
@@ -114,12 +136,22 @@ async def refresh(
 async def logout(
     request: Request,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> PlainResponse:
     """Revoke the refresh token and clear the cookie."""
     token_value = request.cookies.get(_COOKIE)
     if token_value:
         service = AuthService(db)
         await service.logout(token_value)
+    await ContextGraphService(db).emit_event(
+        organization_id=current_user.organization_id,
+        event_type="USER_LOGOUT",
+        actor_user_id=current_user.id,
+        payload={
+            "user_id": str(current_user.id),
+            "ip_address": request.client.host if request.client else None,
+        },
+    )
     resp = PlainResponse(status_code=status.HTTP_204_NO_CONTENT)
     resp.delete_cookie(key=_COOKIE, path="/api/v1/auth")
     return resp
