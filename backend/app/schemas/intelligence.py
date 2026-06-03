@@ -187,7 +187,9 @@ class ValidationEvidenceListResponse(BaseModel):
 
 
 class WaiveFindingRequest(BaseModel):
-    reason: str = Field(min_length=1, description="Required justification for the waiver")
+    reason: str = Field(
+        min_length=1, description="Required justification for the waiver"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -50,8 +50,12 @@ router = APIRouter()
 # AI Decisions
 # ---------------------------------------------------------------------------
 
-@router.get("/decisions", response_model=AIDecisionListResponse,
-            summary="List AI decisions for a study")
+
+@router.get(
+    "/decisions",
+    response_model=AIDecisionListResponse,
+    summary="List AI decisions for a study",
+)
 async def list_decisions(
     study_id: UUID = Query(..., description="Study ID to scope the query"),
     agent_name: str | None = Query(None),
@@ -87,8 +91,11 @@ async def list_decisions(
     )
 
 
-@router.get("/decisions/pending", response_model=list[AIDecisionResponse],
-            summary="List pending AI decisions awaiting human review")
+@router.get(
+    "/decisions/pending",
+    response_model=list[AIDecisionResponse],
+    summary="List pending AI decisions awaiting human review",
+)
 async def list_pending_decisions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -103,8 +110,11 @@ async def list_pending_decisions(
     return [AIDecisionResponse.model_validate(d) for d in decisions]
 
 
-@router.get("/decisions/{decision_id}", response_model=AIDecisionResponse,
-            summary="Get a single AI decision")
+@router.get(
+    "/decisions/{decision_id}",
+    response_model=AIDecisionResponse,
+    summary="Get a single AI decision",
+)
 async def get_decision(
     decision_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -116,8 +126,11 @@ async def get_decision(
     return AIDecisionResponse.model_validate(decision)
 
 
-@router.post("/decisions/{decision_id}/accept", response_model=AIDecisionResponse,
-             summary="Accept an AI decision")
+@router.post(
+    "/decisions/{decision_id}/accept",
+    response_model=AIDecisionResponse,
+    summary="Accept an AI decision",
+)
 async def accept_decision(
     decision_id: UUID,
     body: ReviewDecisionRequest,
@@ -141,8 +154,11 @@ async def accept_decision(
     return AIDecisionResponse.model_validate(decision)
 
 
-@router.post("/decisions/{decision_id}/reject", response_model=AIDecisionResponse,
-             summary="Reject an AI decision")
+@router.post(
+    "/decisions/{decision_id}/reject",
+    response_model=AIDecisionResponse,
+    summary="Reject an AI decision",
+)
 async def reject_decision(
     decision_id: UUID,
     body: RejectDecisionRequest,
@@ -169,8 +185,13 @@ async def reject_decision(
 # Human Overrides
 # ---------------------------------------------------------------------------
 
-@router.post("/overrides", response_model=HumanOverrideResponse, status_code=201,
-             summary="Record a human override of an AI-generated value")
+
+@router.post(
+    "/overrides",
+    response_model=HumanOverrideResponse,
+    status_code=201,
+    summary="Record a human override of an AI-generated value",
+)
 async def create_override(
     body: CreateOverrideRequest,
     current_user: User = Depends(get_current_user),
@@ -201,8 +222,11 @@ async def create_override(
     return HumanOverrideResponse.model_validate(override)
 
 
-@router.get("/overrides", response_model=HumanOverrideListResponse,
-            summary="List human overrides for a study")
+@router.get(
+    "/overrides",
+    response_model=HumanOverrideListResponse,
+    summary="List human overrides for a study",
+)
 async def list_overrides(
     study_id: UUID = Query(...),
     context_type: str | None = Query(None),
@@ -229,9 +253,11 @@ async def list_overrides(
     )
 
 
-@router.get("/overrides/for-decision/{decision_id}",
-            response_model=list[HumanOverrideResponse],
-            summary="List overrides for a specific AI decision")
+@router.get(
+    "/overrides/for-decision/{decision_id}",
+    response_model=list[HumanOverrideResponse],
+    summary="List overrides for a specific AI decision",
+)
 async def list_overrides_for_decision(
     decision_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -247,8 +273,12 @@ async def list_overrides_for_decision(
 # Data Lineage
 # ---------------------------------------------------------------------------
 
-@router.get("/lineage/chain", response_model=LineageChainResponse,
-            summary="Get the data lineage chain for a specific entity")
+
+@router.get(
+    "/lineage/chain",
+    response_model=LineageChainResponse,
+    summary="Get the data lineage chain for a specific entity",
+)
 async def get_lineage_chain(
     target_type: str = Query(..., description="Entity type, e.g. 'sdtm_variable'"),
     target_id: UUID = Query(...),
@@ -282,8 +312,12 @@ async def get_lineage_chain(
 # Validation Evidence
 # ---------------------------------------------------------------------------
 
-@router.get("/validation-evidence", response_model=ValidationEvidenceListResponse,
-            summary="List validation evidence for a study")
+
+@router.get(
+    "/validation-evidence",
+    response_model=ValidationEvidenceListResponse,
+    summary="List validation evidence for a study",
+)
 async def list_validation_evidence(
     study_id: UUID = Query(...),
     evidence_status: ValidationEvidenceStatus | None = Query(None),
@@ -318,9 +352,11 @@ async def list_validation_evidence(
     )
 
 
-@router.post("/validation-evidence/{evidence_id}/waive",
-             response_model=ValidationEvidenceResponse,
-             summary="Waive a validation finding")
+@router.post(
+    "/validation-evidence/{evidence_id}/waive",
+    response_model=ValidationEvidenceResponse,
+    summary="Waive a validation finding",
+)
 async def waive_finding(
     evidence_id: UUID,
     body: WaiveFindingRequest,

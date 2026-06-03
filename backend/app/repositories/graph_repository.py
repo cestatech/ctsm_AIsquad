@@ -13,7 +13,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.graph import GraphEdge, GraphEdgeType, GraphEvent, GraphNode, GraphNodeType
+from app.models.graph import (
+    GraphEdge,
+    GraphEdgeType,
+    GraphEvent,
+    GraphNode,
+    GraphNodeType,
+)
 
 
 class GraphRepository:
@@ -77,9 +83,7 @@ class GraphRepository:
         if node_type is not None:
             filters.append(GraphNode.node_type == node_type)
 
-        count_result = await self._db.execute(
-            select(GraphNode).where(and_(*filters))
-        )
+        count_result = await self._db.execute(select(GraphNode).where(and_(*filters)))
         total = len(count_result.scalars().all())
 
         result = await self._db.execute(
@@ -114,7 +118,9 @@ class GraphRepository:
         Create or update the graph node that indexes a domain record.
         Returns (node, created: bool).
         """
-        existing = await self.find_node_by_external(external_id, external_type, organization_id)
+        existing = await self.find_node_by_external(
+            external_id, external_type, organization_id
+        )
         if existing is not None:
             existing.label = label
             if description is not None:

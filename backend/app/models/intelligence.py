@@ -97,8 +97,12 @@ class AIDecision(UUIDMixin, Base):
     completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Input / output artifacts referenced
-    input_artifact_ids: Mapped[list | None] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=True)
-    output_artifact_ids: Mapped[list | None] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=True)
+    input_artifact_ids: Mapped[list | None] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=True
+    )
+    output_artifact_ids: Mapped[list | None] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=True
+    )
 
     # The structured decision payload
     input_context: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
@@ -271,7 +275,10 @@ class HumanOverride(UUIDMixin, Base):
         "Study", foreign_keys=[study_id], lazy="raise"
     )
     ai_decision: Mapped["AIDecision | None"] = relationship(
-        "AIDecision", foreign_keys=[ai_decision_id], back_populates="human_overrides", lazy="raise"
+        "AIDecision",
+        foreign_keys=[ai_decision_id],
+        back_populates="human_overrides",
+        lazy="raise",
     )
     actor: Mapped["User"] = relationship(
         "User", foreign_keys=[actor_user_id], lazy="raise"
@@ -352,13 +359,17 @@ class DataLineage(UUIDMixin, Base):
 
     # Source: the upstream data entity
     source_type: Mapped[str] = mapped_column(String(128), nullable=False)
-    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     source_field: Mapped[str | None] = mapped_column(String(256), nullable=True)
     source_domain: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Target: the downstream data entity
     target_type: Mapped[str] = mapped_column(String(128), nullable=False)
-    target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    target_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     target_field: Mapped[str | None] = mapped_column(String(256), nullable=True)
     target_domain: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
@@ -368,7 +379,9 @@ class DataLineage(UUIDMixin, Base):
     assumptions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     # Provenance
-    is_ai_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_ai_generated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     ai_decision_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("ai_decisions.id", ondelete="SET NULL"),
@@ -492,7 +505,9 @@ class ArtifactLineage(UUIDMixin, Base):
     relationship_type: Mapped[str] = mapped_column(String(64), nullable=False)
     derivation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    is_ai_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_ai_generated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     ai_decision_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("ai_decisions.id", ondelete="SET NULL"),
@@ -575,7 +590,9 @@ class ValidationEvidence(UUIDMixin, Base):
 
     # What was checked
     subject_type: Mapped[str] = mapped_column(String(128), nullable=False)
-    subject_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     subject_field: Mapped[str | None] = mapped_column(String(256), nullable=True)
     subject_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
@@ -590,7 +607,9 @@ class ValidationEvidence(UUIDMixin, Base):
     finding_details: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     # Provenance
-    is_ai_evaluated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_ai_evaluated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     ai_decision_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("ai_decisions.id", ondelete="SET NULL"),
@@ -604,7 +623,9 @@ class ValidationEvidence(UUIDMixin, Base):
         nullable=True,
     )
     waiver_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    waived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    waived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Graph traceability
     graph_node_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -645,7 +666,9 @@ class ValidationEvidence(UUIDMixin, Base):
             "id": str(self.id),
             "organization_id": str(self.organization_id),
             "study_id": str(self.study_id) if self.study_id else None,
-            "validation_run_id": str(self.validation_run_id) if self.validation_run_id else None,
+            "validation_run_id": str(self.validation_run_id)
+            if self.validation_run_id
+            else None,
             "rule_id": self.rule_id,
             "rule_name": self.rule_name,
             "rule_category": self.rule_category,
@@ -705,8 +728,12 @@ class SyntheticDataRun(UUIDMixin, Base):
         String(32), nullable=False, default="PENDING", index=True
     )
     records_generated: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # AI provenance

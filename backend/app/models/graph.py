@@ -173,9 +173,7 @@ class GraphNode(UUIDMixin, Base):
     external_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False), nullable=True, index=True
     )
-    external_type: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
+    external_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     label: Mapped[str] = mapped_column(String(512), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -236,7 +234,9 @@ class GraphNode(UUIDMixin, Base):
             "properties": self.properties,
             "is_active": self.is_active,
             "created_by_id": self.created_by_id,
-            "created_at": self.created_at.isoformat() if hasattr(self.created_at, "isoformat") else str(self.created_at),
+            "created_at": self.created_at.isoformat()
+            if hasattr(self.created_at, "isoformat")
+            else str(self.created_at),
         }
 
 
@@ -286,7 +286,9 @@ class GraphEdge(UUIDMixin, Base):
 
     # Provenance
     confidence: Mapped[float | None] = mapped_column(nullable=True)
-    is_ai_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_ai_generated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
 
     # References the AI decision that produced this edge (if AI-generated)
     ai_decision_id: Mapped[str | None] = mapped_column(
@@ -316,10 +318,16 @@ class GraphEdge(UUIDMixin, Base):
 
     # Relationships
     source_node: Mapped["GraphNode"] = relationship(
-        "GraphNode", foreign_keys=[source_node_id], back_populates="outgoing_edges", lazy="raise"
+        "GraphNode",
+        foreign_keys=[source_node_id],
+        back_populates="outgoing_edges",
+        lazy="raise",
     )
     target_node: Mapped["GraphNode"] = relationship(
-        "GraphNode", foreign_keys=[target_node_id], back_populates="incoming_edges", lazy="raise"
+        "GraphNode",
+        foreign_keys=[target_node_id],
+        back_populates="incoming_edges",
+        lazy="raise",
     )
     created_by: Mapped["User | None"] = relationship(
         "User", foreign_keys=[created_by_id], lazy="raise"
@@ -337,7 +345,9 @@ class GraphEdge(UUIDMixin, Base):
             "confidence": self.confidence,
             "is_ai_generated": self.is_ai_generated,
             "ai_decision_id": self.ai_decision_id,
-            "created_at": self.created_at.isoformat() if hasattr(self.created_at, "isoformat") else str(self.created_at),
+            "created_at": self.created_at.isoformat()
+            if hasattr(self.created_at, "isoformat")
+            else str(self.created_at),
         }
 
 

@@ -72,9 +72,7 @@ class AIDecisionRepository:
         if status is not None:
             filters.append(AIDecision.status == status)
 
-        count_result = await self._db.execute(
-            select(AIDecision).where(and_(*filters))
-        )
+        count_result = await self._db.execute(select(AIDecision).where(and_(*filters)))
         total = len(count_result.scalars().all())
 
         result = await self._db.execute(
@@ -140,10 +138,12 @@ class HumanOverrideRepository:
         organization_id: UUID,
     ) -> list[HumanOverride]:
         result = await self._db.execute(
-            select(HumanOverride).where(
+            select(HumanOverride)
+            .where(
                 HumanOverride.ai_decision_id == ai_decision_id,
                 HumanOverride.organization_id == organization_id,
-            ).order_by(HumanOverride.created_at.asc())
+            )
+            .order_by(HumanOverride.created_at.asc())
         )
         return list(result.scalars().all())
 
@@ -203,12 +203,14 @@ class DataLineageRepository:
     ) -> list[DataLineage]:
         """All lineage records where this entity is the target (its upstream sources)."""
         result = await self._db.execute(
-            select(DataLineage).where(
+            select(DataLineage)
+            .where(
                 DataLineage.target_type == target_type,
                 DataLineage.target_id == target_id,
                 DataLineage.organization_id == organization_id,
                 DataLineage.is_active.is_(True),
-            ).order_by(DataLineage.created_at.asc())
+            )
+            .order_by(DataLineage.created_at.asc())
         )
         return list(result.scalars().all())
 
@@ -220,12 +222,14 @@ class DataLineageRepository:
     ) -> list[DataLineage]:
         """All lineage records where this entity is the source (its downstream derivations)."""
         result = await self._db.execute(
-            select(DataLineage).where(
+            select(DataLineage)
+            .where(
                 DataLineage.source_type == source_type,
                 DataLineage.source_id == source_id,
                 DataLineage.organization_id == organization_id,
                 DataLineage.is_active.is_(True),
-            ).order_by(DataLineage.created_at.asc())
+            )
+            .order_by(DataLineage.created_at.asc())
         )
         return list(result.scalars().all())
 
@@ -235,10 +239,12 @@ class DataLineageRepository:
         organization_id: UUID,
     ) -> list[ArtifactLineage]:
         result = await self._db.execute(
-            select(ArtifactLineage).where(
+            select(ArtifactLineage)
+            .where(
                 ArtifactLineage.study_id == study_id,
                 ArtifactLineage.organization_id == organization_id,
-            ).order_by(ArtifactLineage.created_at.asc())
+            )
+            .order_by(ArtifactLineage.created_at.asc())
         )
         return list(result.scalars().all())
 
@@ -271,8 +277,10 @@ class ValidationEvidenceRepository:
         result = await self._db.execute(
             select(ValidationEvidence)
             .where(and_(*filters))
-            .order_by(ValidationEvidence.finding_severity.asc(),
-                      ValidationEvidence.created_at.asc())
+            .order_by(
+                ValidationEvidence.finding_severity.asc(),
+                ValidationEvidence.created_at.asc(),
+            )
         )
         return list(result.scalars().all())
 
@@ -327,7 +335,10 @@ class ValidationEvidenceRepository:
         if evidence is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "NOT_FOUND", "message": "Validation evidence not found."},
+                detail={
+                    "code": "NOT_FOUND",
+                    "message": "Validation evidence not found.",
+                },
             )
         evidence.status = ValidationEvidenceStatus.WAIVED
         evidence.waived_by_id = waived_by_id
@@ -349,7 +360,9 @@ class SyntheticDataRepository:
         await self._db.refresh(run)
         return run
 
-    async def create_assumption(self, assumption: SimulationAssumption) -> SimulationAssumption:
+    async def create_assumption(
+        self, assumption: SimulationAssumption
+    ) -> SimulationAssumption:
         self._db.add(assumption)
         await self._db.flush()
         await self._db.refresh(assumption)
@@ -366,7 +379,10 @@ class SyntheticDataRepository:
         if run is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "NOT_FOUND", "message": "Synthetic data run not found."},
+                detail={
+                    "code": "NOT_FOUND",
+                    "message": "Synthetic data run not found.",
+                },
             )
         return run
 

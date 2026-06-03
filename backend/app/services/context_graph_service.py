@@ -155,8 +155,11 @@ class ContextGraphService:
     # ------------------------------------------------------------------
 
     async def link_objective_to_endpoint(
-        self, org_id: UUID, study_id: UUID,
-        objective_node_id: UUID, endpoint_node_id: UUID,
+        self,
+        org_id: UUID,
+        study_id: UUID,
+        objective_node_id: UUID,
+        endpoint_node_id: UUID,
         confidence: float | None = None,
         is_ai_generated: bool = False,
         ai_decision_id: UUID | None = None,
@@ -164,18 +167,25 @@ class ContextGraphService:
         actor_agent_id: str | None = None,
     ) -> GraphEdge:
         edge, _ = await self.create_relationship(
-            organization_id=org_id, source_node_id=objective_node_id,
+            organization_id=org_id,
+            source_node_id=objective_node_id,
             target_node_id=endpoint_node_id,
             edge_type=GraphEdgeType.OBJECTIVE_TO_ENDPOINT,
-            study_id=study_id, confidence=confidence,
-            is_ai_generated=is_ai_generated, ai_decision_id=ai_decision_id,
-            actor=actor, actor_agent_id=actor_agent_id,
+            study_id=study_id,
+            confidence=confidence,
+            is_ai_generated=is_ai_generated,
+            ai_decision_id=ai_decision_id,
+            actor=actor,
+            actor_agent_id=actor_agent_id,
         )
         return edge
 
     async def link_endpoint_to_ecr(
-        self, org_id: UUID, study_id: UUID,
-        endpoint_node_id: UUID, ecr_node_id: UUID,
+        self,
+        org_id: UUID,
+        study_id: UUID,
+        endpoint_node_id: UUID,
+        ecr_node_id: UUID,
         confidence: float | None = None,
         is_ai_generated: bool = False,
         ai_decision_id: UUID | None = None,
@@ -183,18 +193,25 @@ class ContextGraphService:
         actor_agent_id: str | None = None,
     ) -> GraphEdge:
         edge, _ = await self.create_relationship(
-            organization_id=org_id, source_node_id=endpoint_node_id,
+            organization_id=org_id,
+            source_node_id=endpoint_node_id,
             target_node_id=ecr_node_id,
             edge_type=GraphEdgeType.ENDPOINT_TO_ECR,
-            study_id=study_id, confidence=confidence,
-            is_ai_generated=is_ai_generated, ai_decision_id=ai_decision_id,
-            actor=actor, actor_agent_id=actor_agent_id,
+            study_id=study_id,
+            confidence=confidence,
+            is_ai_generated=is_ai_generated,
+            ai_decision_id=ai_decision_id,
+            actor=actor,
+            actor_agent_id=actor_agent_id,
         )
         return edge
 
     async def link_ecr_to_sdtm(
-        self, org_id: UUID, study_id: UUID,
-        ecr_node_id: UUID, sdtm_node_id: UUID,
+        self,
+        org_id: UUID,
+        study_id: UUID,
+        ecr_node_id: UUID,
+        sdtm_node_id: UUID,
         confidence: float | None = None,
         is_ai_generated: bool = False,
         ai_decision_id: UUID | None = None,
@@ -202,18 +219,25 @@ class ContextGraphService:
         actor_agent_id: str | None = None,
     ) -> GraphEdge:
         edge, _ = await self.create_relationship(
-            organization_id=org_id, source_node_id=ecr_node_id,
+            organization_id=org_id,
+            source_node_id=ecr_node_id,
             target_node_id=sdtm_node_id,
             edge_type=GraphEdgeType.ECR_TO_SDTM,
-            study_id=study_id, confidence=confidence,
-            is_ai_generated=is_ai_generated, ai_decision_id=ai_decision_id,
-            actor=actor, actor_agent_id=actor_agent_id,
+            study_id=study_id,
+            confidence=confidence,
+            is_ai_generated=is_ai_generated,
+            ai_decision_id=ai_decision_id,
+            actor=actor,
+            actor_agent_id=actor_agent_id,
         )
         return edge
 
     async def link_sdtm_to_adam(
-        self, org_id: UUID, study_id: UUID,
-        sdtm_node_id: UUID, adam_node_id: UUID,
+        self,
+        org_id: UUID,
+        study_id: UUID,
+        sdtm_node_id: UUID,
+        adam_node_id: UUID,
         confidence: float | None = None,
         is_ai_generated: bool = False,
         ai_decision_id: UUID | None = None,
@@ -221,18 +245,25 @@ class ContextGraphService:
         actor_agent_id: str | None = None,
     ) -> GraphEdge:
         edge, _ = await self.create_relationship(
-            organization_id=org_id, source_node_id=sdtm_node_id,
+            organization_id=org_id,
+            source_node_id=sdtm_node_id,
             target_node_id=adam_node_id,
             edge_type=GraphEdgeType.SDTM_TO_ADAM,
-            study_id=study_id, confidence=confidence,
-            is_ai_generated=is_ai_generated, ai_decision_id=ai_decision_id,
-            actor=actor, actor_agent_id=actor_agent_id,
+            study_id=study_id,
+            confidence=confidence,
+            is_ai_generated=is_ai_generated,
+            ai_decision_id=ai_decision_id,
+            actor=actor,
+            actor_agent_id=actor_agent_id,
         )
         return edge
 
     async def link_adam_to_tlf(
-        self, org_id: UUID, study_id: UUID,
-        adam_node_id: UUID, tlf_node_id: UUID,
+        self,
+        org_id: UUID,
+        study_id: UUID,
+        adam_node_id: UUID,
+        tlf_node_id: UUID,
         confidence: float | None = None,
         is_ai_generated: bool = False,
         ai_decision_id: UUID | None = None,
@@ -240,18 +271,25 @@ class ContextGraphService:
         actor_agent_id: str | None = None,
     ) -> GraphEdge:
         edge, _ = await self.create_relationship(
-            organization_id=org_id, source_node_id=adam_node_id,
+            organization_id=org_id,
+            source_node_id=adam_node_id,
             target_node_id=tlf_node_id,
             edge_type=GraphEdgeType.ADAM_TO_TLF,
-            study_id=study_id, confidence=confidence,
-            is_ai_generated=is_ai_generated, ai_decision_id=ai_decision_id,
-            actor=actor, actor_agent_id=actor_agent_id,
+            study_id=study_id,
+            confidence=confidence,
+            is_ai_generated=is_ai_generated,
+            ai_decision_id=ai_decision_id,
+            actor=actor,
+            actor_agent_id=actor_agent_id,
         )
         return edge
 
     async def link_tlf_to_csr(
-        self, org_id: UUID, study_id: UUID,
-        tlf_node_id: UUID, csr_node_id: UUID,
+        self,
+        org_id: UUID,
+        study_id: UUID,
+        tlf_node_id: UUID,
+        csr_node_id: UUID,
         confidence: float | None = None,
         is_ai_generated: bool = False,
         ai_decision_id: UUID | None = None,
@@ -259,12 +297,16 @@ class ContextGraphService:
         actor_agent_id: str | None = None,
     ) -> GraphEdge:
         edge, _ = await self.create_relationship(
-            organization_id=org_id, source_node_id=tlf_node_id,
+            organization_id=org_id,
+            source_node_id=tlf_node_id,
             target_node_id=csr_node_id,
             edge_type=GraphEdgeType.TLF_TO_CSR,
-            study_id=study_id, confidence=confidence,
-            is_ai_generated=is_ai_generated, ai_decision_id=ai_decision_id,
-            actor=actor, actor_agent_id=actor_agent_id,
+            study_id=study_id,
+            confidence=confidence,
+            is_ai_generated=is_ai_generated,
+            ai_decision_id=ai_decision_id,
+            actor=actor,
+            actor_agent_id=actor_agent_id,
         )
         return edge
 

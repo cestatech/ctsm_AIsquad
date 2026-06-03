@@ -65,8 +65,12 @@ async def list_nodes(
     )
 
 
-@router.post("", response_model=GraphNodeResponse, status_code=201,
-             summary="Register a domain record as a graph node")
+@router.post(
+    "",
+    response_model=GraphNodeResponse,
+    status_code=201,
+    summary="Register a domain record as a graph node",
+)
 async def register_node(
     body: RegisterNodeRequest,
     current_user: User = Depends(get_current_user),
@@ -106,8 +110,11 @@ async def get_node(
     return GraphNodeResponse.model_validate(node)
 
 
-@router.get("/{node_id}/neighbors", response_model=GraphNeighborsResponse,
-            summary="Get a node's adjacent edges and neighbors")
+@router.get(
+    "/{node_id}/neighbors",
+    response_model=GraphNeighborsResponse,
+    summary="Get a node's adjacent edges and neighbors",
+)
 async def get_neighbors(
     node_id: UUID,
     direction: str = Query("both", pattern="^(outgoing|incoming|both)$"),
@@ -136,8 +143,11 @@ async def get_neighbors(
     )
 
 
-@router.get("/{node_id}/lineage", response_model=GraphLineageResponse,
-            summary="Walk the lineage path from a node")
+@router.get(
+    "/{node_id}/lineage",
+    response_model=GraphLineageResponse,
+    summary="Walk the lineage path from a node",
+)
 async def get_lineage(
     node_id: UUID,
     max_depth: int = Query(10, ge=1, le=20),
@@ -163,8 +173,12 @@ async def get_lineage(
     )
 
 
-@router.post("/edges", response_model=GraphEdgeResponse, status_code=201,
-             summary="Create a relationship between two graph nodes")
+@router.post(
+    "/edges",
+    response_model=GraphEdgeResponse,
+    status_code=201,
+    summary="Create a relationship between two graph nodes",
+)
 async def create_edge(
     body: CreateEdgeRequest,
     current_user: User = Depends(get_current_user),
