@@ -7,11 +7,22 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { authApi } from "@/lib/api/auth";
 
 const NAV_ITEMS = [
-  { label: "Dashboard", href: "/dashboard", alwaysShow: true },
-  { label: "Studies", href: "/studies", alwaysShow: true },
-  { label: "Approvals", href: "/approvals", permission: "canApproveArtifact" as const },
-  { label: "Audit Log", href: "/audit", permission: "canViewAuditLog" as const },
-  { label: "Users", href: "/users", permission: "canManageUsers" as const },
+  { label: "Dashboard", href: "/dashboard", alwaysShow: true, group: "main" },
+  { label: "Studies", href: "/studies", alwaysShow: true, group: "main" },
+  { label: "Approvals", href: "/approvals", permission: "canApproveArtifact" as const, group: "main" },
+  { label: "Audit Log", href: "/audit", permission: "canViewAuditLog" as const, group: "main" },
+  { label: "Users", href: "/users", permission: "canManageUsers" as const, group: "main" },
+];
+
+const INTELLIGENCE_NAV_ITEMS = [
+  { label: "Overview", href: "/intelligence", alwaysShow: true },
+  { label: "Context Graph", href: "/intelligence/graph", alwaysShow: true },
+  { label: "Traceability", href: "/intelligence/traceability", alwaysShow: true },
+  { label: "AI Decisions", href: "/intelligence/decisions", alwaysShow: true },
+  { label: "Human Overrides", href: "/intelligence/overrides", alwaysShow: true },
+  { label: "Lineage", href: "/intelligence/lineage", alwaysShow: true },
+  { label: "Validation", href: "/intelligence/validation", permission: "canRunValidation" as const },
+  { label: "Synthetic Data", href: "/intelligence/synthetic", alwaysShow: true },
 ];
 
 export function Sidebar() {
@@ -33,6 +44,14 @@ export function Sidebar() {
     if (item.permission) return perms[item.permission];
     return false;
   });
+
+  const visibleIntelligenceItems = INTELLIGENCE_NAV_ITEMS.filter((item) => {
+    if ("alwaysShow" in item && item.alwaysShow) return true;
+    if (item.permission) return perms[item.permission];
+    return false;
+  });
+
+  const isIntelligence = pathname.startsWith("/intelligence");
 
   const initials = user.full_name
     .split(" ")
@@ -57,7 +76,7 @@ export function Sidebar() {
           const isActive =
             item.href === "/dashboard"
               ? pathname === "/dashboard"
-              : pathname.startsWith(item.href);
+              : !pathname.startsWith("/intelligence") && pathname.startsWith(item.href);
           return (
             <Link
               key={item.label}
@@ -72,6 +91,35 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        <div className="pt-3 pb-1">
+          <div className="px-3 mb-1">
+            <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
+              Intelligence
+            </span>
+          </div>
+          {visibleIntelligenceItems.map((item) => {
+            const isActive =
+              item.href === "/intelligence"
+                ? pathname === "/intelligence"
+                : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.label}
+                href={item.href}
+                className={`w-full flex items-center px-3 py-1.5 text-sm transition-colors text-left rounded-sm ${
+                  isActive
+                    ? "bg-brand-500/20 text-white border-l-2 border-brand-400"
+                    : isIntelligence
+                    ? "text-slate-400 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                    : "text-slate-500 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                }`}
+              >
+                <span className="text-xs">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
       <div className="px-3 py-4 border-t border-white/10">

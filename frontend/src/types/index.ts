@@ -234,3 +234,139 @@ export interface ApiError {
   code: string;
   field?: string;
 }
+
+// ─── Intelligence Platform types ─────────────────────────────────────────────
+
+export type AIDecisionStatus = "PENDING_REVIEW" | "ACCEPTED" | "REJECTED" | "OVERRIDDEN";
+
+export interface AIDecision {
+  id: string;
+  organization_id: string;
+  study_id: string | null;
+  agent_name: string;
+  agent_version: string | null;
+  decision_type: string;
+  module: string | null;
+  model_id: string | null;
+  model_provider: string | null;
+  prompt_hash: string | null;
+  confidence: number | null;
+  input_context: Record<string, unknown>;
+  reasoning: string | null;
+  output: Record<string, unknown>;
+  status: AIDecisionStatus;
+  reviewed_by_id: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  created_at: string;
+}
+
+export interface HumanOverride {
+  id: string;
+  organization_id: string;
+  study_id: string | null;
+  ai_decision_id: string | null;
+  context_type: string;
+  context_id: string | null;
+  field_path: string | null;
+  original_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  reason: string;
+  override_type: string;
+  actor_user_id: string;
+  created_at: string;
+}
+
+export type DataLineageType = "FIELD_LEVEL" | "ARTIFACT_LEVEL";
+
+export interface DataLineage {
+  id: string;
+  organization_id: string;
+  study_id: string | null;
+  lineage_type: DataLineageType;
+  source_type: string;
+  source_id: string | null;
+  source_field: string | null;
+  source_domain: string | null;
+  target_type: string;
+  target_id: string | null;
+  target_field: string | null;
+  target_domain: string | null;
+  transformation_logic: string | null;
+  is_ai_generated: boolean;
+  ai_decision_id: string | null;
+  created_at: string;
+}
+
+export type ValidationEvidenceStatus = "PENDING" | "PASS" | "FAIL" | "WARNING" | "WAIVED";
+
+export interface ValidationEvidence {
+  id: string;
+  organization_id: string;
+  study_id: string | null;
+  validation_run_id: string | null;
+  rule_id: string | null;
+  rule_name: string | null;
+  rule_category: string | null;
+  cdisc_standard: string | null;
+  subject_type: string;
+  subject_field: string | null;
+  status: ValidationEvidenceStatus;
+  finding_severity: string | null;
+  finding_message: string | null;
+  finding_details: Record<string, unknown>;
+  is_ai_evaluated: boolean;
+  ai_decision_id: string | null;
+  waived_by_id: string | null;
+  waiver_reason: string | null;
+  waived_at: string | null;
+  created_at: string;
+}
+
+export interface SyntheticDataRun {
+  id: string;
+  organization_id: string;
+  study_id: string;
+  run_name: string;
+  description: string | null;
+  target_n: number | null;
+  configuration: Record<string, unknown>;
+  random_seed: number | null;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  records_generated: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  ai_decision_id: string | null;
+  output_artifact_id: string | null;
+  created_at: string;
+}
+
+export interface GraphNode {
+  id: string;
+  organization_id: string;
+  study_id: string | null;
+  node_type: string;
+  external_id: string | null;
+  external_type: string | null;
+  label: string;
+  description: string | null;
+  properties: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface GraphEdge {
+  id: string;
+  organization_id: string;
+  study_id: string | null;
+  source_node_id: string;
+  target_node_id: string;
+  edge_type: string;
+  label: string | null;
+  properties: Record<string, unknown>;
+  confidence: number | null;
+  is_ai_generated: boolean;
+  ai_decision_id: string | null;
+  created_at: string;
+}
