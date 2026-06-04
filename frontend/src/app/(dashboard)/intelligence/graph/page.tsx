@@ -1,237 +1,292 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import ReactFlow, {
+  Background,
+  BackgroundVariant,
+  Controls,
+  Edge,
+  Handle,
+  MarkerType,
+  MiniMap,
+  Node,
+  NodeProps,
+  Position,
+  useEdgesState,
+  useNodesState,
+} from "reactflow";
+import "reactflow/dist/style.css";
 import { useAuthStore } from "@/store/authStore";
 import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
 import { graphApi } from "@/lib/api/graph";
 import { StudyPicker } from "@/components/intelligence/StudyPicker";
 import type { GraphEdge, GraphNode } from "@/types";
 
-const NODE_TYPE_COLORS: Record<string, string> = {
-  STUDY: "bg-slate-100 text-slate-700",
-  OBJECTIVE: "bg-violet-100 text-violet-800",
-  ENDPOINT: "bg-blue-100 text-blue-800",
-  ECR_FIELD: "bg-cyan-100 text-cyan-800",
-  SDTM_VARIABLE: "bg-emerald-100 text-emerald-800",
-  ADAM_VARIABLE: "bg-teal-100 text-teal-800",
-  TLF: "bg-amber-100 text-amber-800",
-  CSR_SECTION: "bg-orange-100 text-orange-800",
-  PROTOCOL: "bg-indigo-100 text-indigo-800",
+// ─── layout constants ────────────────────────────────────────────────────────
+
+const TYPE_COLUMN: Record<string, number> = {
+  STUDY: 0,
+  PROTOCOL: 0,
+  OBJECTIVE: 1,
+  ENDPOINT: 2,
+  ECR_FIELD: 3,
+  SDTM_VARIABLE: 4,
+  ADAM_VARIABLE: 5,
+  TLF: 6,
+  CSR_SECTION: 7,
 };
 
-function EdgeRow({ edge, nodes }: { edge: GraphEdge; nodes: GraphNode[] }) {
-  const source = nodes.find((n) => n.id === edge.source_node_id);
-  const target = nodes.find((n) => n.id === edge.target_node_id);
+type NodeColors = { bg: string; border: string; badge: string; text: string };
+
+const TYPE_COLORS: Record<string, NodeColors> = {
+  STUDY:          { bg: "#f8fafc", border: "#94a3b8", badge: "#e2e8f0", text: "#334155" },
+  PROTOCOL:       { bg: "#eef2ff", border: "#6366f1", badge: "#c7d2fe", text: "#312e81" },
+  OBJECTIVE:      { bg: "#f5f3ff", border: "#8b5cf6", badge: "#ddd6fe", text: "#4c1d95" },
+  ENDPOINT:       { bg: "#eff6ff", border: "#3b82f6", badge: "#bfdbfe", text: "#1e3a8a" },
+  ECR_FIELD:      { bg: "#ecfeff", border: "#06b6d4", badge: "#a5f3fc", text: "#164e63" },
+  SDTM_VARIABLE:  { bg: "#f0fdf4", border: "#22c55e", badge: "#bbf7d0", text: "#14532d" },
+  ADAM_VARIABLE:  { bg: "#f0fdfa", border: "#14b8a6", badge: "#99f6e4", text: "#134e4a" },
+  TLF:            { bg: "#fffbeb", border: "#f59e0b", badge: "#fde68a", text: "#78350f" },
+  CSR_SECTION:    { bg: "#fff7ed", border: "#f97316", badge: "#fed7aa", text: "#7c2d12" },
+};
+const DEFAULT_COLORS: NodeColors = { bg: "#f8fafc", border: "#94a3b8", badge: "#e2e8f0", text: "#334155" };
+
+const COL_W = 200;
+const COL_GAP = 80;
+const ROW_H = 90;
+
+// ─── custom node ─────────────────────────────────────────────────────────────
+
+function CeleriusNode({ data, selected }: NodeProps) {
+  const n = data.graphNode as GraphNode;
+  const c = TYPE_COLORS[n.node_type] ?? DEFAULT_COLORS;
   return (
-    <div className="flex items-start gap-2 text-xs py-2 border-b border-slate-50 last:border-0">
-      <div className="flex-1 text-slate-700 truncate" title={source?.label}>
-        {source?.label ?? edge.source_node_id.slice(0, 8) + "…"}
+    <>
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ width: 6, height: 6, background: c.border, border: "none" }}
+      />
+      <div
+        style={{
+          background: c.bg,
+          border: `1.5px solid ${selected ? c.border : c.border + "99"}`,
+          borderRadius: 6,
+          padding: "7px 10px",
+          width: COL_W,
+          boxShadow: selected
+            ? `0 0 0 2px ${c.border}44, 0 2px 8px rgba(0,0,0,0.12)`
+            : "0 1px 3px rgba(0,0,0,0.07)",
+        }}
+      >
+        <div
+          style={{
+            display: "inline-block",
+            background: c.badge,
+            color: c.text,
+            fontSize: 9,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            padding: "1px 5px",
+            borderRadius: 3,
+            marginBottom: 4,
+          }}
+        >
+          {n.node_type.replace(/_/g, " ")}
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", lineHeight: 1.35, wordBreak: "break-word" }}>
+          {n.label}
+        </div>
+        {n.description && (
+          <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, lineHeight: 1.3 }}>
+            {n.description.length > 60 ? n.description.slice(0, 60) + "…" : n.description}
+          </div>
+        )}
       </div>
-      <div className="shrink-0 text-slate-400 font-mono text-[11px] bg-slate-50 px-1.5 py-0.5 border border-slate-200">
-        {edge.edge_type.replace(/_/g, "→")}
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ width: 6, height: 6, background: c.border, border: "none" }}
+      />
+    </>
+  );
+}
+
+const NODE_TYPES = { celerius: CeleriusNode };
+
+// ─── layout helpers ──────────────────────────────────────────────────────────
+
+function buildNodes(apiNodes: GraphNode[]): Node[] {
+  const colCounts: Record<number, number> = {};
+  return apiNodes.map((n) => {
+    const col = TYPE_COLUMN[n.node_type] ?? 8;
+    const row = colCounts[col] ?? 0;
+    colCounts[col] = row + 1;
+    return {
+      id: n.id,
+      type: "celerius",
+      position: { x: col * (COL_W + COL_GAP), y: row * ROW_H },
+      data: { graphNode: n },
+    };
+  });
+}
+
+function buildEdges(apiEdges: GraphEdge[]): Edge[] {
+  return apiEdges.map((e) => ({
+    id: e.id,
+    source: e.source_node_id,
+    target: e.target_node_id,
+    animated: e.is_ai_generated ?? false,
+    markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: e.is_ai_generated ? "#6366f1" : "#94a3b8" },
+    style: { stroke: e.is_ai_generated ? "#6366f1" : "#94a3b8", strokeWidth: 1.5 },
+    label: e.edge_type.replace(/_/g, " "),
+    labelStyle: { fontSize: 9, fill: "#64748b", fontWeight: 500 },
+    labelBgStyle: { fill: "#ffffff", fillOpacity: 0.85 },
+    labelBgPadding: [3, 4] as [number, number],
+    labelBgBorderRadius: 3,
+  }));
+}
+
+// ─── detail panel ────────────────────────────────────────────────────────────
+
+function NodeDetail({ node, onClose }: { node: GraphNode; onClose: () => void }) {
+  const c = TYPE_COLORS[node.node_type] ?? DEFAULT_COLORS;
+  return (
+    <div className="absolute top-4 right-4 w-72 bg-white border border-slate-200 shadow-lg z-10 rounded-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-100 flex items-start justify-between gap-2" style={{ background: c.bg }}>
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-sm" style={{ background: c.badge, color: c.text }}>
+            {node.node_type.replace(/_/g, " ")}
+          </span>
+          <p className="font-semibold text-slate-900 mt-1.5 text-sm leading-snug">{node.label}</p>
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 shrink-0 mt-0.5 text-lg leading-none">&times;</button>
       </div>
-      <div className="flex-1 text-slate-700 truncate text-right" title={target?.label}>
-        {target?.label ?? edge.target_node_id.slice(0, 8) + "…"}
-      </div>
-      {edge.is_ai_generated && (
-        <span className="shrink-0 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 font-semibold">AI</span>
+      {node.description && (
+        <div className="px-4 py-2.5 border-b border-slate-100">
+          <p className="text-xs text-slate-600 leading-relaxed">{node.description}</p>
+        </div>
       )}
-      {edge.confidence !== null && (
-        <span className="shrink-0 text-[10px] font-mono text-slate-400">
-          {Math.round(edge.confidence * 100)}%
-        </span>
+      {Object.keys(node.properties ?? {}).length > 0 && (
+        <div className="px-4 py-3">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Properties</p>
+          <div className="space-y-1.5">
+            {Object.entries(node.properties).map(([k, v]) => (
+              <div key={k} className="flex gap-2">
+                <span className="text-[11px] text-slate-400 shrink-0 w-24 truncate">{k}</span>
+                <span className="text-[11px] font-mono text-slate-700 break-all">{String(v)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
+      <div className="px-4 py-2 border-t border-slate-100 bg-slate-50">
+        <p className="text-[10px] text-slate-400 font-mono">{node.id}</p>
+      </div>
     </div>
   );
 }
+
+// ─── page ────────────────────────────────────────────────────────────────────
 
 export default function ContextGraphPage() {
   const { token } = useAuthStore();
   const { studyId } = useIntelligenceStudy();
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [nodeTypeFilter, setNodeTypeFilter] = useState<string>("ALL");
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  const { data: nodesData, isLoading: nodesLoading } = useQuery({
+  const { isLoading: nodesLoading } = useQuery({
     queryKey: ["graph-nodes", studyId, token],
-    queryFn: () =>
-      graphApi.listNodes({ study_id: studyId!, page_size: 200 }, token!),
+    queryFn: async () => {
+      const data = await graphApi.listNodes({ study_id: studyId!, page_size: 500 }, token!);
+      setNodes(buildNodes(data.items));
+      return data;
+    },
     enabled: !!token && !!studyId,
     staleTime: 60_000,
   });
 
-  const nodes = nodesData?.items ?? [];
-
-  const { data: neighborsData, isLoading: neighborsLoading } = useQuery({
-    queryKey: ["graph-neighbors", selectedNode?.id, token],
-    queryFn: () =>
-      graphApi.getNeighbors(selectedNode!.id, { direction: "both" }, token!),
-    enabled: !!token && !!selectedNode,
+  const { isLoading: edgesLoading } = useQuery({
+    queryKey: ["graph-edges", studyId, token],
+    queryFn: async () => {
+      const data = await graphApi.listEdges({ study_id: studyId!, page_size: 1000 }, token!);
+      setEdges(buildEdges(data.items));
+      return data;
+    },
+    enabled: !!token && !!studyId,
     staleTime: 60_000,
   });
 
-  const adjacentEdges: GraphEdge[] = selectedNode
-    ? [
-        ...(neighborsData?.outgoing ?? []),
-        ...(neighborsData?.incoming ?? []),
-      ]
-    : [];
+  const onNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      setSelectedNode((node.data as { graphNode: GraphNode }).graphNode);
+    },
+    []
+  );
 
-  const nodeTypes = ["ALL", ...Array.from(new Set(nodes.map((n) => n.node_type))).sort()];
-
-  const filteredNodes =
-    nodeTypeFilter === "ALL" ? nodes : nodes.filter((n) => n.node_type === nodeTypeFilter);
+  const isLoading = nodesLoading || edgesLoading;
 
   return (
-    <div>
-      <div className="px-8 py-5 border-b border-slate-200 bg-white">
+    <div className="flex flex-col h-screen">
+      {/* Header */}
+      <div className="px-8 py-5 border-b border-slate-200 bg-white shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-display text-xl font-bold text-slate-900">Context Graph Explorer</h1>
+            <h1 className="font-display text-xl font-bold text-slate-900">Context Graph</h1>
             <p className="text-slate-500 text-sm mt-0.5">
-              Browse the intelligence graph — {nodes.length} nodes. Click a node to inspect its connections.
+              {nodes.length} nodes · {edges.length} edges
+              {isLoading && " · Loading…"}
             </p>
           </div>
           <StudyPicker />
         </div>
       </div>
 
-      <div className="px-8 py-6">
-        <div className="bg-blue-50 border border-blue-200 px-4 py-2.5 mb-4 text-xs text-blue-800">
-          Graph visualization (React Flow / Cytoscape) is planned for Phase 7. This view provides
-          tabular node and edge browsing with adjacency inspection.
-        </div>
-
+      {/* Canvas */}
+      <div className="flex-1 relative">
         {!studyId ? (
-          <div className="bg-white border border-dashed border-slate-300 px-8 py-16 text-center">
-            <p className="font-display font-semibold text-slate-700 mb-1">Select a study</p>
-            <p className="text-slate-400 text-sm">Choose a study above to browse its context graph.</p>
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <p className="font-display font-semibold text-slate-700 mb-1">Select a study</p>
+              <p className="text-slate-400 text-sm">Choose a study above to render its context graph.</p>
+            </div>
           </div>
         ) : (
-          <div className="flex gap-6">
-            {/* Node list */}
-            <div className="w-80 shrink-0">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-slate-700">
-                  Nodes {nodesLoading ? "…" : `(${filteredNodes.length})`}
-                </p>
-                <select
-                  value={nodeTypeFilter}
-                  onChange={(e) => setNodeTypeFilter(e.target.value)}
-                  className="text-xs border border-slate-200 px-2 py-1 text-slate-600 focus:outline-none focus:border-brand-500 bg-white"
-                >
-                  {nodeTypes.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={onNodeClick}
+            onPaneClick={() => setSelectedNode(null)}
+            nodeTypes={NODE_TYPES}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            minZoom={0.1}
+            maxZoom={2}
+            defaultEdgeOptions={{ type: "smoothstep" }}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e2e8f0" />
+            <Controls
+              style={{ bottom: 16, left: 16 }}
+              showInteractive={false}
+            />
+            <MiniMap
+              style={{ bottom: 16, right: 16, width: 160, height: 100 }}
+              nodeColor={(n) => {
+                const gn = (n.data as { graphNode?: GraphNode }).graphNode;
+                return gn ? (TYPE_COLORS[gn.node_type]?.border ?? "#94a3b8") : "#94a3b8";
+              }}
+              maskColor="rgba(248,250,252,0.8)"
+            />
+          </ReactFlow>
+        )}
 
-              {nodesLoading ? (
-                <div className="text-xs text-slate-400 py-4 text-center">Loading nodes…</div>
-              ) : (
-                <div className="bg-white border border-slate-200 overflow-hidden divide-y divide-slate-100 max-h-[70vh] overflow-y-auto">
-                  {filteredNodes.length === 0 ? (
-                    <div className="px-4 py-6 text-xs text-slate-400 text-center">
-                      No nodes found.
-                    </div>
-                  ) : (
-                    filteredNodes.map((node) => (
-                      <button
-                        key={node.id}
-                        onClick={() => setSelectedNode(selectedNode?.id === node.id ? null : node)}
-                        className={`w-full text-left px-3 py-2.5 transition-colors ${
-                          selectedNode?.id === node.id
-                            ? "bg-brand-50 border-l-2 border-brand-400"
-                            : "hover:bg-slate-50 border-l-2 border-transparent"
-                        }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <span
-                            className={`text-[10px] px-1.5 py-0.5 font-semibold mt-0.5 shrink-0 ${
-                              NODE_TYPE_COLORS[node.node_type] ?? "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {node.node_type.replace(/_/g, " ")}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-800 font-medium mt-1 leading-snug">
-                          {node.label}
-                        </p>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Node detail */}
-            <div className="flex-1">
-              {!selectedNode ? (
-                <div className="bg-white border border-dashed border-slate-300 px-8 py-16 text-center">
-                  <p className="font-display font-semibold text-slate-700 mb-1">Select a node</p>
-                  <p className="text-slate-400 text-sm">
-                    Click any node in the list to inspect its properties and connections.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="bg-white border border-slate-200 px-5 py-4">
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div>
-                        <span
-                          className={`text-[11px] px-2 py-0.5 font-semibold ${
-                            NODE_TYPE_COLORS[selectedNode.node_type] ?? "bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          {selectedNode.node_type}
-                        </span>
-                        <h2 className="font-display font-semibold text-slate-900 mt-1.5">
-                          {selectedNode.label}
-                        </h2>
-                        {selectedNode.description && (
-                          <p className="text-xs text-slate-500 mt-1">{selectedNode.description}</p>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-400 font-mono shrink-0">{selectedNode.id.slice(0, 8)}…</p>
-                    </div>
-
-                    {Object.keys(selectedNode.properties).length > 0 && (
-                      <div>
-                        <p className="text-[11px] text-slate-400 uppercase tracking-wide mb-1.5">Properties</p>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {Object.entries(selectedNode.properties).map(([k, v]) => (
-                            <div key={k} className="bg-slate-50 border border-slate-100 px-2 py-1.5">
-                              <p className="text-[10px] text-slate-400 uppercase tracking-wide">{k}</p>
-                              <p className="text-xs font-mono text-slate-700">{String(v)}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="bg-white border border-slate-200 px-5 py-4">
-                    <p className="text-xs font-semibold text-slate-700 mb-3">
-                      Connections {neighborsLoading ? "…" : `(${adjacentEdges.length})`}
-                    </p>
-                    {neighborsLoading ? (
-                      <p className="text-xs text-slate-400">Loading connections…</p>
-                    ) : adjacentEdges.length === 0 ? (
-                      <p className="text-xs text-slate-400">No edges connected to this node.</p>
-                    ) : (
-                      <div>
-                        {adjacentEdges.map((edge) => (
-                          <EdgeRow key={edge.id} edge={edge} nodes={nodes} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+        {selectedNode && (
+          <NodeDetail node={selectedNode} onClose={() => setSelectedNode(null)} />
         )}
       </div>
     </div>

@@ -35,3 +35,10 @@ class OrganizationRepository:
         self._db.add(org)
         await self._db.flush()
         return org
+
+    async def update(self, org: Organization, **fields: object) -> Organization:
+        for key, value in fields.items():
+            if value is not None:
+                setattr(org, key, value)
+        await self._db.flush()
+        return org
