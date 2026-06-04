@@ -221,7 +221,9 @@ class TestLogin:
         svc._users.create_refresh_token = AsyncMock()
 
         with patch("app.services.auth_service.verify_password", return_value=True):
-            with patch("app.services.auth_service.create_access_token", return_value="a"):
+            with patch(
+                "app.services.auth_service.create_access_token", return_value="a"
+            ):
                 with patch(
                     "app.services.auth_service.create_refresh_token_value",
                     return_value="r",
@@ -238,7 +240,9 @@ class TestLogin:
         svc._users.create_refresh_token = AsyncMock()
 
         with patch("app.services.auth_service.verify_password", return_value=True):
-            with patch("app.services.auth_service.create_access_token", return_value="a"):
+            with patch(
+                "app.services.auth_service.create_access_token", return_value="a"
+            ):
                 with patch(
                     "app.services.auth_service.create_refresh_token_value",
                     return_value="r",
@@ -278,7 +282,9 @@ class TestRefresh:
         svc._users.get_by_id = AsyncMock(return_value=user)
         svc._users.create_refresh_token = AsyncMock()
 
-        with patch("app.services.auth_service.create_access_token", return_value="new_acc"):
+        with patch(
+            "app.services.auth_service.create_access_token", return_value="new_acc"
+        ):
             with patch(
                 "app.services.auth_service.create_refresh_token_value",
                 return_value="new_ref",

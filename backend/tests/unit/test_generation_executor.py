@@ -188,7 +188,9 @@ class TestExecuteGenerationJob:
         """If generator.run() raises, the executor catches it and writes FAILED
         via a new independent session so the original session's error doesn't prevent it."""
         # Job is PENDING when the executor fetches it; generator.run() then raises.
-        job = _make_job(artifact_type=ArtifactType.PROTOCOL, status=GenerationJobStatus.PENDING)
+        job = _make_job(
+            artifact_type=ArtifactType.PROTOCOL, status=GenerationJobStatus.PENDING
+        )
         actor = _make_actor()
 
         r_job = MagicMock()
@@ -200,7 +202,9 @@ class TestExecuteGenerationJob:
         primary_db.commit = AsyncMock()
 
         mock_generator_instance = AsyncMock()
-        mock_generator_instance.run = AsyncMock(side_effect=RuntimeError("claude is down"))
+        mock_generator_instance.run = AsyncMock(
+            side_effect=RuntimeError("claude is down")
+        )
         mock_generator_cls = MagicMock(return_value=mock_generator_instance)
 
         # Error session: the executor re-fetches the job (now RUNNING from base_generator)

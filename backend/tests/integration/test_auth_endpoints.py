@@ -183,7 +183,9 @@ class TestRefresh:
         assert resp.status_code == 201
         return resp.cookies["refresh_token"]
 
-    async def test_valid_cookie_returns_200_new_access_token(self, iclient: AsyncClient):
+    async def test_valid_cookie_returns_200_new_access_token(
+        self, iclient: AsyncClient
+    ):
         cookie = await self._get_refresh_cookie(iclient)
         resp = await iclient.post(
             "/api/v1/auth/refresh",
