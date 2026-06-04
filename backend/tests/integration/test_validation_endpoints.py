@@ -11,7 +11,7 @@ from httpx import AsyncClient
 from app.models.artifact import Artifact
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestTriggerValidationRun:
     async def test_unauthenticated_returns_401(
         self, iclient: AsyncClient, i_artifact: Artifact
@@ -83,7 +83,7 @@ class TestTriggerValidationRun:
         assert resp.status_code == 422
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestListValidationRuns:
     async def test_unauthenticated_returns_401(self, iclient: AsyncClient):
         resp = await iclient.get("/api/v1/validation/runs")
@@ -101,7 +101,7 @@ class TestListValidationRuns:
         assert isinstance(data["items"], list)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestGetValidationRun:
     async def test_get_run_returns_correct_record(
         self, iclient: AsyncClient, i_artifact: Artifact, admin_tok: str

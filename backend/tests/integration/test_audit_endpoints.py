@@ -9,7 +9,7 @@ import pytest
 from httpx import AsyncClient
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestAuditList:
     async def test_unauthenticated_returns_401(self, iclient: AsyncClient):
         resp = await iclient.get("/api/v1/audit")

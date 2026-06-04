@@ -12,7 +12,7 @@ from httpx import AsyncClient
 from app.models.artifact import Artifact
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestCommentList:
     async def test_unauthenticated_returns_401(
         self, iclient: AsyncClient, i_artifact: Artifact
@@ -36,7 +36,7 @@ class TestCommentList:
         assert data["total"] == 0
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestCommentCreate:
     async def test_unauthenticated_returns_401(
         self, iclient: AsyncClient, i_artifact: Artifact
@@ -82,7 +82,7 @@ class TestCommentCreate:
         assert resp.status_code == 422
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestCommentResolve:
     async def test_resolve_comment(
         self, iclient: AsyncClient, i_artifact: Artifact, admin_tok: str
@@ -105,7 +105,7 @@ class TestCommentResolve:
         assert resolve_resp.json()["is_resolved"] is True
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestCommentDelete:
     async def test_author_can_delete_own_comment(
         self, iclient: AsyncClient, i_artifact: Artifact, contributor_tok: str

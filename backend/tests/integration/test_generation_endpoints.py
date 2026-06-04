@@ -16,7 +16,7 @@ from httpx import AsyncClient
 from app.models.study import Study
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestCreateGenerationJob:
     async def test_unauthenticated_returns_401(
         self, iclient: AsyncClient, i_study: Study
@@ -93,7 +93,7 @@ class TestCreateGenerationJob:
         assert resp.status_code == 422
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestListGenerationJobs:
     async def test_unauthenticated_returns_401(self, iclient: AsyncClient):
         resp = await iclient.get("/api/v1/generation/jobs")
@@ -110,7 +110,7 @@ class TestListGenerationJobs:
         assert "total" in data
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestGetGenerationJob:
     async def test_get_job_returns_correct_record(
         self, iclient: AsyncClient, i_study: Study, admin_tok: str
