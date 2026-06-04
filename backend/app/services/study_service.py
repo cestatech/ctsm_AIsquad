@@ -6,7 +6,6 @@ Study creation also registers the study as a STUDY node in the Context Graph.
 
 from __future__ import annotations
 
-from datetime import date
 from uuid import UUID
 
 from fastapi import HTTPException, status

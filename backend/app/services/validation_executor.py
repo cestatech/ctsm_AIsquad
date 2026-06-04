@@ -88,7 +88,6 @@ async def execute_validation_run(run_id: UUID, organization_id: UUID) -> None:
                     content=version.content or {},
                     artifact_type=artifact_type,
                 )
-                findings = engine_results.get("findings", [])
                 has_errors = engine_results.get("error_count", 0) > 0
 
                 run.total_checks = engine_results.get("total_checks", 0)

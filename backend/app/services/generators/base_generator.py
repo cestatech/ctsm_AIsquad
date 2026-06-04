@@ -12,8 +12,6 @@ import json
 import re
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from uuid import UUID
-
 import anthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +22,6 @@ from app.models.graph import GraphEdgeType, GraphNodeType
 from app.models.user import User
 from app.repositories.generation_repository import GenerationRepository
 from app.repositories.study_repository import StudyRepository
-from app.schemas.artifact import ArtifactCreate
 from app.services.artifact_service import ArtifactService
 from app.services.context_graph_service import ContextGraphService
 from app.services.intelligence_service import AIDecisionService, DataLineageService

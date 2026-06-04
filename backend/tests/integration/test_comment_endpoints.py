@@ -6,8 +6,6 @@ RBAC: all authenticated users can comment; only author / Admin can edit / delete
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pytest
 from httpx import AsyncClient
 

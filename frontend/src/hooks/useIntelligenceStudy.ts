@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { studiesApi } from "@/lib/api/studies";
@@ -33,7 +33,7 @@ export function useIntelligenceStudy(): UseIntelligenceStudy {
     staleTime: 60_000,
   });
 
-  const studies = data?.items ?? [];
+  const studies = useMemo(() => data?.items ?? [], [data]);
 
   // Auto-select first study if nothing is stored yet
   useEffect(() => {

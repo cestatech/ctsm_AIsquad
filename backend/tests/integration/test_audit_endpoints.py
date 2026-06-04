@@ -8,8 +8,6 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
-from tests.integration.conftest import make_token
-
 
 @pytest.mark.asyncio
 class TestAuditList:
