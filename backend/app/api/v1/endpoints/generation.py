@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -22,6 +22,7 @@ from app.schemas.generation import (
     GenerationJobListResponse,
     GenerationJobResponse,
 )
+from app.services.generation_executor import execute_generation_job
 from app.services.generation_service import GenerationService
 
 router = APIRouter()
@@ -36,6 +37,7 @@ router = APIRouter()
 async def create_generation_job(
     body: GenerationJobCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> GenerationJobResponse:
@@ -47,6 +49,7 @@ async def create_generation_job(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    background_tasks.add_task(execute_generation_job, job.id, job.organization_id)
     return GenerationJobResponse.model_validate(job)
 
 
