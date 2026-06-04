@@ -225,6 +225,39 @@ export interface GenerationJob {
   created_at: string;
 }
 
+export type NotificationType =
+  | "ARTIFACT_SUBMITTED"
+  | "ARTIFACT_APPROVED"
+  | "ARTIFACT_REJECTED"
+  | "ARTIFACT_LOCKED"
+  | "COMMENT_ADDED"
+  | "MENTION"
+  | "VALIDATION_COMPLETE";
+
+export interface Notification {
+  id: string;
+  organization_id: string;
+  recipient_id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  items: Notification[];
+  total: number;
+  unread_count: number;
+  page: number;
+  page_size: number;
+  has_next: boolean;
+  has_prev: boolean;
+}
+
 // ─── Pagination ──────────────────────────────────────────────────────────────
 
 export interface PaginatedResponse<T> {

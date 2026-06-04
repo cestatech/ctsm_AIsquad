@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { usersApi } from "@/lib/api/users";
-import { MOCK_USERS } from "@/lib/mockData";
 import type { User } from "@/types";
 
 const ROLE_COLORS: Record<string, string> = {
@@ -31,16 +30,11 @@ export default function UsersPage() {
   const [inviteForm, setInviteForm] = useState({ email: "", full_name: "", role: "CONTRIBUTOR" });
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [tempPasswordModal, setTempPasswordModal] = useState<{ name: string; email: string; password: string } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["users", token],
-    queryFn: async () => {
-      try {
-        return await usersApi.list({}, token!);
-      } catch {
-        return { items: MOCK_USERS, total: MOCK_USERS.length, page: 1, page_size: 50, has_next: false, has_prev: false };
-      }
-    },
+    queryFn: () => usersApi.list({}, token!),
     enabled: !!token,
   });
 
@@ -62,11 +56,16 @@ export default function UsersPage() {
 
   const inviteMutation = useMutation({
     mutationFn: () => usersApi.invite(inviteForm, token!),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setInviteModal(false);
       setInviteForm({ email: "", full_name: "", role: "CONTRIBUTOR" });
       setInviteError(null);
+      setTempPasswordModal({
+        name: result.user.full_name,
+        email: result.user.email,
+        password: result.temporary_password,
+      });
     },
     onError: (err) => setInviteError(err instanceof Error ? err.message : "Failed to invite user."),
   });
@@ -87,7 +86,7 @@ export default function UsersPage() {
         <div>
           <h1 className="font-display text-xl font-bold text-slate-900">Users</h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            {data?.total ?? MOCK_USERS.length} members in your organization
+            {data?.total ?? 0} members in your organization
           </p>
         </div>
         <button
@@ -263,6 +262,38 @@ export default function UsersPage() {
                 className="text-slate-500 hover:text-slate-700 text-sm transition-colors"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Temporary Password Modal */}
+      {tempPasswordModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white w-full max-w-md border border-slate-200 shadow-xl">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="font-display font-semibold text-slate-900">User Created</h2>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-sm text-slate-600">
+                <strong>{tempPasswordModal.name}</strong> ({tempPasswordModal.email}) has been added to your organization.
+                Share these credentials securely — the user should change their password after first login.
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded px-4 py-3">
+                <p className="text-xs text-slate-500 mb-1">Temporary password</p>
+                <p className="font-mono text-sm font-semibold text-slate-900 select-all">{tempPasswordModal.password}</p>
+              </div>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2">
+                Copy this password now — it will not be shown again.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100">
+              <button
+                onClick={() => setTempPasswordModal(null)}
+                className="bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold font-display px-5 py-2 transition-colors"
+              >
+                Done
               </button>
             </div>
           </div>

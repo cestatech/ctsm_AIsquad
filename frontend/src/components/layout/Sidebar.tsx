@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { authApi } from "@/lib/api/auth";
+import { notificationsApi } from "@/lib/api/notifications";
+import type { Notification } from "@/types";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", alwaysShow: true, group: "main" },
@@ -31,8 +35,27 @@ const INTELLIGENCE_NAV_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, role, clearAuth } = useAuthStore();
+  const { user, role, token, clearAuth } = useAuthStore();
   const perms = usePermissions(role);
+  const queryClient = useQueryClient();
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  const { data: notifData } = useQuery({
+    queryKey: ["notifications-count", token],
+    queryFn: () => notificationsApi.list({ unread_only: true, page_size: 10 }, token!),
+    enabled: !!token,
+    refetchInterval: 30_000,
+  });
+
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => notificationsApi.markRead(id, token!),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications-count"] }),
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => notificationsApi.markAllRead(token!),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications-count"] }),
+  });
 
   async function handleLogout() {
     await authApi.logout().catch(() => null);
@@ -41,6 +64,9 @@ export function Sidebar() {
   }
 
   if (!user) return null;
+
+  const unreadCount = notifData?.unread_count ?? 0;
+  const notifications: Notification[] = notifData?.items ?? [];
 
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (item.alwaysShow) return true;
@@ -125,8 +151,59 @@ export function Sidebar() {
         </div>
       </nav>
 
-      <div className="px-3 py-4 border-t border-white/10">
-        <div className="flex items-center gap-3 px-3 py-2 mb-1">
+      <div className="px-3 py-4 border-t border-white/10 space-y-1">
+        {/* Notification bell */}
+        <div className="relative">
+          <button
+            onClick={() => setNotifOpen((v) => !v)}
+            className="w-full flex items-center justify-between px-3 py-2 text-slate-400 hover:text-white text-xs hover:bg-white/5 transition-colors rounded-sm"
+          >
+            <span>Notifications</span>
+            {unreadCount > 0 && (
+              <span className="bg-brand-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {notifOpen && (
+            <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-slate-200 shadow-xl z-50 max-h-80 flex flex-col">
+              <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-700">Notifications</span>
+                {unreadCount > 0 && (
+                  <button
+                    onClick={() => markAllReadMutation.mutate()}
+                    disabled={markAllReadMutation.isPending}
+                    className="text-[10px] text-brand-600 hover:text-brand-700 font-medium disabled:opacity-40"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              <div className="overflow-y-auto flex-1">
+                {notifications.length === 0 ? (
+                  <p className="text-xs text-slate-400 px-3 py-4 text-center">No unread notifications.</p>
+                ) : (
+                  notifications.map((n) => (
+                    <button
+                      key={n.id}
+                      onClick={() => markReadMutation.mutate(n.id)}
+                      className="w-full text-left px-3 py-2.5 border-b border-slate-50 hover:bg-slate-50 transition-colors"
+                    >
+                      <p className="text-xs font-medium text-slate-800 leading-tight">{n.title}</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{n.body}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {new Date(n.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-7 h-7 bg-brand-600 flex items-center justify-center flex-shrink-0 rounded-sm">
             <span className="text-white text-xs font-semibold font-display">{initials}</span>
           </div>

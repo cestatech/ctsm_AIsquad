@@ -32,5 +32,5 @@ export const usersApi = {
     apiClient.post<User>(`/users/${id}/activate`, { token }),
 
   invite: (body: { email: string; full_name: string; role?: string }, token: string) =>
-    apiClient.post<User>("/users/invite", { body, token }),
+    apiClient.post<{ user: User; temporary_password: string }>("/users/invite", { body, token }),
 };

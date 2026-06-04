@@ -16,8 +16,10 @@ from app.core.permissions import Permission, check_permission
 from app.models.artifact import Artifact, ArtifactStatus, ArtifactType, ArtifactVersion
 from app.models.audit import AuditAction
 from app.models.user import User
+from app.models.notification import NotificationType
 from app.repositories.artifact_repository import ArtifactRepository
 from app.services.audit_service import AuditService
+from app.services.notification_service import NotificationService
 
 
 class ArtifactService:
@@ -27,6 +29,7 @@ class ArtifactService:
         self._db = db
         self._repo = ArtifactRepository(db)
         self._audit = AuditService(db)
+        self._notify = NotificationService(db)
 
     async def create_artifact(
         self,
@@ -159,13 +162,23 @@ class ArtifactService:
     ) -> Artifact:
         """Transition artifact from DRAFT to IN_REVIEW."""
         check_permission(user, Permission.ARTIFACT_SUBMIT)
-        return await self._transition(
+        artifact = await self._transition(
             artifact_id,
             organization_id,
             user,
             ArtifactStatus.IN_REVIEW,
             AuditAction.ARTIFACT_SUBMITTED,
         )
+        await self._notify.create(
+            organization_id=organization_id,
+            recipient_id=artifact.created_by_id,
+            notification_type=NotificationType.ARTIFACT_SUBMITTED,
+            title="Artifact submitted for review",
+            body=f'"{artifact.name}" has been submitted for review.',
+            resource_type="artifact",
+            resource_id=artifact.id,
+        )
+        return artifact
 
     async def approve(
         self,
@@ -185,6 +198,15 @@ class ArtifactService:
             metadata={"comments": comments},
         )
         await self._create_approval_record(artifact, user, "APPROVED", comments)
+        await self._notify.create(
+            organization_id=organization_id,
+            recipient_id=artifact.created_by_id,
+            notification_type=NotificationType.ARTIFACT_APPROVED,
+            title="Artifact approved",
+            body=f'"{artifact.name}" has been approved by {user.full_name}.',
+            resource_type="artifact",
+            resource_id=artifact.id,
+        )
         return artifact
 
     async def reject(
@@ -205,6 +227,15 @@ class ArtifactService:
             metadata={"comments": comments},
         )
         await self._create_approval_record(artifact, user, "REJECTED", comments)
+        await self._notify.create(
+            organization_id=organization_id,
+            recipient_id=artifact.created_by_id,
+            notification_type=NotificationType.ARTIFACT_REJECTED,
+            title="Artifact rejected",
+            body=f'"{artifact.name}" was rejected by {user.full_name}. Reason: {comments}',
+            resource_type="artifact",
+            resource_id=artifact.id,
+        )
         return artifact
 
     async def amend(

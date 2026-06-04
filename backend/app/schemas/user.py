@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserResponse(BaseModel):
@@ -16,6 +16,7 @@ class UserResponse(BaseModel):
     organization_id: UUID
     is_active: bool
     is_system_admin: bool
+    last_login_at: datetime | None
     created_at: datetime
 
 
@@ -34,6 +35,21 @@ class UserListResponse(BaseModel):
     page_size: int
     has_next: bool
     has_prev: bool
+
+
+class UserInviteRequest(BaseModel):
+    """Request body for inviting a new organization member."""
+
+    email: EmailStr
+    full_name: str = Field(min_length=1, max_length=255)
+    role: str = Field(default="CONTRIBUTOR", pattern="^(ADMIN|CONTRIBUTOR|REVIEWER)$")
+
+
+class UserInviteResponse(BaseModel):
+    """Response after inviting a user; includes temp password until email service is ready."""
+
+    user: UserResponse
+    temporary_password: str
 
 
 class AuthResponse(BaseModel):
