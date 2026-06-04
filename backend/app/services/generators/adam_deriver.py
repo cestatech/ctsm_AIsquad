@@ -54,7 +54,9 @@ class ADaMDerivationGenerator(BaseGenerator):
     def _artifact_name(self, study_name: str) -> str:
         return f"{study_name} — ADaM Derivation Specification v1.0"
 
-    async def _build_content(self, job: GenerationJob, study: object, model_id: str) -> dict:
+    async def _build_content(
+        self, job: GenerationJob, study: object, model_id: str
+    ) -> dict:
         ctx = job.input_context or {}
         user_prompt = f"""Generate an ADaM derivation specification for the following clinical trial.
 
@@ -73,5 +75,10 @@ ADaM datasets to create:
 Include full derivation algorithms, population flags, and analysis variable definitions.
 Return only valid JSON."""
 
-        text = await self._call_claude(system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id, max_tokens=6000)
+        text = await self._call_claude(
+            system_prompt=_SYSTEM,
+            user_prompt=user_prompt,
+            model_id=model_id,
+            max_tokens=6000,
+        )
         return self._parse_json_response(text)

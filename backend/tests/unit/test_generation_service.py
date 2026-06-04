@@ -23,6 +23,7 @@ from app.services.generation_service import GenerationService
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_db():
     return AsyncMock()
@@ -69,11 +70,14 @@ def _create_body(study_id=None):
 # create_job — RBAC
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 class TestCreateJobRBAC:
     async def test_admin_can_create_job(self, svc):
         actor = _make_actor(Role.ADMIN)
-        svc._repo.create = AsyncMock(return_value=_make_job(organization_id=actor.organization_id))
+        svc._repo.create = AsyncMock(
+            return_value=_make_job(organization_id=actor.organization_id)
+        )
 
         result = await svc.create_job(body=_create_body(), actor=actor)
 
@@ -81,7 +85,9 @@ class TestCreateJobRBAC:
 
     async def test_contributor_can_create_job(self, svc):
         actor = _make_actor(Role.CONTRIBUTOR)
-        svc._repo.create = AsyncMock(return_value=_make_job(organization_id=actor.organization_id))
+        svc._repo.create = AsyncMock(
+            return_value=_make_job(organization_id=actor.organization_id)
+        )
 
         result = await svc.create_job(body=_create_body(), actor=actor)
 
@@ -101,6 +107,7 @@ class TestCreateJobRBAC:
 # ---------------------------------------------------------------------------
 # create_job — CIP compliance
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 class TestCreateJobCIP:
@@ -128,8 +135,12 @@ class TestCreateJobCIP:
         actor = _make_actor(Role.ADMIN)
         call_order = []
 
-        svc._repo.create = AsyncMock(side_effect=lambda **kw: (call_order.append("create"), _make_job())[1])
-        svc._ai_decision.complete_decision = AsyncMock(side_effect=lambda **kw: call_order.append("complete"))
+        svc._repo.create = AsyncMock(
+            side_effect=lambda **kw: (call_order.append("create"), _make_job())[1]
+        )
+        svc._ai_decision.complete_decision = AsyncMock(
+            side_effect=lambda **kw: call_order.append("complete")
+        )
 
         await svc.create_job(body=_create_body(), actor=actor)
 
@@ -158,6 +169,7 @@ class TestCreateJobCIP:
 # get
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 class TestGet:
     async def test_delegates_to_repo(self, svc):
@@ -172,6 +184,7 @@ class TestGet:
 # ---------------------------------------------------------------------------
 # list
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 class TestList:

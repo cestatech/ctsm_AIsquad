@@ -21,6 +21,7 @@ from app.services.validation_service import ValidationService
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_db():
     return AsyncMock()
@@ -56,6 +57,7 @@ def _make_run(**kwargs):
 # trigger
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 class TestTrigger:
     async def test_admin_can_trigger(self, svc):
@@ -64,7 +66,9 @@ class TestTrigger:
         svc._artifact_repo.get_by_id = AsyncMock(return_value=MagicMock())
         svc._repo.create = AsyncMock(return_value=_make_run(artifact_id=artifact_id))
 
-        body = ValidationRunCreate(artifact_id=artifact_id, artifact_version_id=version_id)
+        body = ValidationRunCreate(
+            artifact_id=artifact_id, artifact_version_id=version_id
+        )
         result = await svc.trigger(body=body, actor=actor)
 
         svc._repo.create.assert_called_once()
@@ -77,7 +81,9 @@ class TestTrigger:
         svc._artifact_repo.get_by_id = AsyncMock(return_value=MagicMock())
         svc._repo.create = AsyncMock(return_value=_make_run(artifact_id=artifact_id))
 
-        body = ValidationRunCreate(artifact_id=artifact_id, artifact_version_id=version_id)
+        body = ValidationRunCreate(
+            artifact_id=artifact_id, artifact_version_id=version_id
+        )
         result = await svc.trigger(body=body, actor=actor)
 
         assert result is not None
@@ -90,7 +96,9 @@ class TestTrigger:
         svc._artifact_repo.get_by_id = AsyncMock(return_value=MagicMock())
         svc._repo.create = AsyncMock(return_value=_make_run(artifact_id=artifact_id))
 
-        body = ValidationRunCreate(artifact_id=artifact_id, artifact_version_id=version_id)
+        body = ValidationRunCreate(
+            artifact_id=artifact_id, artifact_version_id=version_id
+        )
         result = await svc.trigger(body=body, actor=actor)
 
         assert result is not None
@@ -102,18 +110,26 @@ class TestTrigger:
         svc._artifact_repo.get_by_id = AsyncMock(return_value=MagicMock())
         svc._repo.create = AsyncMock(return_value=_make_run(artifact_id=artifact_id))
 
-        body = ValidationRunCreate(artifact_id=artifact_id, artifact_version_id=version_id)
+        body = ValidationRunCreate(
+            artifact_id=artifact_id, artifact_version_id=version_id
+        )
         await svc.trigger(body=body, actor=actor)
 
-        svc._artifact_repo.get_by_id.assert_called_once_with(artifact_id, actor.organization_id)
+        svc._artifact_repo.get_by_id.assert_called_once_with(
+            artifact_id, actor.organization_id
+        )
 
     async def test_run_created_with_pending_status(self, svc):
         actor = _make_actor(Role.ADMIN)
         artifact_id, version_id = uuid4(), uuid4()
         svc._artifact_repo.get_by_id = AsyncMock(return_value=MagicMock())
-        svc._repo.create = AsyncMock(return_value=_make_run(status=ValidationStatus.PENDING))
+        svc._repo.create = AsyncMock(
+            return_value=_make_run(status=ValidationStatus.PENDING)
+        )
 
-        body = ValidationRunCreate(artifact_id=artifact_id, artifact_version_id=version_id)
+        body = ValidationRunCreate(
+            artifact_id=artifact_id, artifact_version_id=version_id
+        )
         await svc.trigger(body=body, actor=actor)
 
         call_kwargs = svc._repo.create.call_args.kwargs
@@ -123,6 +139,7 @@ class TestTrigger:
 # ---------------------------------------------------------------------------
 # get
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 class TestGet:
@@ -140,6 +157,7 @@ class TestGet:
 # ---------------------------------------------------------------------------
 # list
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 class TestList:

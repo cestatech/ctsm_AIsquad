@@ -21,6 +21,7 @@ from app.services.comment_service import CommentService
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_db():
     return AsyncMock()
@@ -67,11 +68,14 @@ def _make_comment(author_id, artifact_id, is_resolved=False):
 # create
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 class TestCreate:
     async def test_creates_without_parent(self, svc, contributor):
         artifact_id = uuid4()
-        svc._repo.create = AsyncMock(return_value=MagicMock(id=uuid4(), artifact_id=artifact_id))
+        svc._repo.create = AsyncMock(
+            return_value=MagicMock(id=uuid4(), artifact_id=artifact_id)
+        )
 
         body = CommentCreate(artifact_id=artifact_id, body="Hello")
         result = await svc.create(body=body, actor=contributor)
@@ -85,7 +89,9 @@ class TestCreate:
         parent = MagicMock()
         parent.artifact_id = artifact_id
         svc._repo.get_by_id = AsyncMock(return_value=parent)
-        svc._repo.create = AsyncMock(return_value=MagicMock(id=uuid4(), artifact_id=artifact_id))
+        svc._repo.create = AsyncMock(
+            return_value=MagicMock(id=uuid4(), artifact_id=artifact_id)
+        )
 
         body = CommentCreate(artifact_id=artifact_id, body="Reply", parent_id=uuid4())
         await svc.create(body=body, actor=contributor)
@@ -105,7 +111,9 @@ class TestCreate:
 
     async def test_audit_log_recorded(self, svc, contributor):
         artifact_id = uuid4()
-        svc._repo.create = AsyncMock(return_value=MagicMock(id=uuid4(), artifact_id=artifact_id))
+        svc._repo.create = AsyncMock(
+            return_value=MagicMock(id=uuid4(), artifact_id=artifact_id)
+        )
 
         body = CommentCreate(artifact_id=artifact_id, body="Audit test")
         await svc.create(body=body, actor=contributor)
@@ -116,6 +124,7 @@ class TestCreate:
 # ---------------------------------------------------------------------------
 # update
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 class TestUpdate:
@@ -144,7 +153,9 @@ class TestUpdate:
         svc._repo.get_by_id = AsyncMock(return_value=comment)
 
         with pytest.raises(HTTPException) as exc:
-            await svc.update(comment.id, CommentUpdate(body="edit resolved"), contributor)
+            await svc.update(
+                comment.id, CommentUpdate(body="edit resolved"), contributor
+            )
 
         assert exc.value.status_code == 422
         assert exc.value.detail["code"] == "COMMENT_RESOLVED"
@@ -153,6 +164,7 @@ class TestUpdate:
 # ---------------------------------------------------------------------------
 # resolve
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 class TestResolve:
@@ -180,6 +192,7 @@ class TestResolve:
 # ---------------------------------------------------------------------------
 # delete
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 class TestDelete:

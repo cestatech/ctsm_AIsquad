@@ -61,7 +61,9 @@ class ProtocolGenerator(BaseGenerator):
     def _artifact_name(self, study_name: str) -> str:
         return f"{study_name} — Clinical Trial Protocol v1.0"
 
-    async def _build_content(self, job: GenerationJob, study: object, model_id: str) -> dict:
+    async def _build_content(
+        self, job: GenerationJob, study: object, model_id: str
+    ) -> dict:
         ctx = job.input_context or {}
         user_prompt = f"""Generate a complete clinical trial protocol for the following study.
 
@@ -78,5 +80,7 @@ Study details:
 
 Return only valid JSON matching the required schema."""
 
-        text = await self._call_claude(system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id)
+        text = await self._call_claude(
+            system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id
+        )
         return self._parse_json_response(text)

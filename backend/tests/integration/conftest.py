@@ -30,6 +30,7 @@ from app.models.user import User
 # Session and client
 # ---------------------------------------------------------------------------
 
+
 @pytest_asyncio.fixture
 async def idb(test_engine) -> AsyncGenerator[AsyncSession, None]:
     """Committed integration-test session. Data persists until session teardown."""
@@ -56,6 +57,7 @@ async def iclient(test_engine) -> AsyncGenerator[AsyncClient, None]:
 # ---------------------------------------------------------------------------
 # Domain fixtures  (all committed to test DB)
 # ---------------------------------------------------------------------------
+
 
 @pytest_asyncio.fixture
 async def i_org(idb: AsyncSession) -> Organization:
@@ -139,7 +141,9 @@ async def i_artifact(
     await idb.flush()
 
     content: dict = {"title": "Integration Protocol"}
-    content_hash = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
+    content_hash = hashlib.sha256(
+        json.dumps(content, sort_keys=True).encode()
+    ).hexdigest()
     version = ArtifactVersion(
         id=uuid4(),
         artifact_id=artifact.id,
@@ -165,6 +169,7 @@ async def i_artifact(
 # ---------------------------------------------------------------------------
 # Token helpers
 # ---------------------------------------------------------------------------
+
 
 def make_token(user: User) -> str:
     return create_access_token(

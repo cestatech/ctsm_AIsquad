@@ -89,9 +89,7 @@ class TestListValidationRuns:
         resp = await iclient.get("/api/v1/validation/runs")
         assert resp.status_code == 401
 
-    async def test_returns_paginated_list(
-        self, iclient: AsyncClient, admin_tok: str
-    ):
+    async def test_returns_paginated_list(self, iclient: AsyncClient, admin_tok: str):
         resp = await iclient.get(
             "/api/v1/validation/runs",
             headers={"Authorization": f"Bearer {admin_tok}"},

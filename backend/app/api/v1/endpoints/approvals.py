@@ -27,7 +27,9 @@ from app.services.artifact_service import ArtifactService
 router = APIRouter()
 
 
-@router.get("/queue", response_model=ApprovalQueueResponse, summary="Artifacts pending review")
+@router.get(
+    "/queue", response_model=ApprovalQueueResponse, summary="Artifacts pending review"
+)
 async def get_queue(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),

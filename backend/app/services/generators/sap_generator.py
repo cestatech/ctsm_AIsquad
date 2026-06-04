@@ -66,7 +66,9 @@ class SAPGenerator(BaseGenerator):
     def _artifact_name(self, study_name: str) -> str:
         return f"{study_name} — Statistical Analysis Plan v1.0"
 
-    async def _build_content(self, job: GenerationJob, study: object, model_id: str) -> dict:
+    async def _build_content(
+        self, job: GenerationJob, study: object, model_id: str
+    ) -> dict:
         ctx = job.input_context or {}
         user_prompt = f"""Generate a Statistical Analysis Plan for the following clinical trial.
 
@@ -84,5 +86,7 @@ Study details:
 
 Return only valid JSON."""
 
-        text = await self._call_claude(system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id)
+        text = await self._call_claude(
+            system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id
+        )
         return self._parse_json_response(text)

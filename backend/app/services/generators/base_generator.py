@@ -82,7 +82,9 @@ class BaseGenerator(ABC):
                 input_context=job.input_context,
             )
 
-            content = await self._build_content(job=job, study=study, model_id=job.model_id)
+            content = await self._build_content(
+                job=job, study=study, model_id=job.model_id
+            )
 
             # Create DRAFT artifact
             artifact = await self._artifact_svc.create_artifact(
@@ -105,7 +107,10 @@ class BaseGenerator(ABC):
                 label=artifact.name,
                 study_id=job.study_id,
                 description=artifact.description,
-                properties={"artifact_type": self.ARTIFACT_TYPE.value, "status": "DRAFT"},
+                properties={
+                    "artifact_type": self.ARTIFACT_TYPE.value,
+                    "status": "DRAFT",
+                },
                 actor_agent_id=self.AGENT_NAME,
             )
 
@@ -147,7 +152,10 @@ class BaseGenerator(ABC):
             # CIP: complete decision
             await self._ai_decision_svc.complete_decision(
                 decision=decision,
-                output={"artifact_id": str(artifact.id), "artifact_type": self.ARTIFACT_TYPE.value},
+                output={
+                    "artifact_id": str(artifact.id),
+                    "artifact_type": self.ARTIFACT_TYPE.value,
+                },
                 reasoning=f"Generated {self.ARTIFACT_TYPE.value} document for study '{study.name}'",
                 confidence=0.9,
                 output_artifact_ids=[artifact.id],

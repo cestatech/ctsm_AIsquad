@@ -48,7 +48,9 @@ class SDTMMappingGenerator(BaseGenerator):
     def _artifact_name(self, study_name: str) -> str:
         return f"{study_name} — SDTM Mapping Specification v1.0"
 
-    async def _build_content(self, job: GenerationJob, study: object, model_id: str) -> dict:
+    async def _build_content(
+        self, job: GenerationJob, study: object, model_id: str
+    ) -> dict:
         ctx = job.input_context or {}
         ecrf_fields = ctx.get("ecrf_fields", [])
         user_prompt = f"""Generate an SDTM mapping specification for the following clinical trial.
@@ -69,5 +71,10 @@ CDISC domains to include:
 Generate complete variable-level mappings for each domain including transformation logic.
 Return only valid JSON."""
 
-        text = await self._call_claude(system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id, max_tokens=6000)
+        text = await self._call_claude(
+            system_prompt=_SYSTEM,
+            user_prompt=user_prompt,
+            model_id=model_id,
+            max_tokens=6000,
+        )
         return self._parse_json_response(text)

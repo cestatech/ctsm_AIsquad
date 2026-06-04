@@ -47,7 +47,9 @@ class ICFGenerator(BaseGenerator):
     def _artifact_name(self, study_name: str) -> str:
         return f"{study_name} — Informed Consent Form v1.0"
 
-    async def _build_content(self, job: GenerationJob, study: object, model_id: str) -> dict:
+    async def _build_content(
+        self, job: GenerationJob, study: object, model_id: str
+    ) -> dict:
         ctx = job.input_context or {}
         user_prompt = f"""Generate an Informed Consent Form for the following clinical trial.
 
@@ -64,5 +66,7 @@ Study details:
 
 Write in plain language at an 8th-grade reading level. Return only valid JSON."""
 
-        text = await self._call_claude(system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id)
+        text = await self._call_claude(
+            system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id
+        )
         return self._parse_json_response(text)

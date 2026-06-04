@@ -72,7 +72,10 @@ class CommentService:
             organization_id=actor.organization_id,
             actor_user_id=actor.id,
             resource_id=comment.id,
-            after_state={"artifact_id": str(body.artifact_id), "body_length": len(body.body)},
+            after_state={
+                "artifact_id": str(body.artifact_id),
+                "body_length": len(body.body),
+            },
             ip_address=ip_address,
             user_agent=user_agent,
         )
@@ -132,7 +135,10 @@ class CommentService:
         if comment.is_resolved:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "ALREADY_RESOLVED", "message": "Comment is already resolved."},
+                detail={
+                    "code": "ALREADY_RESOLVED",
+                    "message": "Comment is already resolved.",
+                },
             )
 
         comment.is_resolved = True

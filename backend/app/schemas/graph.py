@@ -94,6 +94,7 @@ class CreateEdgeRequest(BaseModel):
 # Traceability gap detection
 # ---------------------------------------------------------------------------
 
+
 class TraceabilityGapItem(BaseModel):
     node_id: UUID
     node_label: str

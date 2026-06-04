@@ -63,7 +63,11 @@ async def execute_generation_job(job_id: UUID, organization_id: UUID) -> None:
                 return
 
             if job.status != GenerationJobStatus.PENDING:
-                log.warning("execute_generation_job: job %s already in status %s", job_id, job.status)
+                log.warning(
+                    "execute_generation_job: job %s already in status %s",
+                    job_id,
+                    job.status,
+                )
                 return
 
             # Load the actor (user who triggered the job)
@@ -72,14 +76,19 @@ async def execute_generation_job(job_id: UUID, organization_id: UUID) -> None:
             )
             actor = user_result.scalar_one_or_none()
             if actor is None:
-                log.error("execute_generation_job: actor user %s not found", job.triggered_by_id)
+                log.error(
+                    "execute_generation_job: actor user %s not found",
+                    job.triggered_by_id,
+                )
                 return
 
             # Dispatch to the correct generator
             generator_cls = _GENERATOR_MAP.get(job.artifact_type)
             if generator_cls is None:
                 job.status = GenerationJobStatus.FAILED
-                job.error_message = f"No generator available for artifact type: {job.artifact_type}"
+                job.error_message = (
+                    f"No generator available for artifact type: {job.artifact_type}"
+                )
                 await db.commit()
                 return
 
@@ -98,7 +107,12 @@ async def execute_generation_job(job_id: UUID, organization_id: UUID) -> None:
                     failed_job = err_result.scalar_one_or_none()
                     if failed_job and failed_job.status == GenerationJobStatus.RUNNING:
                         failed_job.status = GenerationJobStatus.FAILED
-                        failed_job.error_message = "Internal executor error — check server logs"
+                        failed_job.error_message = (
+                            "Internal executor error — check server logs"
+                        )
                         await error_db.commit()
             except Exception:
-                log.exception("execute_generation_job: could not write FAILED status for job %s", job_id)
+                log.exception(
+                    "execute_generation_job: could not write FAILED status for job %s",
+                    job_id,
+                )

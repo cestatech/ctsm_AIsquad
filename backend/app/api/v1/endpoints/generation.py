@@ -53,7 +53,9 @@ async def create_generation_job(
     return GenerationJobResponse.model_validate(job)
 
 
-@router.get("/jobs", response_model=GenerationJobListResponse, summary="List generation jobs")
+@router.get(
+    "/jobs", response_model=GenerationJobListResponse, summary="List generation jobs"
+)
 async def list_generation_jobs(
     study_id: UUID | None = Query(None),
     page: int = Query(1, ge=1),

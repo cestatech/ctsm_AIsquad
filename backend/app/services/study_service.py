@@ -223,7 +223,10 @@ class StudyService:
         if study.status == StudyStatus.ARCHIVED:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "ALREADY_ARCHIVED", "message": "Study is already archived."},
+                detail={
+                    "code": "ALREADY_ARCHIVED",
+                    "message": "Study is already archived.",
+                },
             )
 
         before = study.to_audit_dict()
@@ -278,7 +281,10 @@ class StudyService:
         if existing is not None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={"code": "ALREADY_MEMBER", "message": "User is already a member of this study."},
+                detail={
+                    "code": "ALREADY_MEMBER",
+                    "message": "User is already a member of this study.",
+                },
             )
 
         member = StudyMember(

@@ -51,7 +51,8 @@ async def execute_validation_run(run_id: UUID, organization_id: UUID) -> None:
             if run.status != ValidationStatus.PENDING:
                 log.warning(
                     "execute_validation_run: run %s already in status %s",
-                    run_id, run.status,
+                    run_id,
+                    run.status,
                 )
                 return
 
@@ -70,7 +71,9 @@ async def execute_validation_run(run_id: UUID, organization_id: UUID) -> None:
             if version is None:
                 run.status = ValidationStatus.ERROR
                 run.completed_at = datetime.now(UTC)
-                run.results = {"error": f"Artifact version {run.artifact_version_id} not found"}
+                run.results = {
+                    "error": f"Artifact version {run.artifact_version_id} not found"
+                }
                 await db.commit()
                 return
 
@@ -78,6 +81,7 @@ async def execute_validation_run(run_id: UUID, organization_id: UUID) -> None:
             if run.engine == "internal":
                 # Determine artifact type from the artifact relationship
                 from app.models.artifact import Artifact
+
                 artifact_result = await db.execute(
                     select(Artifact).where(Artifact.id == run.artifact_id)
                 )
@@ -95,7 +99,9 @@ async def execute_validation_run(run_id: UUID, organization_id: UUID) -> None:
                 run.failed_checks = engine_results.get("failed_checks", 0)
                 run.warnings = engine_results.get("warning_count", 0)
                 run.results = engine_results
-                run.status = ValidationStatus.FAILED if has_errors else ValidationStatus.PASSED
+                run.status = (
+                    ValidationStatus.FAILED if has_errors else ValidationStatus.PASSED
+                )
 
             elif run.engine == "pinnacle21":
                 # External integration — stub result
@@ -118,7 +124,10 @@ async def execute_validation_run(run_id: UUID, organization_id: UUID) -> None:
             await db.commit()
             log.info(
                 "execute_validation_run: run %s completed with status %s (%s/%s checks passed)",
-                run_id, run.status, run.passed_checks, run.total_checks,
+                run_id,
+                run.status,
+                run.passed_checks,
+                run.total_checks,
             )
 
         except Exception:
@@ -138,5 +147,6 @@ async def execute_validation_run(run_id: UUID, organization_id: UUID) -> None:
                         await error_db.commit()
             except Exception:
                 log.exception(
-                    "execute_validation_run: could not write ERROR status for run %s", run_id
+                    "execute_validation_run: could not write ERROR status for run %s",
+                    run_id,
                 )

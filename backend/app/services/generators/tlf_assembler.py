@@ -70,7 +70,9 @@ class TLFAssembler(BaseGenerator):
     def _artifact_name(self, study_name: str) -> str:
         return f"{study_name} — TLF Specification v1.0"
 
-    async def _build_content(self, job: GenerationJob, study: object, model_id: str) -> dict:
+    async def _build_content(
+        self, job: GenerationJob, study: object, model_id: str
+    ) -> dict:
         ctx = job.input_context or {}
         user_prompt = f"""Generate a complete TLF specification for the following clinical trial.
 
@@ -93,5 +95,10 @@ Generate comprehensive tables, listings, and figures covering:
 
 Return only valid JSON."""
 
-        text = await self._call_claude(system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id, max_tokens=6000)
+        text = await self._call_claude(
+            system_prompt=_SYSTEM,
+            user_prompt=user_prompt,
+            model_id=model_id,
+            max_tokens=6000,
+        )
         return self._parse_json_response(text)

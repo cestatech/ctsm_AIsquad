@@ -79,7 +79,9 @@ class TraceabilityService:
         # Index edge targets → set of source node IDs for O(1) lookups
         target_to_sources: dict[UUID, set[UUID]] = {}
         for edge in edges:
-            target_to_sources.setdefault(edge.target_node_id, set()).add(edge.source_node_id)
+            target_to_sources.setdefault(edge.target_node_id, set()).add(
+                edge.source_node_id
+            )
 
         all_node_ids_by_type: dict[GraphNodeType, set[UUID]] = {
             t: {n.id for n in nodes_by_type.get(t, [])} for t in CHAIN

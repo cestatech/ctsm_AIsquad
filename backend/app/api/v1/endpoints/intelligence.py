@@ -36,8 +36,13 @@ from app.schemas.intelligence import (
     ValidationEvidenceResponse,
     WaiveFindingRequest,
 )
-from app.repositories.intelligence_repository import SyntheticDataRunRepository
-from app.schemas.intelligence import SyntheticDataRunListResponse, SyntheticDataRunResponse
+from app.repositories.intelligence_repository import (
+    SyntheticDataRepository as SyntheticDataRunRepository,
+)
+from app.schemas.intelligence import (
+    SyntheticDataRunListResponse,
+    SyntheticDataRunResponse,
+)
 from app.services.intelligence_service import (
     AIDecisionService,
     DataLineageService,

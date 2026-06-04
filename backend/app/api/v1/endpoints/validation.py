@@ -50,7 +50,9 @@ async def trigger_validation_run(
     return ValidationRunResponse.model_validate(run)
 
 
-@router.get("/runs", response_model=ValidationRunListResponse, summary="List validation runs")
+@router.get(
+    "/runs", response_model=ValidationRunListResponse, summary="List validation runs"
+)
 async def list_validation_runs(
     artifact_id: UUID | None = Query(None),
     page: int = Query(1, ge=1),
