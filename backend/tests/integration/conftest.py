@@ -1,12 +1,10 @@
 """Integration test fixtures.
 
-Uses the same test engine as the parent conftest but with committed sessions
-(not rolled-back) so API calls can see the data. The test DB is wiped at the
-end of the test session by the session-scoped test_engine fixture.
-
-All async fixtures carry loop_scope="session" so they execute on the same
-event loop as the session-scoped test_engine, preventing asyncpg's
-"Future attached to a different loop" error.
+All fixtures are session-scoped to match test_engine's scope, ensuring
+every fixture coroutine and test function runs on the same event loop that
+asyncpg's connection pool was bound to.  Data committed during setup
+persists for the full test session; tests are written to not require a
+clean DB between runs (unique UUIDs, ordered test classes).
 """
 
 from __future__ import annotations
@@ -17,6 +15,7 @@ from datetime import UTC, datetime
 from typing import AsyncGenerator
 from uuid import uuid4
 
+import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -31,21 +30,21 @@ from app.models.user import User
 
 
 # ---------------------------------------------------------------------------
-# Session and client
+# Session and client  (scope="session" matches test_engine)
 # ---------------------------------------------------------------------------
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def idb(test_engine) -> AsyncGenerator[AsyncSession, None]:
-    """Committed integration-test session. Runs in the session event loop."""
+    """Single committed session for the full test session."""
     factory = async_sessionmaker(test_engine, expire_on_commit=False)
     async with factory() as session:
         yield session
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def iclient(test_engine) -> AsyncGenerator[AsyncClient, None]:
-    """HTTP client whose DB sessions use the test engine."""
+    """HTTP client whose get_db override uses the test engine."""
     factory = async_sessionmaker(test_engine, expire_on_commit=False)
 
     async def _override():
@@ -59,11 +58,11 @@ async def iclient(test_engine) -> AsyncGenerator[AsyncClient, None]:
 
 
 # ---------------------------------------------------------------------------
-# Domain fixtures  (all committed to test DB)
+# Domain fixtures  (session-scoped, committed once)
 # ---------------------------------------------------------------------------
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def i_org(idb: AsyncSession) -> Organization:
     org = Organization(
         id=uuid4(),
@@ -77,7 +76,7 @@ async def i_org(idb: AsyncSession) -> Organization:
     return org
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def i_admin(idb: AsyncSession, i_org: Organization) -> User:
     user = User(
         id=uuid4(),
@@ -94,7 +93,7 @@ async def i_admin(idb: AsyncSession, i_org: Organization) -> User:
     return user
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def i_contributor(idb: AsyncSession, i_org: Organization) -> User:
     user = User(
         id=uuid4(),
@@ -111,7 +110,7 @@ async def i_contributor(idb: AsyncSession, i_org: Organization) -> User:
     return user
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def i_study(idb: AsyncSession, i_org: Organization, i_admin: User) -> Study:
     study = Study(
         id=uuid4(),
@@ -127,7 +126,7 @@ async def i_study(idb: AsyncSession, i_org: Organization, i_admin: User) -> Stud
     return study
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def i_artifact(
     idb: AsyncSession, i_org: Organization, i_study: Study, i_admin: User
 ) -> Artifact:
@@ -171,7 +170,7 @@ async def i_artifact(
 
 
 # ---------------------------------------------------------------------------
-# Token helpers
+# Token helpers  (sync — tokens are plain strings, no async needed)
 # ---------------------------------------------------------------------------
 
 
@@ -183,11 +182,11 @@ def make_token(user: User) -> str:
     )
 
 
-@pytest_asyncio.fixture(loop_scope="session")
-async def admin_tok(i_admin: User) -> str:
+@pytest.fixture(scope="session")
+def admin_tok(i_admin: User) -> str:
     return make_token(i_admin)
 
 
-@pytest_asyncio.fixture(loop_scope="session")
-async def contributor_tok(i_contributor: User) -> str:
+@pytest.fixture(scope="session")
+def contributor_tok(i_contributor: User) -> str:
     return make_token(i_contributor)
