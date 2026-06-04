@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { artifactsApi } from "@/lib/api/artifacts";
-import { MOCK_ARTIFACTS, MOCK_ARTIFACT_VERSIONS, MOCK_USERS } from "@/lib/mockData";
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600",
@@ -22,25 +21,13 @@ export default function VersionHistoryPage({ params }: { params: { id: string; a
 
   const { data: artifact } = useQuery({
     queryKey: ["artifact", artifactId, token],
-    queryFn: async () => {
-      try {
-        return await artifactsApi.get(artifactId, token!);
-      } catch {
-        return MOCK_ARTIFACTS.find((a) => a.id === artifactId) ?? MOCK_ARTIFACTS[0];
-      }
-    },
+    queryFn: () => artifactsApi.get(artifactId, token!),
     enabled: !!token,
   });
 
-  const { data: versions, isLoading } = useQuery({
+  const { data: versions, isLoading, isError } = useQuery({
     queryKey: ["artifact-versions", artifactId, token],
-    queryFn: async () => {
-      try {
-        return await artifactsApi.getVersions(artifactId, token!);
-      } catch {
-        return MOCK_ARTIFACT_VERSIONS.filter((v) => v.artifact_id === artifactId);
-      }
-    },
+    queryFn: () => artifactsApi.getVersions(artifactId, token!),
     enabled: !!token,
   });
 
@@ -66,6 +53,8 @@ export default function VersionHistoryPage({ params }: { params: { id: string; a
       <div className="px-8 py-6 max-w-3xl">
         {isLoading ? (
           <div className="text-center text-slate-400 text-sm py-10">Loading versions…</div>
+        ) : isError ? (
+          <div className="text-center text-red-400 text-sm py-10">Failed to load version history.</div>
         ) : sortedVersions.length === 0 ? (
           <div className="text-center text-slate-400 text-sm py-10">No versions recorded yet.</div>
         ) : (
@@ -75,8 +64,8 @@ export default function VersionHistoryPage({ params }: { params: { id: string; a
 
             <div className="space-y-0">
               {sortedVersions.map((version, index) => {
-                const creator = MOCK_USERS.find((u) => u.id === version.created_by_id) ?? MOCK_USERS[0];
                 const isCurrent = version.is_current;
+                const creatorName = version.creator?.full_name ?? `User ${version.created_by_id.slice(0, 8)}…`;
 
                 return (
                   <div key={version.id} className="relative pl-10 pb-6">
@@ -114,7 +103,7 @@ export default function VersionHistoryPage({ params }: { params: { id: string; a
                             </span>
                           </div>
                           <p className="text-xs text-slate-500">
-                            by {creator.full_name} ·{" "}
+                            by {creatorName} ·{" "}
                             {new Date(version.created_at).toLocaleString("en-US", {
                               month: "short",
                               day: "numeric",

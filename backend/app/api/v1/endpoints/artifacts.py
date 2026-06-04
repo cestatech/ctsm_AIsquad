@@ -19,7 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.repositories.artifact_repository import ArtifactRepository
-from app.schemas.artifact import ArtifactCreate, ArtifactListResponse, ArtifactResponse
+from app.schemas.artifact import (
+    ArtifactCreate,
+    ArtifactListResponse,
+    ArtifactResponse,
+    ArtifactUpdate,
+    ArtifactVersionResponse,
+)
 from app.services.artifact_service import ArtifactService
 
 router = APIRouter()
@@ -90,6 +96,45 @@ async def get_artifact(
     repo = ArtifactRepository(db)
     artifact = await repo.get_by_id(artifact_id, current_user.organization_id)
     return ArtifactResponse.model_validate(artifact)
+
+
+@router.patch(
+    "/{artifact_id}",
+    response_model=ArtifactResponse,
+    summary="Update artifact content",
+)
+async def update_artifact_content(
+    artifact_id: UUID,
+    body: ArtifactUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ArtifactResponse:
+    """Update content of a DRAFT or REJECTED artifact, creating a new version. Contributor or Admin."""
+    svc = ArtifactService(db)
+    artifact = await svc.update_artifact_content(
+        artifact_id=artifact_id,
+        organization_id=current_user.organization_id,
+        user=current_user,
+        content=body.content,
+        change_summary=body.change_summary,
+    )
+    return ArtifactResponse.model_validate(artifact)
+
+
+@router.get(
+    "/{artifact_id}/versions",
+    response_model=list[ArtifactVersionResponse],
+    summary="List artifact versions",
+)
+async def list_artifact_versions(
+    artifact_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[ArtifactVersionResponse]:
+    """Return all version snapshots for an artifact, oldest first."""
+    repo = ArtifactRepository(db)
+    versions = await repo.list_versions(artifact_id, current_user.organization_id)
+    return [ArtifactVersionResponse.model_validate(v) for v in versions]
 
 
 @router.post(

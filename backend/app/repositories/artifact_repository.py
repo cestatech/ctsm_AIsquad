@@ -147,6 +147,7 @@ class ArtifactRepository:
                 ArtifactVersion.artifact_id == artifact_id,
                 ArtifactVersion.organization_id == organization_id,
             )
+            .options(selectinload(ArtifactVersion.creator))
             .order_by(ArtifactVersion.version_number.asc())
         )
         return list(result.scalars().all())

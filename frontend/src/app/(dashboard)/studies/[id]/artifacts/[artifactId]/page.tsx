@@ -8,7 +8,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { approvalsApi } from "@/lib/api/approvals";
 import { commentsApi } from "@/lib/api/comments";
-import type { Artifact, Comment } from "@/types";
+import type { Artifact, ArtifactVersion, Comment } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600",
@@ -154,10 +154,37 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
   const [actionError, setActionError] = useState<string | null>(null);
   const [newComment, setNewComment] = useState("");
 
+  // Content editor state
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorContent, setEditorContent] = useState("");
+  const [editorSummary, setEditorSummary] = useState("");
+  const [editorError, setEditorError] = useState<string | null>(null);
+  const [editorJsonError, setEditorJsonError] = useState<string | null>(null);
+
   const { data: artifact, isLoading } = useQuery({
     queryKey: ["artifact", artifactId, token],
     queryFn: () => artifactsApi.get(artifactId, token!),
     enabled: !!token,
+  });
+
+  // Lazy-loaded versions (only fetched when editor opens)
+  const { data: versions, refetch: refetchVersions } = useQuery<ArtifactVersion[]>({
+    queryKey: ["artifact-versions", artifactId, token],
+    queryFn: () => artifactsApi.getVersions(artifactId, token!),
+    enabled: false,
+  });
+
+  const updateContentMutation = useMutation({
+    mutationFn: () =>
+      artifactsApi.update(artifactId, { content: JSON.parse(editorContent), change_summary: editorSummary || undefined }, token!),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["artifact", artifactId, token], updated);
+      queryClient.invalidateQueries({ queryKey: ["artifact-versions", artifactId] });
+      setEditorOpen(false);
+      setEditorSummary("");
+      setEditorError(null);
+    },
+    onError: (err) => setEditorError(err instanceof Error ? err.message : "Save failed."),
   });
 
   const { data: commentsData, refetch: refetchComments } = useQuery({
@@ -225,7 +252,21 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
     const actions: React.ReactNode[] = [];
     if (a.status === "DRAFT" && perms.canEditArtifact) {
       actions.push(
-        <ActionButton key="edit" label="Edit" onClick={() => alert("Edit flow — content editor coming in a future release.")} />
+        <ActionButton
+          key="edit"
+          label="Edit Content"
+          onClick={async () => {
+            setEditorError(null);
+            setEditorJsonError(null);
+            setEditorSummary("");
+            // fetch versions to get current content
+            const result = await refetchVersions();
+            const versionList: ArtifactVersion[] = result.data ?? [];
+            const current = versionList.find((v) => v.is_current) ?? versionList[versionList.length - 1];
+            setEditorContent(current ? JSON.stringify(current.content, null, 2) : "{}");
+            setEditorOpen(true);
+          }}
+        />
       );
     }
     if (a.status === "DRAFT" && perms.canSubmitArtifact) {
@@ -319,22 +360,24 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
           <div className="bg-white border border-slate-200">
             <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
               <h2 className="font-display font-semibold text-slate-900 text-sm">Content</h2>
-              <span className="text-xs text-slate-400">JSON content preview</span>
+              <span className="text-xs text-slate-400">v{artifact.current_version_number} · JSON</span>
             </div>
             <div className="p-5">
-              <pre className="text-xs text-slate-600 bg-slate-50 p-4 overflow-auto max-h-64 font-mono border border-slate-100">
-                {JSON.stringify(
-                  {
-                    title: artifact.name,
-                    type: artifact.artifact_type,
-                    status: artifact.status,
-                    version: artifact.current_version_number,
-                    note: "Content editor available in upcoming release. Upload files or trigger AI generation.",
-                  },
-                  null,
-                  2
-                )}
-              </pre>
+              {versions ? (
+                <pre className="text-xs text-slate-600 bg-slate-50 p-4 overflow-auto max-h-64 font-mono border border-slate-100">
+                  {JSON.stringify(
+                    (versions.find((v) => v.is_current) ?? versions[versions.length - 1])?.content ?? {},
+                    null,
+                    2
+                  )}
+                </pre>
+              ) : (
+                <p className="text-xs text-slate-400 italic">
+                  {artifact.status === "DRAFT" && perms.canEditArtifact
+                    ? "Click \"Edit Content\" to load and modify the content."
+                    : "Content is loaded when the editor is opened."}
+                </p>
+              )}
             </div>
           </div>
 
@@ -454,6 +497,69 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
           </div>
         </div>
       </div>
+
+      {/* Content Editor Modal */}
+      {editorOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white w-full max-w-2xl border border-slate-200 shadow-xl flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="font-display font-semibold text-slate-900">Edit Content</h2>
+              <span className="text-xs text-slate-400 font-mono">v{artifact.current_version_number} → v{artifact.current_version_number + 1}</span>
+            </div>
+            <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                  Content <span className="text-slate-400 font-normal">(JSON)</span>
+                </label>
+                <textarea
+                  value={editorContent}
+                  onChange={(e) => {
+                    setEditorContent(e.target.value);
+                    try { JSON.parse(e.target.value); setEditorJsonError(null); }
+                    catch { setEditorJsonError("Invalid JSON — fix before saving."); }
+                  }}
+                  rows={18}
+                  spellCheck={false}
+                  className="w-full border border-slate-200 px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-brand-500 resize-none"
+                />
+                {editorJsonError && (
+                  <p className="text-[11px] text-red-600 mt-1">{editorJsonError}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                  Change summary <span className="text-slate-400 font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={editorSummary}
+                  onChange={(e) => setEditorSummary(e.target.value)}
+                  placeholder="Describe what changed…"
+                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-brand-500"
+                />
+              </div>
+              {editorError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2">{editorError}</div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
+              <button
+                onClick={() => updateContentMutation.mutate()}
+                disabled={updateContentMutation.isPending || !!editorJsonError}
+                className="text-sm font-semibold font-display px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white transition-colors disabled:opacity-50"
+              >
+                {updateContentMutation.isPending ? "Saving…" : "Save & Create Version"}
+              </button>
+              <button
+                onClick={() => { setEditorOpen(false); setEditorError(null); setEditorJsonError(null); }}
+                className="text-slate-500 hover:text-slate-700 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Approval / Rejection Modal */}
       {approvalModal && (

@@ -43,6 +43,46 @@ class ArtifactResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ArtifactUpdate(BaseModel):
+    """Request body for updating artifact content (DRAFT or REJECTED only)."""
+
+    content: dict
+    change_summary: str | None = None
+
+
+class ArtifactVersionCreator(BaseModel):
+    """Minimal creator info embedded in version responses."""
+
+    id: UUID
+    full_name: str
+    email: str
+
+    model_config = {"from_attributes": True}
+
+
+class ArtifactVersionResponse(BaseModel):
+    """Single artifact version snapshot."""
+
+    id: UUID
+    artifact_id: UUID
+    organization_id: UUID
+    version_number: int
+    is_current: bool
+    content: dict
+    content_hash: str
+    content_diff: dict | None
+    file_path: str | None
+    file_size_bytes: int | None
+    file_mime_type: str | None
+    change_summary: str | None
+    status_at_creation: ArtifactStatus
+    created_by_id: UUID
+    creator: ArtifactVersionCreator | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class ArtifactListResponse(BaseModel):
     items: list[ArtifactResponse]
     total: int

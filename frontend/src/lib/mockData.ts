@@ -216,23 +216,23 @@ export const MOCK_ARTIFACT_VERSIONS: ArtifactVersion[] = [
   {
     id: "ver-001", artifact_id: "art-001", version_number: 1, is_current: false,
     content: { title: "NVX-001 Study Protocol", version: "1.0", sections: ["Background", "Objectives"] },
-    content_hash: "sha256:a1b2c3d4e5f6", file_path: null, file_size_bytes: null,
+    content_hash: "sha256:a1b2c3d4e5f6", content_diff: null, file_path: null, file_size_bytes: null,
     file_mime_type: null, change_summary: "Initial draft",
-    status_at_creation: "DRAFT", created_by_id: U2, created_at: MONTH_AGO,
+    status_at_creation: "DRAFT", created_by_id: U2, creator: null, created_at: MONTH_AGO,
   },
   {
     id: "ver-002", artifact_id: "art-001", version_number: 2, is_current: false,
     content: { title: "NVX-001 Study Protocol", version: "2.0", sections: ["Background", "Objectives", "Study Design"] },
-    content_hash: "sha256:b2c3d4e5f6a7", file_path: null, file_size_bytes: null,
+    content_hash: "sha256:b2c3d4e5f6a7", content_diff: null, file_path: null, file_size_bytes: null,
     file_mime_type: null, change_summary: "Updated inclusion/exclusion criteria per IRB feedback. Added biomarker substudy section.",
-    status_at_creation: "IN_REVIEW", created_by_id: U2, created_at: WEEK_AGO,
+    status_at_creation: "IN_REVIEW", created_by_id: U2, creator: null, created_at: WEEK_AGO,
   },
   {
     id: "ver-003", artifact_id: "art-001", version_number: 3, is_current: true,
     content: { title: "NVX-001 Study Protocol", version: "3.0", sections: ["Background", "Objectives", "Study Design", "Statistical Methods"] },
-    content_hash: "sha256:c3d4e5f6a7b8", file_path: null, file_size_bytes: null,
+    content_hash: "sha256:c3d4e5f6a7b8", content_diff: null, file_path: null, file_size_bytes: null,
     file_mime_type: null, change_summary: "Final approved version with dosing amendments and updated safety monitoring plan.",
-    status_at_creation: "APPROVED", created_by_id: U2, created_at: DAY_AGO,
+    status_at_creation: "APPROVED", created_by_id: U2, creator: null, created_at: DAY_AGO,
   },
 ];
 

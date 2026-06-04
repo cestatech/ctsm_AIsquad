@@ -119,6 +119,12 @@ export interface Artifact {
   updated_at: string;
 }
 
+export interface ArtifactVersionCreator {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
 export interface ArtifactVersion {
   id: string;
   artifact_id: string;
@@ -126,12 +132,14 @@ export interface ArtifactVersion {
   is_current: boolean;
   content: Record<string, unknown>;
   content_hash: string;
+  content_diff: Record<string, unknown> | null;
   file_path: string | null;
   file_size_bytes: number | null;
   file_mime_type: string | null;
   change_summary: string | null;
   status_at_creation: ArtifactStatus;
   created_by_id: string;
+  creator: ArtifactVersionCreator | null;
   created_at: string;
 }
 
