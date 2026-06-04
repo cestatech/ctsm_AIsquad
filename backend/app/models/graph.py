@@ -98,6 +98,10 @@ class GraphNodeType(str, enum.Enum):
     # Generic artifact (maps to existing Artifact model)
     ARTIFACT = "ARTIFACT"
 
+    # Intake pipeline
+    INTAKE_SESSION = "INTAKE_SESSION"
+    STUDY_BRIEF = "STUDY_BRIEF"
+
 
 class GraphEdgeType(str, enum.Enum):
     """Every relationship type between graph nodes."""

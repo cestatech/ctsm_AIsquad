@@ -117,6 +117,12 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
           </div>
           <div className="flex gap-2 flex-shrink-0 ml-6">
             <Link
+              href={`/studies/${study.id}/intake`}
+              className="border border-brand-600 text-brand-600 hover:bg-brand-50 text-sm font-semibold font-display px-4 py-2 transition-colors"
+            >
+              Intake
+            </Link>
+            <Link
               href={`/studies/${study.id}/artifacts`}
               className="bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold font-display px-4 py-2 transition-colors"
             >

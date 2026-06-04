@@ -58,7 +58,7 @@ const ROW_H = 90;
 
 // ─── custom node ─────────────────────────────────────────────────────────────
 
-function CeleriusNode({ data, selected }: NodeProps) {
+function ContextGraphNode({ data, selected }: NodeProps) {
   const n = data.graphNode as GraphNode;
   const c = TYPE_COLORS[n.node_type] ?? DEFAULT_COLORS;
   return (
@@ -114,7 +114,7 @@ function CeleriusNode({ data, selected }: NodeProps) {
   );
 }
 
-const NODE_TYPES = { celerius: CeleriusNode };
+const NODE_TYPES = { context: ContextGraphNode };
 
 // ─── layout helpers ──────────────────────────────────────────────────────────
 
@@ -126,7 +126,7 @@ function buildNodes(apiNodes: GraphNode[]): Node[] {
     colCounts[col] = row + 1;
     return {
       id: n.id,
-      type: "celerius",
+      type: "context",
       position: { x: col * (COL_W + COL_GAP), y: row * ROW_H },
       data: { graphNode: n },
     };

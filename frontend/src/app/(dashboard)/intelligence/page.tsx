@@ -97,7 +97,7 @@ export default function IntelligencePage() {
   return (
     <div>
       <div className="px-8 py-5 border-b border-slate-200 bg-white">
-        <h1 className="font-display text-xl font-bold text-slate-900">Celerius Intelligence Platform</h1>
+        <h1 className="font-display text-xl font-bold text-slate-900">TrialGenesis Intelligence Platform</h1>
         <p className="text-slate-500 text-sm mt-0.5">
           Every AI action is explainable, auditable, and traceable. Human oversight at every step.
         </p>

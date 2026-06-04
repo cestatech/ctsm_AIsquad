@@ -1,4 +1,5 @@
 from app.models.audit import AuditLog
+from app.models.intake import SponsorIntake, IntakeMessage, StudyBrief
 from app.models.artifact import Artifact, ArtifactVersion
 from app.models.approval import Approval
 from app.models.comment import Comment
@@ -23,6 +24,9 @@ from app.models.validation import ValidationRun
 
 __all__ = [
     "AuditLog",
+    "SponsorIntake",
+    "IntakeMessage",
+    "StudyBrief",
     "Artifact",
     "ArtifactVersion",
     "Approval",

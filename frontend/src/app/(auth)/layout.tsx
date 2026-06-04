@@ -18,7 +18,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
       <footer className="px-6 py-4 text-center">
         <p className="text-slate-400 text-xs font-mono-dm">
-          © {new Date().getFullYear()} Celerius — Clinical Trial Lifecycle Platform
+          © {new Date().getFullYear()} TrialGenesis — Clinical Trial Lifecycle Platform
         </p>
       </footer>
     </div>

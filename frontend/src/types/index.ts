@@ -426,3 +426,62 @@ export interface GraphEdge {
   ai_decision_id: string | null;
   created_at: string;
 }
+
+// ─── Sponsor Intake types ─────────────────────────────────────────────────────
+
+export type IntakeStatus = "IN_PROGRESS" | "READY_TO_COMPILE" | "COMPILED";
+
+export type IntakeDomain =
+  | "STUDY_OVERVIEW"
+  | "STUDY_DESIGN"
+  | "POPULATION"
+  | "ENDPOINTS"
+  | "DRUG_TREATMENT"
+  | "SAFETY"
+  | "REGULATORY"
+  | "STATISTICAL"
+  | "SITES";
+
+export const INTAKE_DOMAINS: { key: IntakeDomain; label: string }[] = [
+  { key: "STUDY_OVERVIEW", label: "Study Overview" },
+  { key: "STUDY_DESIGN", label: "Study Design" },
+  { key: "POPULATION", label: "Population" },
+  { key: "ENDPOINTS", label: "Endpoints" },
+  { key: "DRUG_TREATMENT", label: "Drug & Treatment" },
+  { key: "SAFETY", label: "Safety" },
+  { key: "REGULATORY", label: "Regulatory" },
+  { key: "STATISTICAL", label: "Statistical" },
+  { key: "SITES", label: "Sites" },
+];
+
+export interface IntakeMessage {
+  id: string;
+  intake_id: string;
+  role: "user" | "assistant";
+  content: string;
+  domain: IntakeDomain | null;
+  created_at: string;
+}
+
+export interface SponsorIntake {
+  id: string;
+  organization_id: string;
+  study_id: string;
+  created_by_id: string;
+  status: IntakeStatus;
+  domains_completed: IntakeDomain[];
+  ready_to_compile: boolean;
+  messages: IntakeMessage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudyBrief {
+  id: string;
+  intake_id: string;
+  organization_id: string;
+  study_id: string;
+  compiled_by_id: string;
+  content: Record<string, unknown>;
+  created_at: string;
+}

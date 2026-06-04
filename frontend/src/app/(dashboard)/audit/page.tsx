@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { auditApi } from "@/lib/api/audit";
-import { MOCK_AUDIT_LOGS } from "@/lib/mockData";
 
 const ACTION_COLORS: Record<string, string> = {
   USER_LOGIN: "bg-slate-100 text-slate-600",
@@ -55,34 +54,13 @@ export default function AuditLogPage() {
   const [resourceFilter, setResourceFilter] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["audit", token, page, resourceFilter],
-    queryFn: async () => {
-      try {
-        return await auditApi.list(
-          {
-            page,
-            page_size: PAGE_SIZE,
-            resource_type: resourceFilter || undefined,
-          },
-          token!
-        );
-      } catch {
-        const filtered = resourceFilter
-          ? MOCK_AUDIT_LOGS.filter((l) => l.resource_type === resourceFilter)
-          : MOCK_AUDIT_LOGS;
-        const start = (page - 1) * PAGE_SIZE;
-        const items = filtered.slice(start, start + PAGE_SIZE);
-        return {
-          items,
-          total: filtered.length,
-          page,
-          page_size: PAGE_SIZE,
-          has_next: start + PAGE_SIZE < filtered.length,
-          has_prev: page > 1,
-        };
-      }
-    },
+    queryFn: () =>
+      auditApi.list(
+        { page, page_size: PAGE_SIZE, resource_type: resourceFilter || undefined },
+        token!
+      ),
     enabled: !!token,
   });
 
@@ -141,6 +119,10 @@ export default function AuditLogPage() {
               {isLoading ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">Loading…</td>
+                </tr>
+              ) : isError ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-red-400 text-sm">Failed to load audit logs.</td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
