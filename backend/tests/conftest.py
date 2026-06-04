@@ -9,11 +9,9 @@ Provides:
 
 from __future__ import annotations
 
-import asyncio
 from typing import AsyncGenerator
 from uuid import uuid4
 
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -31,13 +29,6 @@ settings = get_settings()
 TEST_DATABASE_URL = str(settings.DATABASE_URL).replace(
     "/celerius_dev", "/celerius_test"
 )
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture(scope="session")
