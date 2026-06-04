@@ -10,8 +10,11 @@ const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", alwaysShow: true, group: "main" },
   { label: "Studies", href: "/studies", alwaysShow: true, group: "main" },
   { label: "Approvals", href: "/approvals", permission: "canApproveArtifact" as const, group: "main" },
+  { label: "Validation", href: "/validation", permission: "canRunValidation" as const, group: "main" },
+  { label: "AI Generation", href: "/generation", permission: "canTriggerGeneration" as const, group: "main" },
   { label: "Audit Log", href: "/audit", permission: "canViewAuditLog" as const, group: "main" },
   { label: "Users", href: "/users", permission: "canManageUsers" as const, group: "main" },
+  { label: "Settings", href: "/settings", alwaysShow: true, group: "main" },
 ];
 
 const INTELLIGENCE_NAV_ITEMS = [

@@ -7,7 +7,8 @@ import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { approvalsApi } from "@/lib/api/approvals";
-import type { Artifact } from "@/types";
+import { commentsApi } from "@/lib/api/comments";
+import type { Artifact, Comment } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600",
@@ -50,6 +51,98 @@ function ActionButton({
   );
 }
 
+function CommentThread({ comment, token, artifactId, onRefetch }: {
+  comment: Comment; token: string; artifactId: string; onRefetch: () => void;
+}) {
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyBody, setReplyBody] = useState("");
+
+  const replyMutation = useMutation({
+    mutationFn: () => commentsApi.create({ artifact_id: artifactId, parent_id: comment.id, body: replyBody.trim() }, token),
+    onSuccess: () => { setReplyBody(""); setReplyOpen(false); onRefetch(); },
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: () => commentsApi.resolve(comment.id, token),
+    onSuccess: onRefetch,
+  });
+
+  return (
+    <div className={`border-l-2 pl-4 ${comment.is_resolved ? "border-slate-100 opacity-60" : "border-brand-200"}`}>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-800">{comment.author?.full_name ?? "Unknown"}</span>
+          <span className="text-[11px] text-slate-400">
+            {new Date(comment.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+          </span>
+          {comment.is_resolved && (
+            <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 font-semibold">Resolved</span>
+          )}
+        </div>
+        {!comment.is_resolved && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setReplyOpen((v) => !v)}
+              className="text-[11px] text-slate-400 hover:text-brand-600 transition-colors"
+            >
+              Reply
+            </button>
+            <button
+              onClick={() => resolveMutation.mutate()}
+              disabled={resolveMutation.isPending}
+              className="text-[11px] text-slate-400 hover:text-emerald-600 transition-colors disabled:opacity-40"
+            >
+              Resolve
+            </button>
+          </div>
+        )}
+      </div>
+      <p className="text-xs text-slate-700 leading-relaxed">{comment.body}</p>
+
+      {/* Replies */}
+      {comment.replies && comment.replies.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {comment.replies.map((reply) => (
+            <div key={reply.id} className="border-l-2 border-slate-100 pl-3">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-xs font-semibold text-slate-800">{reply.author?.full_name ?? "Unknown"}</span>
+                <span className="text-[11px] text-slate-400">
+                  {new Date(reply.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed">{reply.body}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {replyOpen && (
+        <div className="mt-2 space-y-2">
+          <textarea
+            value={replyBody}
+            onChange={(e) => setReplyBody(e.target.value)}
+            rows={2}
+            placeholder="Write a reply…"
+            className="w-full border border-slate-200 px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-brand-500 resize-none"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => replyMutation.mutate()}
+              disabled={replyMutation.isPending || !replyBody.trim()}
+              className="text-xs px-3 py-1.5 bg-brand-600 text-white font-medium hover:bg-brand-500 disabled:opacity-50 transition-colors"
+            >
+              {replyMutation.isPending ? "Posting…" : "Post Reply"}
+            </button>
+            <button onClick={() => setReplyOpen(false)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ArtifactDetailPage({ params }: { params: { id: string; artifactId: string } }) {
   const { token, role } = useAuthStore();
   const perms = usePermissions(role);
@@ -59,11 +152,23 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
   const [approvalModal, setApprovalModal] = useState<"approve" | "reject" | null>(null);
   const [approvalComment, setApprovalComment] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [newComment, setNewComment] = useState("");
 
   const { data: artifact, isLoading } = useQuery({
     queryKey: ["artifact", artifactId, token],
     queryFn: () => artifactsApi.get(artifactId, token!),
     enabled: !!token,
+  });
+
+  const { data: commentsData, refetch: refetchComments } = useQuery({
+    queryKey: ["comments", artifactId, token],
+    queryFn: () => commentsApi.list({ artifact_id: artifactId }, token!),
+    enabled: !!token && !!artifactId,
+  });
+
+  const postCommentMutation = useMutation({
+    mutationFn: () => commentsApi.create({ artifact_id: artifactId, body: newComment.trim() }, token!),
+    onSuccess: () => { setNewComment(""); refetchComments(); },
   });
 
   const submitMutation = useMutation({
@@ -301,6 +406,50 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
                   {s.replace("_", " ")}
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Comments */}
+      <div className="px-8 pb-8">
+        <div className="bg-white border border-slate-200">
+          <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="font-display font-semibold text-slate-900 text-sm">
+              Comments {commentsData && commentsData.total > 0 && (
+                <span className="ml-1.5 text-xs text-slate-400 font-normal">({commentsData.total})</span>
+              )}
+            </h2>
+          </div>
+          <div className="p-5 space-y-4">
+            {(commentsData?.items ?? []).length === 0 ? (
+              <p className="text-xs text-slate-400">No comments yet. Be the first to leave a note.</p>
+            ) : (
+              (commentsData?.items ?? []).map((comment) => (
+                <CommentThread
+                  key={comment.id}
+                  comment={comment}
+                  token={token!}
+                  artifactId={artifactId}
+                  onRefetch={refetchComments}
+                />
+              ))
+            )}
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              <textarea
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                rows={3}
+                placeholder="Leave a comment…"
+                className="w-full border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-brand-500 resize-none"
+              />
+              <button
+                onClick={() => postCommentMutation.mutate()}
+                disabled={postCommentMutation.isPending || !newComment.trim()}
+                className="text-xs px-4 py-2 bg-brand-600 text-white font-medium hover:bg-brand-500 disabled:opacity-50 transition-colors"
+              >
+                {postCommentMutation.isPending ? "Posting…" : "Post Comment"}
+              </button>
             </div>
           </div>
         </div>

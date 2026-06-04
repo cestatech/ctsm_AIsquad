@@ -54,8 +54,10 @@ export interface Organization {
   slug: string;
   description: string | null;
   logo_url: string | null;
+  settings: Record<string, unknown>;
   is_active: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 export interface User {
