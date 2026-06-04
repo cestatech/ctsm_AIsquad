@@ -6,9 +6,7 @@ Each test builds a minimal content dict and asserts on rule outcomes.
 
 from __future__ import annotations
 
-import pytest
-
-from app.services.cdisc_validation_engine import PASS, FAIL, run_cdisc_validation
+from app.services.cdisc_validation_engine import FAIL, PASS, run_cdisc_validation
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +290,6 @@ class TestADaMRules:
         content = _minimal_adam_content()
         content["datasets"][0]["variables"].append(_var("TRTPCD", derivation=""))
         result = run_cdisc_validation(content, "ADAM_DATASET")
-        findings = _findings_by_id(result)
         adam006 = [f for f in result["findings"] if f["rule_id"] == "ADAM-006"]
         assert any(f["status"] == FAIL for f in adam006)
 
