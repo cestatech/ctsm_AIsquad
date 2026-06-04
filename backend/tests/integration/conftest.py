@@ -49,7 +49,12 @@ async def iclient(test_engine) -> AsyncGenerator[AsyncClient, None]:
 
     async def _override():
         async with factory() as s:
-            yield s
+            try:
+                yield s
+                await s.commit()
+            except Exception:
+                await s.rollback()
+                raise
 
     app.dependency_overrides[get_db] = _override
     async with AsyncClient(app=app, base_url="http://test") as c:

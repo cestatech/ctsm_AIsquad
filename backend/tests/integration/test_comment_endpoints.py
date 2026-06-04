@@ -14,13 +14,13 @@ from app.models.artifact import Artifact
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestCommentList:
-    async def test_unauthenticated_returns_401(
+    async def test_unauthenticated_returns_403(
         self, iclient: AsyncClient, i_artifact: Artifact
     ):
         resp = await iclient.get(
             "/api/v1/comments", params={"artifact_id": str(i_artifact.id)}
         )
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
     async def test_list_returns_empty_initially(
         self, iclient: AsyncClient, i_artifact: Artifact, admin_tok: str
@@ -38,14 +38,14 @@ class TestCommentList:
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestCommentCreate:
-    async def test_unauthenticated_returns_401(
+    async def test_unauthenticated_returns_403(
         self, iclient: AsyncClient, i_artifact: Artifact
     ):
         resp = await iclient.post(
             "/api/v1/comments",
             json={"artifact_id": str(i_artifact.id), "body": "Hello"},
         )
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
     async def test_contributor_can_create_comment(
         self, iclient: AsyncClient, i_artifact: Artifact, contributor_tok: str

@@ -11,9 +11,9 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestAuditList:
-    async def test_unauthenticated_returns_401(self, iclient: AsyncClient):
+    async def test_unauthenticated_returns_403(self, iclient: AsyncClient):
         resp = await iclient.get("/api/v1/audit")
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
     async def test_admin_can_list_audit_logs(
         self, iclient: AsyncClient, admin_tok: str

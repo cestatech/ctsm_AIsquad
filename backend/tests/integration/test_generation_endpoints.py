@@ -18,7 +18,7 @@ from app.models.study import Study
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestCreateGenerationJob:
-    async def test_unauthenticated_returns_401(
+    async def test_unauthenticated_returns_403(
         self, iclient: AsyncClient, i_study: Study
     ):
         resp = await iclient.post(
@@ -29,7 +29,7 @@ class TestCreateGenerationJob:
                 "model_id": "claude-sonnet-4-6",
             },
         )
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
     async def test_admin_can_create_job(
         self, iclient: AsyncClient, i_study: Study, admin_tok: str
@@ -95,9 +95,9 @@ class TestCreateGenerationJob:
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestListGenerationJobs:
-    async def test_unauthenticated_returns_401(self, iclient: AsyncClient):
+    async def test_unauthenticated_returns_403(self, iclient: AsyncClient):
         resp = await iclient.get("/api/v1/generation/jobs")
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
     async def test_returns_paginated_list(self, iclient: AsyncClient, admin_tok: str):
         resp = await iclient.get(

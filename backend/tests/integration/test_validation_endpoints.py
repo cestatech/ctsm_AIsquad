@@ -13,7 +13,7 @@ from app.models.artifact import Artifact
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestTriggerValidationRun:
-    async def test_unauthenticated_returns_401(
+    async def test_unauthenticated_returns_403(
         self, iclient: AsyncClient, i_artifact: Artifact
     ):
         resp = await iclient.post(
@@ -23,7 +23,7 @@ class TestTriggerValidationRun:
                 "artifact_version_id": str(i_artifact.current_version_id),
             },
         )
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
     async def test_admin_can_trigger(
         self, iclient: AsyncClient, i_artifact: Artifact, admin_tok: str
@@ -85,9 +85,9 @@ class TestTriggerValidationRun:
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestListValidationRuns:
-    async def test_unauthenticated_returns_401(self, iclient: AsyncClient):
+    async def test_unauthenticated_returns_403(self, iclient: AsyncClient):
         resp = await iclient.get("/api/v1/validation/runs")
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
     async def test_returns_paginated_list(self, iclient: AsyncClient, admin_tok: str):
         resp = await iclient.get(
