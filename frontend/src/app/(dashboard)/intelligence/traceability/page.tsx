@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
-import { graphApi } from "@/lib/api/graph";
+import { graphApi, type TraceabilityGapReport } from "@/lib/api/graph";
 import { StudyPicker } from "@/components/intelligence/StudyPicker";
 import type { GraphEdge, GraphNode } from "@/types";
 
@@ -47,6 +47,13 @@ export default function TraceabilityMatrixPage() {
     staleTime: 60_000,
   });
 
+  const { data: gapReport } = useQuery({
+    queryKey: ["traceability-gaps", studyId, token],
+    queryFn: () => graphApi.getTraceabilityGaps(studyId!, token!),
+    enabled: !!token && !!studyId,
+    staleTime: 60_000,
+  });
+
   const nodes = nodesData?.items ?? [];
   const edges = edgesData?.items ?? [];
   const isLoading = nodesLoading || edgesLoading;
@@ -82,6 +89,25 @@ export default function TraceabilityMatrixPage() {
           <div className="text-center py-12 text-slate-400 text-sm">Loading traceability data…</div>
         ) : (
           <>
+            {/* Gap summary banner */}
+            {gapReport && (
+              <div className={`mb-5 px-5 py-4 border flex items-center gap-6 ${gapReport.nodes_with_gaps > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
+                <div className="flex-1">
+                  <p className={`text-sm font-semibold font-display ${gapReport.nodes_with_gaps > 0 ? "text-amber-800" : "text-emerald-800"}`}>
+                    {gapReport.nodes_with_gaps > 0
+                      ? `${gapReport.nodes_with_gaps} traceability gap${gapReport.nodes_with_gaps !== 1 ? "s" : ""} detected`
+                      : "All chain links complete"}
+                  </p>
+                  <p className={`text-xs mt-0.5 ${gapReport.nodes_with_gaps > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                    {gapReport.total_nodes} total nodes · {gapReport.chain_coverage_pct}% chain coverage
+                  </p>
+                </div>
+                <div className={`text-2xl font-display font-bold tabular-nums ${gapReport.nodes_with_gaps > 0 ? "text-amber-700" : "text-emerald-700"}`}>
+                  {gapReport.chain_coverage_pct}%
+                </div>
+              </div>
+            )}
+
             {/* Pipeline header */}
             <div className="flex gap-0 mb-6 overflow-x-auto">
               {CHAIN_STAGES.map((stage, i) => (

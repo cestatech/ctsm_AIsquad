@@ -88,3 +88,24 @@ class CreateEdgeRequest(BaseModel):
     label: str | None = Field(None, max_length=256)
     properties: dict = Field(default_factory=dict)
     confidence: float | None = Field(None, ge=0.0, le=1.0)
+
+
+# ---------------------------------------------------------------------------
+# Traceability gap detection
+# ---------------------------------------------------------------------------
+
+class TraceabilityGapItem(BaseModel):
+    node_id: UUID
+    node_label: str
+    node_type: str
+    stage_index: int
+    missing_link_from: str
+    message: str
+
+
+class TraceabilityGapResponse(BaseModel):
+    study_id: UUID
+    total_nodes: int
+    nodes_with_gaps: int
+    chain_coverage_pct: float
+    gaps: list[TraceabilityGapItem]

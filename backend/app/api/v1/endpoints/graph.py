@@ -29,8 +29,11 @@ from app.schemas.graph import (
     GraphNodeListResponse,
     GraphNodeResponse,
     RegisterNodeRequest,
+    TraceabilityGapItem,
+    TraceabilityGapResponse,
 )
 from app.services.context_graph_service import ContextGraphService
+from app.services.traceability_service import TraceabilityService
 
 router = APIRouter()
 
@@ -206,6 +209,44 @@ async def list_edges(
         total=total,
         page=page,
         page_size=page_size,
+    )
+
+
+@router.get(
+    "/traceability-gaps",
+    response_model=TraceabilityGapResponse,
+    summary="Compute traceability gaps for a study",
+)
+async def get_traceability_gaps(
+    study_id: UUID = Query(..., description="Study ID to analyse"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TraceabilityGapResponse:
+    """
+    Walk the Objective → Endpoint → eCRF → SDTM → ADaM → TLF → CSR chain
+    and return every node that has no incoming link from the preceding stage.
+
+    A gap indicates a traceability break that would require remediation before
+    regulatory submission. The response includes overall chain coverage %.
+    """
+    svc = TraceabilityService(db)
+    report = await svc.compute_gaps(study_id, current_user.organization_id)
+    return TraceabilityGapResponse(
+        study_id=report.study_id,
+        total_nodes=report.total_nodes,
+        nodes_with_gaps=report.nodes_with_gaps,
+        chain_coverage_pct=report.chain_coverage_pct,
+        gaps=[
+            TraceabilityGapItem(
+                node_id=g.node_id,
+                node_label=g.node_label,
+                node_type=g.node_type,
+                stage_index=g.stage_index,
+                missing_link_from=g.missing_link_from,
+                message=g.message,
+            )
+            for g in report.gaps
+        ],
     )
 
 

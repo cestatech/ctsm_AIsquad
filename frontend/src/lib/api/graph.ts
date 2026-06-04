@@ -14,6 +14,23 @@ interface EdgeListParams {
   page_size?: number;
 }
 
+export interface TraceabilityGapItem {
+  node_id: string;
+  node_label: string;
+  node_type: string;
+  stage_index: number;
+  missing_link_from: string;
+  message: string;
+}
+
+export interface TraceabilityGapReport {
+  study_id: string;
+  total_nodes: number;
+  nodes_with_gaps: number;
+  chain_coverage_pct: number;
+  gaps: TraceabilityGapItem[];
+}
+
 export const graphApi = {
   listNodes: (params: NodeListParams, token: string) =>
     apiClient.get<PaginatedResponse<GraphNode>>("/graph", {
@@ -45,4 +62,10 @@ export const graphApi = {
       `/graph/${nodeId}/lineage`,
       { params: params as Record<string, string | number | boolean | undefined>, token }
     ),
+
+  getTraceabilityGaps: (studyId: string, token: string) =>
+    apiClient.get<TraceabilityGapReport>("/graph/traceability-gaps", {
+      params: { study_id: studyId },
+      token,
+    }),
 };

@@ -83,7 +83,7 @@ async def admin_user(db: AsyncSession, organization: Organization) -> User:
         full_name="Test Admin",
         hashed_password=hash_password("TestPass123!"),
         is_active=True,
-        is_system_admin=False,
+        is_system_admin=True,  # is_system_admin=True → effective_role == ADMIN
     )
     db.add(user)
     await db.flush()
