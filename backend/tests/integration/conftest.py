@@ -24,6 +24,7 @@ from app.api.deps import get_db
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models.artifact import Artifact, ArtifactStatus, ArtifactType, ArtifactVersion
+from app.models.intake import SponsorIntake, IntakeStatus, StudyBrief
 from app.models.organization import Organization
 from app.models.study import Study, StudyStatus
 from app.models.user import User
@@ -195,3 +196,34 @@ def admin_tok(i_admin: User) -> str:
 @pytest.fixture(scope="session")
 def contributor_tok(i_contributor: User) -> str:
     return make_token(i_contributor)
+
+
+@pytest_asyncio.fixture(scope="session")
+async def i_brief(
+    idb: AsyncSession, i_org: Organization, i_study: Study, i_admin: User
+) -> StudyBrief:
+    """A compiled Study Brief for generation-from-brief tests."""
+    intake = SponsorIntake(
+        id=uuid4(),
+        organization_id=i_org.id,
+        study_id=i_study.id,
+        created_by_id=i_admin.id,
+        status=IntakeStatus.COMPILED,
+        domains_completed=["STUDY_OVERVIEW"],
+        ready_to_compile=True,
+    )
+    idb.add(intake)
+    await idb.flush()
+
+    brief = StudyBrief(
+        id=uuid4(),
+        intake_id=intake.id,
+        organization_id=i_org.id,
+        study_id=i_study.id,
+        compiled_by_id=i_admin.id,
+        content={"study_overview": {"title": "Integration Study", "phase": "Phase 2"}},
+    )
+    idb.add(brief)
+    await idb.commit()
+    await idb.refresh(brief)
+    return brief

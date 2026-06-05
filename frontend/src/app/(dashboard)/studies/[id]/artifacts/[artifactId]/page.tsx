@@ -1,5 +1,7 @@
 "use client";
 
+"use client";
+
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,6 +28,77 @@ const TYPE_LABELS: Record<string, string> = {
   ADAM_DATASET: "ADaM Dataset", TLF: "TLF", VALIDATION_REPORT: "Validation Report",
   CSR: "CSR", SUBMISSION_PACKAGE: "Submission Package", OTHER: "Other",
 };
+
+function renderValue(value: unknown, depth = 0): React.ReactNode {
+  if (value === null || value === undefined) return <span className="text-slate-300 italic">null</span>;
+  if (typeof value === "boolean") return <span className="text-amber-600 font-mono">{String(value)}</span>;
+  if (typeof value === "number") return <span className="text-blue-600 font-mono">{value}</span>;
+  if (typeof value === "string") {
+    if (value.length > 200) {
+      return <span className="text-slate-700 leading-relaxed whitespace-pre-wrap">{value}</span>;
+    }
+    return <span className="text-slate-700">{value}</span>;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-slate-300 italic">empty list</span>;
+    return (
+      <ul className="list-disc list-inside space-y-0.5 mt-0.5">
+        {value.map((item, i) => (
+          <li key={i} className="text-slate-700 text-xs">{renderValue(item, depth + 1)}</li>
+        ))}
+      </ul>
+    );
+  }
+  if (typeof value === "object") {
+    if (depth >= 2) return <span className="text-slate-400 italic text-[10px]">[nested object]</span>;
+    return (
+      <div className={`space-y-1 ${depth > 0 ? "pl-3 border-l border-slate-100 mt-1" : ""}`}>
+        {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
+          <div key={k} className="flex gap-2 text-xs">
+            <span className="text-slate-400 capitalize min-w-[120px] shrink-0">{k.replace(/_/g, " ")}</span>
+            <span>{renderValue(v, depth + 1)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return <span className="text-slate-700">{String(value)}</span>;
+}
+
+function StructuredContentView({ content }: { content: Record<string, unknown> }) {
+  const sections = Object.entries(content);
+  if (sections.length === 0) return <p className="text-xs text-slate-400 italic">No content.</p>;
+
+  const isDoc = sections.some(([, v]) => typeof v === "string" && (v as string).length > 100);
+
+  if (isDoc) {
+    return (
+      <div className="space-y-5">
+        {sections.map(([key, value]) => (
+          <div key={key}>
+            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              {key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+            </h4>
+            <div className="text-sm text-slate-800 leading-relaxed">{renderValue(value)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {sections.map(([key, value]) => (
+        <div key={key} className="border-l-2 border-slate-100 pl-3">
+          <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+            {key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+          </h4>
+          {renderValue(value)}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function ActionButton({
   label, variant = "default", onClick, disabled,
@@ -160,6 +233,7 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
   const [editorSummary, setEditorSummary] = useState("");
   const [editorError, setEditorError] = useState<string | null>(null);
   const [editorJsonError, setEditorJsonError] = useState<string | null>(null);
+  const [contentView, setContentView] = useState<"structured" | "json">("structured");
 
   const { data: artifact, isLoading } = useQuery({
     queryKey: ["artifact", artifactId, token],
@@ -360,23 +434,63 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
           <div className="bg-white border border-slate-200">
             <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
               <h2 className="font-display font-semibold text-slate-900 text-sm">Content</h2>
-              <span className="text-xs text-slate-400">v{artifact.current_version_number} · JSON</span>
+              <div className="flex items-center gap-3">
+                {versions && (
+                  <div className="flex border border-slate-200 overflow-hidden">
+                    <button
+                      onClick={() => setContentView("structured")}
+                      className={`text-[11px] px-3 py-1 font-medium transition-colors ${
+                        contentView === "structured" ? "bg-brand-600 text-white" : "text-slate-500 hover:bg-slate-50"
+                      }`}
+                    >
+                      Structured
+                    </button>
+                    <button
+                      onClick={() => setContentView("json")}
+                      className={`text-[11px] px-3 py-1 font-medium transition-colors ${
+                        contentView === "json" ? "bg-brand-600 text-white" : "text-slate-500 hover:bg-slate-50"
+                      }`}
+                    >
+                      JSON
+                    </button>
+                  </div>
+                )}
+                <span className="text-xs text-slate-400">v{artifact.current_version_number}</span>
+              </div>
             </div>
             <div className="p-5">
-              {versions ? (
-                <pre className="text-xs text-slate-600 bg-slate-50 p-4 overflow-auto max-h-64 font-mono border border-slate-100">
-                  {JSON.stringify(
-                    (versions.find((v) => v.is_current) ?? versions[versions.length - 1])?.content ?? {},
-                    null,
-                    2
-                  )}
-                </pre>
-              ) : (
-                <p className="text-xs text-slate-400 italic">
-                  {artifact.status === "DRAFT" && perms.canEditArtifact
-                    ? "Click \"Edit Content\" to load and modify the content."
-                    : "Content is loaded when the editor is opened."}
-                </p>
+              {versions ? (() => {
+                const currentVersion = versions.find((v) => v.is_current) ?? versions[versions.length - 1];
+                const content = currentVersion?.content ?? {};
+                if (contentView === "json") {
+                  return (
+                    <pre className="text-xs text-slate-600 bg-slate-50 p-4 overflow-auto max-h-96 font-mono border border-slate-100">
+                      {JSON.stringify(content, null, 2)}
+                    </pre>
+                  );
+                }
+                return (
+                  <div className="max-h-96 overflow-y-auto">
+                    <StructuredContentView content={content as Record<string, unknown>} />
+                  </div>
+                );
+              })() : (
+                <div className="text-center py-4">
+                  <p className="text-xs text-slate-400 italic mb-2">
+                    {artifact.status === "DRAFT" && perms.canEditArtifact
+                      ? "Click \"Edit Content\" to load and modify the content."
+                      : ""}
+                  </p>
+                  <button
+                    onClick={async () => {
+                      const result = await refetchVersions();
+                      if (result.data) setContentView("structured");
+                    }}
+                    className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+                  >
+                    Load content
+                  </button>
+                </div>
               )}
             </div>
           </div>

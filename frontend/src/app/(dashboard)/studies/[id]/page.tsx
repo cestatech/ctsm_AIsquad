@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { studiesApi } from "@/lib/api/studies";
 import { artifactsApi } from "@/lib/api/artifacts";
+import { uploadsApi } from "@/lib/api/uploads";
+import type { UploadedFile } from "@/types";
 
 const ARTIFACT_STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600",
@@ -45,10 +48,19 @@ const ARTIFACT_TYPE_LABELS: Record<string, string> = {
   CSR: "CSR", SUBMISSION_PACKAGE: "Submission", OTHER: "Other",
 };
 
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function StudyWorkspacePage({ params }: { params: { id: string } }) {
   const { token, role } = useAuthStore();
   const perms = usePermissions(role);
+  const queryClient = useQueryClient();
   const studyId = params.id;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { data: study, isLoading: studyLoading } = useQuery({
     queryKey: ["study", studyId, token],
@@ -66,6 +78,21 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
     queryKey: ["study-members", studyId, token],
     queryFn: () => studiesApi.getMembers(studyId, token!),
     enabled: !!token,
+  });
+
+  const { data: uploadsData } = useQuery({
+    queryKey: ["uploads", studyId, token],
+    queryFn: () => uploadsApi.list(studyId, token!),
+    enabled: !!token,
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadsApi.upload(studyId, file, undefined, token!),
+    onSuccess: () => {
+      setUploadError(null);
+      queryClient.invalidateQueries({ queryKey: ["uploads", studyId] });
+    },
+    onError: (err) => setUploadError(err instanceof Error ? err.message : "Upload failed."),
   });
 
   if (studyLoading) {
@@ -118,9 +145,15 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
           <div className="flex gap-2 flex-shrink-0 ml-6">
             <Link
               href={`/studies/${study.id}/intake`}
-              className="border border-brand-600 text-brand-600 hover:bg-brand-50 text-sm font-semibold font-display px-4 py-2 transition-colors"
+              className="border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium px-4 py-2 transition-colors"
             >
               Intake
+            </Link>
+            <Link
+              href={`/studies/${study.id}/generation`}
+              className="border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium px-4 py-2 transition-colors"
+            >
+              Generation
             </Link>
             <Link
               href={`/studies/${study.id}/artifacts`}
@@ -219,6 +252,69 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
               ))}
             </div>
           )}
+          {/* File Uploads */}
+          <div className="bg-white border border-slate-200">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="font-display font-semibold text-slate-900 text-sm">
+                Uploaded Files{uploadsData && uploadsData.total > 0 && (
+                  <span className="ml-1.5 text-xs text-slate-400 font-normal">({uploadsData.total})</span>
+                )}
+              </h2>
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls,.pdf,.txt"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadMutation.mutate(file);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadMutation.isPending}
+                  className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 px-3 py-1.5 transition-colors disabled:opacity-50"
+                >
+                  {uploadMutation.isPending ? "Uploading…" : "+ Upload file"}
+                </button>
+              </div>
+            </div>
+            {uploadError && (
+              <div className="mx-5 mt-3 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2">{uploadError}</div>
+            )}
+            <div className="divide-y divide-slate-100">
+              {(uploadsData?.items ?? []).length === 0 ? (
+                <p className="px-5 py-4 text-xs text-slate-400">
+                  No files uploaded. Upload CSV or XLSX metadata files to attach data to this study.
+                </p>
+              ) : (
+                (uploadsData?.items ?? []).map((f: UploadedFile) => (
+                  <div key={f.id} className="px-5 py-3 flex items-center gap-3">
+                    <div className="w-7 h-7 bg-slate-100 flex items-center justify-center flex-shrink-0 text-slate-500">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-slate-900 truncate">{f.original_filename}</p>
+                      <p className="text-[11px] text-slate-400">
+                        {formatBytes(f.file_size_bytes)} · {f.mime_type}
+                        {typeof f.extracted_metadata?.row_count === "number" && (
+                          <> · {f.extracted_metadata.row_count} rows</>
+                        )}
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-slate-400 flex-shrink-0">
+                      {new Date(f.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Right column: Study details + Members */}

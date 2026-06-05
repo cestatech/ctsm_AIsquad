@@ -80,6 +80,31 @@ class ApiClient {
   delete<T>(path: string, options?: Parameters<typeof this.request>[2]) {
     return this.request<T>("DELETE", path, options);
   }
+
+  async postForm<T>(path: string, options: { form: FormData; token?: string }): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const headers: Record<string, string> = {};
+    if (options.token) {
+      headers["Authorization"] = `Bearer ${options.token}`;
+    }
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: options.form,
+      credentials: "include",
+    });
+    if (!response.ok) {
+      let error: import("@/types").ApiError;
+      try {
+        error = await response.json();
+      } catch {
+        error = { detail: "An unexpected error occurred.", code: "UNKNOWN_ERROR" };
+      }
+      throw new ApiClientError(response.status, error);
+    }
+    if (response.status === 204) return undefined as T;
+    return response.json() as Promise<T>;
+  }
 }
 
 export class ApiClientError extends Error {

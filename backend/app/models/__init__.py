@@ -20,6 +20,7 @@ from app.models.organization import Organization
 from app.models.study import Study, StudyMember
 from app.models.traceability import TraceabilityLink
 from app.models.user import User, RefreshToken
+from app.models.upload import UploadedFile
 from app.models.validation import ValidationRun
 
 __all__ = [
@@ -48,6 +49,7 @@ __all__ = [
     "Study",
     "StudyMember",
     "TraceabilityLink",
+    "UploadedFile",
     "User",
     "RefreshToken",
     "ValidationRun",

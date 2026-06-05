@@ -42,4 +42,7 @@ export const authApi = {
 
   me: (token: string) =>
     apiClient.get<User>("/auth/me", { token }),
+
+  changePassword: (body: { current_password: string; new_password: string }, token: string) =>
+    apiClient.post<void>("/auth/change-password", { body, token }),
 };

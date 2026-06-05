@@ -15,6 +15,12 @@ interface CreateJobBody {
   input_context?: Record<string, unknown>;
 }
 
+interface GenerateFromBriefBody {
+  brief_id: string;
+  artifact_type: ArtifactType;
+  model_id?: string;
+}
+
 export const generationApi = {
   listJobs: (params: GenerationListParams, token: string) =>
     apiClient.get<PaginatedResponse<GenerationJob>>("/generation/jobs", {
@@ -27,4 +33,7 @@ export const generationApi = {
 
   createJob: (body: CreateJobBody, token: string) =>
     apiClient.post<GenerationJob>("/generation/jobs", { body, token }),
+
+  generateFromBrief: (body: GenerateFromBriefBody, token: string) =>
+    apiClient.post<GenerationJob>("/generation/jobs/from-brief", { body, token }),
 };

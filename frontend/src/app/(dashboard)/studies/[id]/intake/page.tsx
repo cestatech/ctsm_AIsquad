@@ -7,7 +7,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { intakeApi } from "@/lib/api/intake";
 import { studiesApi } from "@/lib/api/studies";
-import { INTAKE_DOMAINS, type IntakeDomain, type SponsorIntake, type StudyBrief } from "@/types";
+import { generationApi } from "@/lib/api/generation";
+import { INTAKE_DOMAINS, type ArtifactType, type IntakeDomain, type SponsorIntake, type StudyBrief } from "@/types";
 import { ApiClientError } from "@/lib/api/client";
 
 const DOMAIN_LABELS: Record<IntakeDomain, string> = Object.fromEntries(
@@ -79,6 +80,8 @@ export default function IntakePage() {
   const [brief, setBrief] = useState<StudyBrief | null>(null);
   const [briefOpen, setBriefOpen] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [genError, setGenError] = useState<string | null>(null);
+  const [genSuccess, setGenSuccess] = useState<string | null>(null);
 
   const { data: study } = useQuery({
     queryKey: ["study", studyId, token],
@@ -134,6 +137,20 @@ export default function IntakePage() {
       setBrief(data);
       setBriefOpen(true);
       queryClient.invalidateQueries({ queryKey: ["intakes", studyId] });
+    },
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: (artifactType: ArtifactType) =>
+      generationApi.generateFromBrief({ brief_id: brief!.id, artifact_type: artifactType }, token!),
+    onSuccess: (job) => {
+      setGenError(null);
+      setGenSuccess(`${job.artifact_type} generation started (job ${job.id.slice(0, 8)}…). View progress in the Generation tab.`);
+      queryClient.invalidateQueries({ queryKey: ["generation-jobs", studyId] });
+    },
+    onError: (err) => {
+      setGenError(err instanceof Error ? err.message : "Generation failed.");
+      setGenSuccess(null);
     },
   });
 
@@ -392,21 +409,47 @@ export default function IntakePage() {
               })}
             </div>
 
-            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(JSON.stringify(brief.content, null, 2));
-                }}
-                className="text-xs text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300 px-4 py-2 rounded-sm transition-colors"
-              >
-                Copy JSON
-              </button>
-              <button
-                onClick={() => setBriefOpen(false)}
-                className="bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold px-4 py-2 rounded-sm transition-colors"
-              >
-                Close
-              </button>
+            <div className="px-6 py-4 border-t border-slate-100 space-y-3">
+              {genError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2">{genError}</div>
+              )}
+              {genSuccess && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-3 py-2">{genSuccess}</div>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => generateMutation.mutate("PROTOCOL")}
+                    disabled={generateMutation.isPending}
+                    className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-sm transition-colors"
+                  >
+                    {generateMutation.isPending && generateMutation.variables === "PROTOCOL" ? "Starting…" : "Generate Protocol"}
+                  </button>
+                  <button
+                    onClick={() => generateMutation.mutate("ICF")}
+                    disabled={generateMutation.isPending}
+                    className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-sm transition-colors"
+                  >
+                    {generateMutation.isPending && generateMutation.variables === "ICF" ? "Starting…" : "Generate ICF"}
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(JSON.stringify(brief.content, null, 2));
+                    }}
+                    className="text-xs text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300 px-4 py-2 rounded-sm transition-colors"
+                  >
+                    Copy JSON
+                  </button>
+                  <button
+                    onClick={() => { setBriefOpen(false); setGenError(null); setGenSuccess(null); }}
+                    className="text-xs text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300 px-4 py-2 rounded-sm transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

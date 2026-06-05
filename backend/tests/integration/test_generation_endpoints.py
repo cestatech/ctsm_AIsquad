@@ -13,6 +13,7 @@ from uuid import uuid4
 import pytest
 from httpx import AsyncClient
 
+from app.models.intake import StudyBrief
 from app.models.study import Study
 
 
@@ -142,3 +143,51 @@ class TestGetGenerationJob:
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert resp.status_code == 404
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestGenerationFromBrief:
+    async def test_unauthenticated_returns_403(
+        self, iclient: AsyncClient, i_brief: StudyBrief
+    ):
+        resp = await iclient.post(
+            "/api/v1/generation/jobs/from-brief",
+            json={"brief_id": str(i_brief.id), "artifact_type": "PROTOCOL"},
+        )
+        assert resp.status_code == 403
+
+    async def test_admin_can_generate_from_brief(
+        self, iclient: AsyncClient, i_brief: StudyBrief, admin_tok: str
+    ):
+        with patch("app.api.v1.endpoints.generation.execute_generation_job"):
+            resp = await iclient.post(
+                "/api/v1/generation/jobs/from-brief",
+                json={"brief_id": str(i_brief.id), "artifact_type": "PROTOCOL"},
+                headers={"Authorization": f"Bearer {admin_tok}"},
+            )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["artifact_type"] == "PROTOCOL"
+        assert data["status"] == "PENDING"
+        assert data["study_id"] == str(i_brief.study_id)
+
+    async def test_invalid_brief_id_returns_404(
+        self, iclient: AsyncClient, admin_tok: str
+    ):
+        with patch("app.api.v1.endpoints.generation.execute_generation_job"):
+            resp = await iclient.post(
+                "/api/v1/generation/jobs/from-brief",
+                json={"brief_id": str(uuid4()), "artifact_type": "ICF"},
+                headers={"Authorization": f"Bearer {admin_tok}"},
+            )
+        assert resp.status_code == 404
+
+    async def test_missing_brief_id_returns_422(
+        self, iclient: AsyncClient, admin_tok: str
+    ):
+        resp = await iclient.post(
+            "/api/v1/generation/jobs/from-brief",
+            json={"artifact_type": "PROTOCOL"},
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert resp.status_code == 422

@@ -305,3 +305,55 @@ class TestGetMe:
             headers={"Authorization": "Bearer not.a.real.token"},
         )
         assert resp.status_code == 401
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestChangePassword:
+    async def _register(self, iclient: AsyncClient) -> tuple[str, str]:
+        email = f"pwchange-{uuid4().hex[:8]}@example.com"
+        resp = await iclient.post(
+            "/api/v1/auth/register",
+            json={
+                "organization_name": "PW Test Org",
+                "organization_slug": f"pw-test-{uuid4().hex[:6]}",
+                "full_name": "PW User",
+                "email": email,
+                "password": "OldPass123!",
+            },
+        )
+        assert resp.status_code == 201
+        return resp.json()["access_token"], email
+
+    async def test_correct_current_password_returns_204(self, iclient: AsyncClient):
+        token, _ = await self._register(iclient)
+        resp = await iclient.post(
+            "/api/v1/auth/change-password",
+            json={"current_password": "OldPass123!", "new_password": "NewPass456!"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 204
+
+    async def test_wrong_current_password_returns_401(self, iclient: AsyncClient):
+        token, _ = await self._register(iclient)
+        resp = await iclient.post(
+            "/api/v1/auth/change-password",
+            json={"current_password": "WrongPass!", "new_password": "NewPass456!"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401
+
+    async def test_short_new_password_returns_422(self, iclient: AsyncClient):
+        token, _ = await self._register(iclient)
+        resp = await iclient.post(
+            "/api/v1/auth/change-password",
+            json={"current_password": "OldPass123!", "new_password": "short"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
+
+    async def test_unauthenticated_returns_403(self, iclient: AsyncClient):
+        resp = await iclient.post(
+            "/api/v1/auth/change-password",
+            json={"current_password": "OldPass123!", "new_password": "NewPass456!"},
+        )
+        assert resp.status_code == 403

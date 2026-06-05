@@ -8,11 +8,15 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import Permission, check_permission
+from app.models.artifact import ArtifactType
 from app.models.audit import AuditAction
 from app.models.generation import GenerationJob, GenerationJobStatus
+from app.models.intake import StudyBrief
 from app.models.user import User
 from app.repositories.generation_repository import GenerationRepository
 from app.schemas.generation import GenerationJobCreate
@@ -79,6 +83,37 @@ class GenerationService:
             user_agent=user_agent,
         )
         return job
+
+    async def create_job_from_brief(
+        self,
+        brief_id: UUID,
+        artifact_type: ArtifactType,
+        model_id: str,
+        actor: User,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> GenerationJob:
+        """Trigger artifact generation pre-populated with a compiled Study Brief."""
+        result = await self._db.execute(
+            select(StudyBrief).where(
+                StudyBrief.id == brief_id,
+                StudyBrief.organization_id == actor.organization_id,
+            )
+        )
+        brief = result.scalar_one_or_none()
+        if brief is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "NOT_FOUND", "message": "Study brief not found."},
+            )
+
+        body = GenerationJobCreate(
+            study_id=brief.study_id,
+            artifact_type=artifact_type,
+            model_id=model_id,
+            input_context={"brief_id": str(brief_id), "brief_content": brief.content},
+        )
+        return await self.create_job(body, actor, ip_address, user_agent)
 
     async def get(self, job_id: UUID, organization_id: UUID) -> GenerationJob:
         return await self._repo.get_by_id(job_id, organization_id)

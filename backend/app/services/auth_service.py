@@ -153,6 +153,35 @@ class AuthService:
         new_refresh = await self._issue_refresh_token(user, ip_address, user_agent)
         return new_access, new_refresh
 
+    async def change_password(
+        self,
+        actor: User,
+        current_password: str,
+        new_password: str,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        """Verify the current password and update to the new password."""
+        from app.core.exceptions import AuthenticationError
+
+        if not verify_password(current_password, actor.hashed_password):
+            raise AuthenticationError("Current password is incorrect.")
+
+        actor.hashed_password = hash_password(new_password)
+        self._db.add(actor)
+
+        await self._audit.log(
+            action=AuditAction.USER_UPDATED,
+            resource_type="user",
+            organization_id=actor.organization_id,
+            actor_user_id=actor.id,
+            resource_id=actor.id,
+            after_state={"password_changed": True},
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        await self._db.commit()
+
     async def logout(self, token_value: str) -> None:
         """Revoke a refresh token."""
         token = await self._users.get_refresh_token(hash_token(token_value))

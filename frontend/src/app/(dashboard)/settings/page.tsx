@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { organizationsApi } from "@/lib/api/organizations";
+import { authApi } from "@/lib/api/auth";
 
 export default function SettingsPage() {
   const { token, role } = useAuthStore();
@@ -14,6 +15,10 @@ export default function SettingsPage() {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", description: "", logo_url: "" });
+
+  const [pwForm, setPwForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState(false);
 
   const { data: org, isLoading } = useQuery({
     queryKey: ["org-me", token],
@@ -27,6 +32,31 @@ export default function SettingsPage() {
     setError(null);
     setEditing(true);
   }
+
+  const changePasswordMutation = useMutation({
+    mutationFn: () => {
+      if (pwForm.new_password !== pwForm.confirm_password) {
+        throw new Error("New passwords do not match.");
+      }
+      if (pwForm.new_password.length < 8) {
+        throw new Error("New password must be at least 8 characters.");
+      }
+      return authApi.changePassword(
+        { current_password: pwForm.current_password, new_password: pwForm.new_password },
+        token!
+      );
+    },
+    onSuccess: () => {
+      setPwForm({ current_password: "", new_password: "", confirm_password: "" });
+      setPwError(null);
+      setPwSuccess(true);
+      setTimeout(() => setPwSuccess(false), 4000);
+    },
+    onError: (err) => {
+      setPwError(err instanceof Error ? err.message : "Password change failed.");
+      setPwSuccess(false);
+    },
+  });
 
   const updateMutation = useMutation({
     mutationFn: () =>
@@ -168,6 +198,65 @@ export default function SettingsPage() {
         {!perms.isAdmin && (
           <p className="text-xs text-slate-400">Only Admins can modify organization settings.</p>
         )}
+
+        {/* Change password */}
+        <div className="bg-white border border-slate-200">
+          <div className="px-5 py-4 border-b border-slate-100">
+            <h2 className="font-display font-semibold text-slate-900 text-sm">Change Password</h2>
+          </div>
+          <div className="px-5 py-5 space-y-4">
+            {pwSuccess && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-3 py-2">
+                Password changed successfully.
+              </div>
+            )}
+            {pwError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2">{pwError}</div>
+            )}
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">Current password</label>
+              <input
+                type="password"
+                value={pwForm.current_password}
+                onChange={(e) => setPwForm((f) => ({ ...f, current_password: e.target.value }))}
+                autoComplete="current-password"
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">New password</label>
+              <input
+                type="password"
+                value={pwForm.new_password}
+                onChange={(e) => setPwForm((f) => ({ ...f, new_password: e.target.value }))}
+                autoComplete="new-password"
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">Confirm new password</label>
+              <input
+                type="password"
+                value={pwForm.confirm_password}
+                onChange={(e) => setPwForm((f) => ({ ...f, confirm_password: e.target.value }))}
+                autoComplete="new-password"
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+              />
+            </div>
+            <button
+              onClick={() => changePasswordMutation.mutate()}
+              disabled={
+                changePasswordMutation.isPending ||
+                !pwForm.current_password ||
+                !pwForm.new_password ||
+                !pwForm.confirm_password
+              }
+              className="text-sm font-semibold px-4 py-2 bg-brand-600 text-white hover:bg-brand-500 transition-colors disabled:opacity-50"
+            >
+              {changePasswordMutation.isPending ? "Saving…" : "Update password"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.schemas.generation import (
+    GenerationFromBriefRequest,
     GenerationJobCreate,
     GenerationJobListResponse,
     GenerationJobResponse,
@@ -45,6 +46,33 @@ async def create_generation_job(
     svc = GenerationService(db)
     job = await svc.create_job(
         body=body,
+        actor=current_user,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    background_tasks.add_task(execute_generation_job, job.id, job.organization_id)
+    return GenerationJobResponse.model_validate(job)
+
+
+@router.post(
+    "/jobs/from-brief",
+    response_model=GenerationJobResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Trigger generation from compiled Study Brief",
+)
+async def create_generation_job_from_brief(
+    body: GenerationFromBriefRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GenerationJobResponse:
+    """Trigger AI artifact generation directly from a compiled Study Brief. Admin or Contributor."""
+    svc = GenerationService(db)
+    job = await svc.create_job_from_brief(
+        brief_id=body.brief_id,
+        artifact_type=body.artifact_type,
+        model_id=body.model_id,
         actor=current_user,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),

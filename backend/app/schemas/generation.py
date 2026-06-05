@@ -12,11 +12,23 @@ from app.models.generation import GenerationJobStatus
 
 
 class GenerationJobCreate(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     study_id: UUID
     artifact_type: ArtifactType
     model_id: str = Field(default="claude-sonnet-4-6", max_length=100)
     prompt_template_id: str | None = Field(default=None, max_length=100)
     input_context: dict = Field(default_factory=dict)
+
+
+class GenerationFromBriefRequest(BaseModel):
+    """Request body for triggering generation directly from a compiled Study Brief."""
+
+    model_config = {"protected_namespaces": ()}
+
+    brief_id: UUID
+    artifact_type: ArtifactType
+    model_id: str = Field(default="claude-sonnet-4-6", max_length=100)
 
 
 class GenerationJobResponse(BaseModel):
@@ -37,7 +49,7 @@ class GenerationJobResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "protected_namespaces": ()}
 
 
 class GenerationJobListResponse(BaseModel):

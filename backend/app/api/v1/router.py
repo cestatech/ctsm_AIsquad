@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
     intelligence,
     notifications,
     intake,
+    uploads,
 )
 
 api_v1_router = APIRouter()
@@ -43,3 +44,4 @@ api_v1_router.include_router(
     notifications.router, prefix="/notifications", tags=["Notifications"]
 )
 api_v1_router.include_router(intake.router, prefix="/intake", tags=["Intake"])
+api_v1_router.include_router(uploads.router, prefix="/studies", tags=["Uploads"])

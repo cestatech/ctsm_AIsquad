@@ -26,8 +26,10 @@ def upgrade() -> None:
     op.execute("ALTER TYPE graph_node_type ADD VALUE IF NOT EXISTS 'STUDY_BRIEF'")
 
     op.execute(
-        "CREATE TYPE intake_status AS ENUM "
-        "('IN_PROGRESS', 'READY_TO_COMPILE', 'COMPILED')"
+        "DO $$ BEGIN "
+        "  CREATE TYPE intake_status AS ENUM ('IN_PROGRESS', 'READY_TO_COMPILE', 'COMPILED'); "
+        "EXCEPTION WHEN duplicate_object THEN NULL; "
+        "END $$"
     )
 
     op.create_table(
@@ -38,7 +40,7 @@ def upgrade() -> None:
         sa.Column("created_by_id", postgresql.UUID(as_uuid=False), nullable=False),
         sa.Column(
             "status",
-            sa.Enum("IN_PROGRESS", "READY_TO_COMPILE", "COMPILED", name="intake_status"),
+            postgresql.ENUM("IN_PROGRESS", "READY_TO_COMPILE", "COMPILED", name="intake_status", create_type=False),
             nullable=False,
             server_default="IN_PROGRESS",
         ),

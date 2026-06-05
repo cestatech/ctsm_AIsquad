@@ -485,3 +485,19 @@ export interface StudyBrief {
   content: Record<string, unknown>;
   created_at: string;
 }
+
+// ─── File Uploads ─────────────────────────────────────────────────────────────
+
+export interface UploadedFile {
+  id: string;
+  organization_id: string;
+  study_id: string;
+  uploaded_by_id: string;
+  original_filename: string;
+  stored_filename: string;
+  file_size_bytes: number;
+  mime_type: string;
+  description: string | null;
+  extracted_metadata: Record<string, unknown>;
+  created_at: string;
+}

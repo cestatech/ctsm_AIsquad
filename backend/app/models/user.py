@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -41,6 +41,12 @@ class User(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     is_system_admin: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    org_role: Mapped[Role] = mapped_column(
+        Enum(Role, name="user_role", create_type=False),
+        nullable=False,
+        default=Role.CONTRIBUTOR,
+        server_default="CONTRIBUTOR",
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -61,10 +67,10 @@ class User(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
 
     @property
     def effective_role(self) -> Role:
-        """Organization-level role. Defaults to CONTRIBUTOR for non-admin users."""
+        """Organization-level role. is_system_admin always overrides to ADMIN."""
         if self.is_system_admin:
             return Role.ADMIN
-        return Role.CONTRIBUTOR
+        return self.org_role
 
     def to_audit_dict(self) -> dict:
         return {

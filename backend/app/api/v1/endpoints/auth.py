@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db
 from app.core.config import get_settings
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import ChangePasswordRequest, LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.user import AuthResponse, UserResponse
 from app.services.auth_service import AuthService
 from app.services.context_graph_service import ContextGraphService
@@ -155,6 +155,29 @@ async def logout(
     resp = PlainResponse(status_code=status.HTTP_204_NO_CONTENT)
     resp.delete_cookie(key=_COOKIE, path="/api/v1/auth")
     return resp
+
+
+@router.post(
+    "/change-password",
+    response_class=PlainResponse,
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> PlainResponse:
+    """Change the current user's password. Requires the correct current password."""
+    service = AuthService(db)
+    await service.change_password(
+        actor=current_user,
+        current_password=body.current_password,
+        new_password=body.new_password,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return PlainResponse(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/me", response_model=UserResponse)

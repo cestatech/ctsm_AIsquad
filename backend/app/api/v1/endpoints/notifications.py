@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -71,12 +71,14 @@ async def mark_read(
 @router.post(
     "/read-all",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
     summary="Mark all notifications as read",
 )
 async def mark_all_read(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> None:
+) -> Response:
     """Mark all unread notifications for the authenticated user as read."""
     svc = NotificationService(db)
     await svc.mark_all_read(current_user.id, current_user.organization_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

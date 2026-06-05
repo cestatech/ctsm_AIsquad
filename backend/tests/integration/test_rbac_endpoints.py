@@ -16,6 +16,7 @@ import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import Role
 from app.core.security import hash_password
 from app.models.user import User
 from tests.integration.conftest import make_token
@@ -28,7 +29,7 @@ from tests.integration.conftest import make_token
 
 @pytest_asyncio.fixture(scope="session")
 async def i_reviewer(idb: AsyncSession, i_org) -> User:
-    """A non-admin user that we treat as Reviewer at org level."""
+    """A Reviewer-role user at org level."""
     user = User(
         id=uuid4(),
         organization_id=i_org.id,
@@ -37,6 +38,7 @@ async def i_reviewer(idb: AsyncSession, i_org) -> User:
         hashed_password=hash_password("TestPass123!"),
         is_active=True,
         is_system_admin=False,
+        org_role=Role.REVIEWER,
     )
     idb.add(user)
     await idb.commit()
