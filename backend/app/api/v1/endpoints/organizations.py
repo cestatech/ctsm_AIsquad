@@ -7,7 +7,7 @@ Permissions:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -46,6 +46,8 @@ async def update_my_organization(
     audit = AuditService(db)
 
     org = await repo.get_by_id(current_user.organization_id)
+    if org is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "NOT_FOUND", "message": "Organization not found."})
     before = org.to_audit_dict()
 
     update_fields = body.model_dump(exclude_none=True)

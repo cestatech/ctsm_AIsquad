@@ -407,7 +407,7 @@ async def list_synthetic_runs(
     """List all synthetic data runs for a study, newest first."""
     repo = SyntheticDataRunRepository(db)
     offset = (page - 1) * page_size
-    runs, total = await repo.list_for_study(
+    runs, total = await repo.list_runs_for_study(
         study_id=study_id,
         organization_id=current_user.organization_id,
         limit=page_size,

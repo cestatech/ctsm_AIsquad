@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.models.artifact import ArtifactType
 from app.models.generation import GenerationJob
+from app.models.study import Study
 from app.services.generators.base_generator import BaseGenerator
 
 _SYSTEM = """You are a clinical trial protocol writer with deep expertise in ICH E6(R2) GCP and regulatory submission standards.
@@ -62,7 +63,7 @@ class ProtocolGenerator(BaseGenerator):
         return f"{study_name} — Clinical Trial Protocol v1.0"
 
     async def _build_content(
-        self, job: GenerationJob, study: object, model_id: str
+        self, job: GenerationJob, study: Study, model_id: str
     ) -> dict:
         ctx = job.input_context or {}
         user_prompt = f"""Generate a complete clinical trial protocol for the following study.

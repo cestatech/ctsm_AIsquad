@@ -13,6 +13,7 @@ import re
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 import anthropic
+from anthropic.types import TextBlock
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -21,6 +22,7 @@ from app.models.generation import GenerationJob, GenerationJobStatus
 from app.models.graph import GraphEdgeType, GraphNodeType
 from app.models.user import User
 from app.repositories.generation_repository import GenerationRepository
+from app.models.study import Study
 from app.repositories.study_repository import StudyRepository
 from app.services.artifact_service import ArtifactService
 from app.services.context_graph_service import ContextGraphService
@@ -175,7 +177,7 @@ class BaseGenerator(ABC):
     async def _build_content(
         self,
         job: GenerationJob,
-        study: object,
+        study: Study,
         model_id: str,
     ) -> dict:
         """
@@ -209,7 +211,8 @@ class BaseGenerator(ABC):
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
-        return response.content[0].text
+        block = response.content[0]
+        return block.text if isinstance(block, TextBlock) else ""
 
     @staticmethod
     def _parse_json_response(text: str) -> dict:

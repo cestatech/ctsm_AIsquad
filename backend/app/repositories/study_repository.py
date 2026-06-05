@@ -51,7 +51,7 @@ class StudyRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list(
+    async def list_studies(
         self,
         organization_id: UUID,
         status_filter: StudyStatus | None = None,

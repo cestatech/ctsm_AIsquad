@@ -36,7 +36,7 @@ class StudyService:
     async def get(self, study_id: UUID, organization_id: UUID) -> Study:
         return await self._repo.get(study_id, organization_id)
 
-    async def list(
+    async def list_studies(
         self,
         organization_id: UUID,
         status_filter: StudyStatus | None = None,
@@ -44,7 +44,7 @@ class StudyService:
         page_size: int = 50,
     ) -> tuple[list[Study], int]:
         offset = (page - 1) * page_size
-        return await self._repo.list(
+        return await self._repo.list_studies(
             organization_id=organization_id,
             status_filter=status_filter,
             limit=page_size,

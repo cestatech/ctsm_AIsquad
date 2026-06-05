@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.models.artifact import ArtifactType
 from app.models.generation import GenerationJob
+from app.models.study import Study
 from app.services.generators.base_generator import BaseGenerator
 
 _SYSTEM = """You are a senior medical writer with expertise in ICH E3 Clinical Study Report structure and regulatory submission standards for FDA, EMA, and PMDA.
@@ -124,7 +125,7 @@ class CSRGenerator(BaseGenerator):
         return f"{study_name} — Clinical Study Report v1.0 (Shell)"
 
     async def _build_content(
-        self, job: GenerationJob, study: object, model_id: str
+        self, job: GenerationJob, study: Study, model_id: str
     ) -> dict:
         ctx = job.input_context or {}
         user_prompt = f"""Generate a Clinical Study Report (CSR) shell following ICH E3 structure for the following clinical trial.

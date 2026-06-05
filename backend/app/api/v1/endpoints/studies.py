@@ -48,7 +48,7 @@ async def list_studies(
 ) -> StudyListResponse:
     """List all studies for the authenticated user's organization."""
     svc = StudyService(db)
-    studies, total = await svc.list(
+    studies, total = await svc.list_studies(
         organization_id=current_user.organization_id,
         status_filter=study_status,
         page=page,

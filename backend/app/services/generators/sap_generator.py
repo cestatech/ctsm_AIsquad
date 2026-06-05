@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.models.artifact import ArtifactType
 from app.models.generation import GenerationJob
+from app.models.study import Study
 from app.services.generators.base_generator import BaseGenerator
 
 _SYSTEM = """You are a senior biostatistician with expertise in ICH E9(R1) estimands and regulatory submission standards (FDA, EMA).
@@ -67,7 +68,7 @@ class SAPGenerator(BaseGenerator):
         return f"{study_name} — Statistical Analysis Plan v1.0"
 
     async def _build_content(
-        self, job: GenerationJob, study: object, model_id: str
+        self, job: GenerationJob, study: Study, model_id: str
     ) -> dict:
         ctx = job.input_context or {}
         user_prompt = f"""Generate a Statistical Analysis Plan for the following clinical trial.

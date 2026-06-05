@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.models.artifact import ArtifactType
 from app.models.generation import GenerationJob
+from app.models.study import Study
 from app.services.generators.base_generator import BaseGenerator
 
 _SYSTEM = """You are a clinical reporting expert specialising in ICH E3 clinical study report structure and CDISC TLF standards.
@@ -71,7 +72,7 @@ class TLFAssembler(BaseGenerator):
         return f"{study_name} — TLF Specification v1.0"
 
     async def _build_content(
-        self, job: GenerationJob, study: object, model_id: str
+        self, job: GenerationJob, study: Study, model_id: str
     ) -> dict:
         ctx = job.input_context or {}
         user_prompt = f"""Generate a complete TLF specification for the following clinical trial.

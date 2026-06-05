@@ -23,6 +23,7 @@ import re
 from uuid import UUID
 
 import anthropic
+from anthropic.types import TextBlock
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -515,7 +516,8 @@ class IntakeService:
                 }
             ],
         )
-        raw = compile_response.content[0].text
+        first_block = compile_response.content[0]
+        raw = first_block.text if isinstance(first_block, TextBlock) else ""
         brief_content = self._extract_json(raw)
 
         brief = StudyBrief(
@@ -706,13 +708,17 @@ class IntakeService:
         return intake
 
     async def _call_claude_conversation(self, messages: list[dict]) -> str:
+        from typing import cast
+        from anthropic.types import MessageParam
+
         response = await self._client.messages.create(
             model=_INTAKE_MODEL,
             max_tokens=1024,
             system=_SYSTEM_PROMPT,
-            messages=messages,
+            messages=cast(list[MessageParam], messages),
         )
-        return response.content[0].text
+        block = response.content[0]
+        return block.text if isinstance(block, TextBlock) else ""
 
     def _parse_ai_response(self, text: str) -> dict:
         """Parse the JSON envelope from Claude's intake response."""

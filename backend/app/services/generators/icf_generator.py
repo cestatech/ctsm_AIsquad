@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.models.artifact import ArtifactType
 from app.models.generation import GenerationJob
+from app.models.study import Study
 from app.services.generators.base_generator import BaseGenerator
 
 _SYSTEM = """You are a clinical research expert specialising in informed consent documents compliant with ICH E6(R2), 21 CFR Part 50, and FDA guidance on informed consent.
@@ -48,7 +49,7 @@ class ICFGenerator(BaseGenerator):
         return f"{study_name} — Informed Consent Form v1.0"
 
     async def _build_content(
-        self, job: GenerationJob, study: object, model_id: str
+        self, job: GenerationJob, study: Study, model_id: str
     ) -> dict:
         ctx = job.input_context or {}
         user_prompt = f"""Generate an Informed Consent Form for the following clinical trial.

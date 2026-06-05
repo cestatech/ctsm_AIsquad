@@ -55,9 +55,9 @@ async def get_current_user(
 
     try:
         payload = decode_access_token(credentials.credentials)
-        user_id: str = payload.get("sub")
-        org_id: str = payload.get("org")
-        token_type: str = payload.get("type")
+        user_id: str = payload.get("sub") or ""
+        org_id: str = payload.get("org") or ""
+        token_type: str = payload.get("type") or ""
 
         if not user_id or not org_id or token_type != "access":
             raise credentials_exception

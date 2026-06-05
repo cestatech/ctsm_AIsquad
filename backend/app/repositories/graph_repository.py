@@ -286,7 +286,7 @@ class GraphRepository:
             if properties is not None:
                 existing.properties = properties
             if ai_decision_id is not None:
-                existing.ai_decision_id = ai_decision_id
+                existing.ai_decision_id = str(ai_decision_id)
             await self._db.flush()
             return existing, False
 

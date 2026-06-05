@@ -422,7 +422,7 @@ class ContextGraphService:
             edges = await self._repo.list_edges_to_node(current_id, organization_id)
             for edge in edges:
                 upstream.append(edge.to_dict())
-                await walk_upstream(edge.source_node_id, depth + 1)
+                await walk_upstream(UUID(edge.source_node_id), depth + 1)
 
         async def walk_downstream(current_id: UUID, depth: int) -> None:
             if depth >= max_depth or current_id in visited:
@@ -431,7 +431,7 @@ class ContextGraphService:
             edges = await self._repo.list_edges_from_node(current_id, organization_id)
             for edge in edges:
                 downstream.append(edge.to_dict())
-                await walk_downstream(edge.target_node_id, depth + 1)
+                await walk_downstream(UUID(edge.target_node_id), depth + 1)
 
         await walk_upstream(node_id, 0)
         visited.clear()

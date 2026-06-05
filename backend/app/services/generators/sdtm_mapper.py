@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.models.artifact import ArtifactType
 from app.models.generation import GenerationJob
+from app.models.study import Study
 from app.services.generators.base_generator import BaseGenerator
 
 _SYSTEM = """You are a CDISC SDTM expert. You map eCRF fields to SDTM variables following CDISC SDTM Implementation Guide v3.3 and CDISC Foundational Standards.
@@ -49,7 +50,7 @@ class SDTMMappingGenerator(BaseGenerator):
         return f"{study_name} — SDTM Mapping Specification v1.0"
 
     async def _build_content(
-        self, job: GenerationJob, study: object, model_id: str
+        self, job: GenerationJob, study: Study, model_id: str
     ) -> dict:
         ctx = job.input_context or {}
         ecrf_fields = ctx.get("ecrf_fields", [])
