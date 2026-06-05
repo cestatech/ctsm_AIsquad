@@ -499,5 +499,65 @@ export interface UploadedFile {
   mime_type: string;
   description: string | null;
   extracted_metadata: Record<string, unknown>;
+  file_hash: string | null;
+  upload_status: "UPLOADED" | "PARSED" | "FAILED" | "MAPPED";
   created_at: string;
+}
+
+export interface RawDataset {
+  id: string;
+  organization_id: string;
+  study_id: string;
+  uploaded_file_id: string;
+  dataset_name: string;
+  row_count: number;
+  column_count: number;
+  parse_status: "PENDING" | "PARSED" | "FAILED";
+  parse_error: string | null;
+  created_at: string;
+  fields: RawField[];
+}
+
+export interface RawField {
+  id: string;
+  organization_id: string;
+  study_id: string;
+  raw_dataset_id: string;
+  column_name: string;
+  column_index: number;
+  inferred_type: "string" | "date" | "number" | "boolean" | "unknown";
+  sample_values: string[];
+  missing_count: number;
+  distinct_count: number;
+  min_value: string | null;
+  max_value: string | null;
+  mapped_ecrf_field_id: string | null;
+  mapped_sdtm_variable_id: string | null;
+  mapping_status: "UNMAPPED" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED";
+  mapping_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FieldMappingVersion {
+  id: string;
+  raw_field_id: string;
+  version_number: number;
+  mapped_ecrf_field_id: string | null;
+  mapped_sdtm_variable_id: string | null;
+  mapping_status: string;
+  changed_by_id: string;
+  approved_by_id: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface MappingValidationResult {
+  total_fields: number;
+  mapped_fields: number;
+  approved_fields: number;
+  pending_fields: number;
+  unmapped_fields: number;
+  coverage_pct: number;
+  issues: string[];
 }

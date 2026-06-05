@@ -21,6 +21,8 @@ class UploadedFileResponse(BaseModel):
     mime_type: str
     description: str | None
     extracted_metadata: dict
+    file_hash: str | None
+    upload_status: str
     created_at: datetime
 
     model_config = {"from_attributes": True}

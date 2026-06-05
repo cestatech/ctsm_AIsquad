@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.study import Study
+    from app.models.raw_data import RawDataset
 
 
 class UploadedFile(UUIDMixin, TimestampMixin, Base):
@@ -56,6 +57,13 @@ class UploadedFile(UUIDMixin, TimestampMixin, Base):
     extracted_metadata: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict
     )
+    file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    upload_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="UPLOADED"
+    )
 
     study: Mapped["Study"] = relationship("Study")
     uploaded_by: Mapped["User"] = relationship("User", foreign_keys=[uploaded_by_id])
+    datasets: Mapped[list["RawDataset"]] = relationship(
+        "RawDataset", back_populates="uploaded_file", order_by="RawDataset.created_at"
+    )

@@ -50,6 +50,10 @@ class GraphNodeType(str, enum.Enum):
     RAW_DATA_FIELD = "RAW_DATA_FIELD"
     VALIDATION_RULE = "VALIDATION_RULE"
 
+    # Uploaded file ingestion (Phase 2)
+    UPLOADED_FILE = "UPLOADED_FILE"
+    RAW_DATASET = "RAW_DATASET"
+
     # SDTM
     SDTM_DOMAIN = "SDTM_DOMAIN"
     SDTM_VARIABLE = "SDTM_VARIABLE"

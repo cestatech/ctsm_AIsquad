@@ -310,6 +310,13 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
                     <span className="text-[11px] text-slate-400 flex-shrink-0">
                       {new Date(f.created_at).toLocaleDateString()}
                     </span>
+                    <Link
+                      href={`/studies/${studyId}/uploads/${f.id}`}
+                      className="text-[11px] text-brand-600 hover:text-brand-700 font-medium flex-shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      View →
+                    </Link>
                   </div>
                 ))
               )}

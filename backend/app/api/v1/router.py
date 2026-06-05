@@ -16,6 +16,7 @@ from app.api.v1.endpoints import (
     notifications,
     intake,
     uploads,
+    raw_data,
 )
 
 api_v1_router = APIRouter()
@@ -45,3 +46,4 @@ api_v1_router.include_router(
 )
 api_v1_router.include_router(intake.router, prefix="/intake", tags=["Intake"])
 api_v1_router.include_router(uploads.router, prefix="/studies", tags=["Uploads"])
+api_v1_router.include_router(raw_data.router, prefix="/raw-data", tags=["Raw Data"])
