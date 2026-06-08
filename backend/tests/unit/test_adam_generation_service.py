@@ -56,6 +56,94 @@ class TestDeterministicAdam:
         assert "ADAE" in datasets
 
 
+class TestBDSDerivation:
+    def test_derives_adlb_from_lb_domain(self):
+        sdtm_domains = [{
+            "domain": "LB",
+            "variables": ["USUBJID", "LBTESTCD", "LBSTRESN"],
+            "observations": [{
+                "USUBJID": "S001",
+                "LBTESTCD": "GLUC",
+                "LBSTRESN": "95",
+            }],
+        }]
+        adlb = ADAMGenerationService._derive_adlb(sdtm_domains[0])
+        assert adlb["dataset"] == "ADLB"
+        var_names = {v["variable"] for v in adlb["variables"]}
+        assert {"AVAL", "BASE", "CHG", "PCHG", "ANRLO", "ANRHI", "ANL01FL"} <= var_names
+        assert len(adlb["observations"]) == 1
+        assert adlb["observations"][0]["PARAMCD"] == "GLUC"
+
+    def test_enrich_adds_adlb_advs_adtte(self):
+        sdtm_domains = [
+            {
+                "domain": "DM",
+                "variables": ["USUBJID"],
+                "observations": [{"USUBJID": "S001"}],
+            },
+            {
+                "domain": "LB",
+                "variables": ["USUBJID", "LBTESTCD"],
+                "observations": [{"USUBJID": "S001", "LBTESTCD": "HGB"}],
+            },
+            {
+                "domain": "VS",
+                "variables": ["USUBJID", "VSTESTCD"],
+                "observations": [{"USUBJID": "S001", "VSTESTCD": "SYSBP"}],
+            },
+            {
+                "domain": "AE",
+                "variables": ["USUBJID", "AEDECOD"],
+                "observations": [{"USUBJID": "S001", "AEDECOD": "Headache"}],
+            },
+        ]
+        base = ADAMGenerationService._deterministic_adam(
+            protocol_number="STUDY-1",
+            sdtm_domains=sdtm_domains,
+        )
+        datasets = {d["dataset"] for d in base["datasets"]}
+        assert "ADLB" in datasets
+        assert "ADVS" in datasets
+        assert "ADTTE" in datasets
+
+    def test_derives_advs_with_bds_variables(self):
+        vs_domain = {
+            "domain": "VS",
+            "observations": [{"USUBJID": "S001", "VSTESTCD": "SYSBP", "VSSTRESN": "120"}],
+        }
+        advs = ADAMGenerationService._derive_advs(vs_domain)
+        assert advs["dataset"] == "ADVS"
+        assert advs["observations"][0]["PARAMCD"] == "SYSBP"
+
+    def test_derives_adtte_from_ae_domain(self):
+        ae_domain = {
+            "domain": "AE",
+            "observations": [{
+                "USUBJID": "S001",
+                "AEDECOD": "Nausea",
+                "AESTDY": "5",
+                "AESER": "N",
+            }],
+        }
+        adtte = ADAMGenerationService._derive_adtte(ae_domain, "AE")
+        assert adtte["dataset"] == "ADTTE"
+        assert adtte["observations"][0]["EVNTDESC"] == "Nausea"
+        assert adtte["observations"][0]["SRCDOM"] == "AE"
+
+    def test_derives_adtte_from_ds_domain(self):
+        ds_domain = {
+            "domain": "DS",
+            "observations": [{
+                "USUBJID": "S001",
+                "DSDECOD": "COMPLETED",
+                "DSDY": "180",
+            }],
+        }
+        adtte = ADAMGenerationService._derive_adtte(ds_domain, "DS")
+        assert adtte["dataset"] == "ADTTE"
+        assert adtte["observations"][0]["SRCDOM"] == "DS"
+
+
 class TestAssertSdtmReady:
     def test_rejects_empty_domains(self):
         with pytest.raises(HTTPException) as exc:

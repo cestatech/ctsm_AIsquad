@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     adam,
     csr,
+    submissions,
     statistical_qc,
     tlf,
     auth,
@@ -56,4 +57,7 @@ api_v1_router.include_router(tlf.router, prefix="/tlf", tags=["TLF"])
 api_v1_router.include_router(csr.router, prefix="/csr", tags=["CSR"])
 api_v1_router.include_router(
     statistical_qc.router, prefix="/statistical-qc", tags=["Statistical QC"]
+)
+api_v1_router.include_router(
+    submissions.router, prefix="/submissions", tags=["Submissions"]
 )

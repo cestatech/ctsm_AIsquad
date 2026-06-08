@@ -634,6 +634,11 @@ class ValidationEvidence(UUIDMixin, Base):
         nullable=True,
     )
 
+    # Validation engine that produced this evidence (INTERNAL, PINNACLE21, etc.)
+    source: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="INTERNAL", server_default="INTERNAL"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
