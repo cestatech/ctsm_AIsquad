@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { usePermissions } from "@/hooks/usePermissions";
+import { canRemoveArtifact, usePermissions } from "@/hooks/usePermissions";
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { adamApi } from "@/lib/api/adam";
@@ -221,8 +221,36 @@ function CommentThread({ comment, token, artifactId, onRefetch }: {
   );
 }
 
+async function downloadArtifactFile(id: string, name: string, token: string) {
+  const blob = await artifactsApi.downloadContent(id, token);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${name.replace(/\s+/g, "_")}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function isSyntheticArtifact(artifact: Artifact): boolean {
+  return (
+    artifact.artifact_type === "OTHER" &&
+    (artifact.name.includes("Synthetic") ||
+      (artifact.description?.includes("SYNTHETIC") ?? false))
+  );
+}
+
+async function downloadArtifactCsv(id: string, token: string) {
+  const { blob, filename } = await artifactsApi.downloadCsv(id, token);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function ArtifactDetailPage({ params }: { params: { id: string; artifactId: string } }) {
-  const { token, role } = useAuthStore();
+  const { token, role, user } = useAuthStore();
   const perms = usePermissions(role);
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -240,6 +268,7 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
   const [editorError, setEditorError] = useState<string | null>(null);
   const [editorJsonError, setEditorJsonError] = useState<string | null>(null);
   const [contentView, setContentView] = useState<"structured" | "json">("structured");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const { data: artifact, isLoading } = useQuery({
     queryKey: ["artifact", artifactId, token],
@@ -335,6 +364,15 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
       setActionError(getApiErrorMessage(err, "CSR generation failed.")),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => artifactsApi.delete(artifactId, token!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      router.push(`/studies/${studyId}/artifacts`);
+    },
+    onError: (err) => setActionError(getApiErrorMessage(err, "Remove failed.")),
+  });
+
   const approvalMutation = useMutation({
     mutationFn: async (decision: "APPROVED" | "REJECTED") => {
       if (!artifact?.current_version_id) throw new Error("No current version.");
@@ -362,6 +400,50 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
 
   function renderActions(a: Artifact) {
     const actions: React.ReactNode[] = [];
+    if (isSyntheticArtifact(a)) {
+      actions.push(
+        <ActionButton
+          key="download-csv"
+          label="Download CSV"
+          variant="primary"
+          onClick={async () => {
+            setActionError(null);
+            try {
+              await downloadArtifactCsv(a.id, token!);
+            } catch (err) {
+              setActionError(err instanceof Error ? err.message : "CSV download failed.");
+            }
+          }}
+        />
+      );
+    }
+    actions.push(
+      <ActionButton
+        key="download"
+        label={isSyntheticArtifact(a) ? "Download JSON" : "Download"}
+        onClick={async () => {
+          setActionError(null);
+          try {
+            await downloadArtifactFile(a.id, a.name, token!);
+          } catch (err) {
+            setActionError(err instanceof Error ? err.message : "Download failed.");
+          }
+        }}
+      />
+    );
+    if (canRemoveArtifact(a, user?.id, perms)) {
+      actions.push(
+        <ActionButton
+          key="remove"
+          label="Remove"
+          variant="danger"
+          onClick={() => {
+            setActionError(null);
+            setDeleteConfirmOpen(true);
+          }}
+        />
+      );
+    }
     if (a.status === "DRAFT" && perms.canEditArtifact) {
       actions.push(
         <ActionButton
@@ -846,6 +928,37 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white w-full max-w-md border border-slate-200 shadow-xl">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="font-display font-semibold text-slate-900">Remove artifact</h2>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-sm text-slate-700">
+                Are you sure you want to remove <strong>{artifact.name}</strong> from this study?
+                This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => deleteMutation.mutate()}
+                  disabled={deleteMutation.isPending}
+                  className="text-sm font-semibold font-display px-5 py-2 bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50"
+                >
+                  {deleteMutation.isPending ? "Removing…" : "Yes, remove"}
+                </button>
+                <button
+                  onClick={() => setDeleteConfirmOpen(false)}
+                  className="text-slate-500 hover:text-slate-700 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -11,9 +11,11 @@ Permissions (enforced in service layer):
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -121,6 +123,84 @@ async def update_artifact_content(
         change_summary=body.change_summary,
     )
     return ArtifactResponse.model_validate(artifact)
+
+
+@router.get(
+    "/{artifact_id}/download",
+    summary="Download artifact content as JSON",
+    response_class=Response,
+)
+async def download_artifact(
+    artifact_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Export artifact metadata and current version content as a JSON file."""
+    svc = ArtifactService(db)
+    artifact, content = await svc.get_artifact_export(
+        artifact_id, current_user.organization_id
+    )
+    payload = {
+        "artifact": ArtifactResponse.model_validate(artifact).model_dump(mode="json"),
+        "version_number": artifact.current_version_number,
+        "content": content,
+        "exported_at": datetime.now(UTC).isoformat(),
+    }
+    safe_name = "".join(
+        c if c.isalnum() or c in "-_" else "_" for c in artifact.name
+    )
+    return Response(
+        content=json.dumps(payload, indent=2, default=str),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}.json"'
+        },
+    )
+
+
+@router.get(
+    "/{artifact_id}/download-csv",
+    summary="Download synthetic artifact as CSV",
+    response_class=Response,
+)
+async def download_artifact_csv(
+    artifact_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Export synthetic patient-level data as a CSV file."""
+    svc = ArtifactService(db)
+    filename, csv_body = await svc.get_artifact_csv_export(
+        artifact_id, current_user.organization_id
+    )
+    return Response(
+        content=csv_body,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.delete(
+    "/{artifact_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove artifact from study",
+)
+async def delete_artifact(
+    artifact_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Soft-delete a DRAFT artifact. Creator or Admin only."""
+    svc = ArtifactService(db)
+    await svc.delete_artifact(
+        artifact_id=artifact_id,
+        organization_id=current_user.organization_id,
+        user=current_user,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(

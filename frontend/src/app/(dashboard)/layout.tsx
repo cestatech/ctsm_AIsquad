@@ -6,12 +6,22 @@ import { useAuthStore } from "@/store/authStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { token } = useAuthStore();
+  const { token, isBootstrapped } = useAuthStore();
   const router = useRouter();
 
   useEffect(() => {
-    if (!token) router.replace("/login");
-  }, [token, router]);
+    if (isBootstrapped && !token) {
+      router.replace("/login");
+    }
+  }, [token, isBootstrapped, router]);
+
+  if (!isBootstrapped) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <p className="text-sm text-slate-400">Loading session…</p>
+      </div>
+    );
+  }
 
   if (!token) return null;
 

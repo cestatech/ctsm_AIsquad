@@ -36,4 +36,10 @@ export const generationApi = {
 
   generateFromBrief: (body: GenerateFromBriefBody, token: string) =>
     apiClient.post<GenerationJob>("/generation/jobs/from-brief", { body, token }),
+
+  cancelJob: (id: string, token: string) =>
+    apiClient.post<GenerationJob>(`/generation/jobs/${id}/cancel`, {
+      token,
+      body: {},
+    }),
 };

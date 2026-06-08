@@ -16,6 +16,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.config import get_settings
 from app.models.user import User
 from app.schemas.generation import (
     GenerationFromBriefRequest,
@@ -84,6 +85,29 @@ async def create_generation_job_from_brief(
 
 
 @router.post(
+    "/jobs/{job_id}/cancel",
+    response_model=GenerationJobResponse,
+    summary="Stop a generation job",
+)
+async def cancel_generation_job(
+    job_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GenerationJobResponse:
+    """Cancel a PENDING, QUEUED, or RUNNING job. Admin or Contributor."""
+    svc = GenerationService(db)
+    job = await svc.cancel_job(
+        job_id=job_id,
+        actor=current_user,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return GenerationJobResponse.model_validate(job)
+
+
+@router.post(
     "/jobs/{job_id}/retry",
     response_model=GenerationJobResponse,
     summary="Retry a stuck or failed generation job",
@@ -120,6 +144,11 @@ async def list_generation_jobs(
 ) -> GenerationJobListResponse:
     """List AI generation jobs for the org, optionally filtered by study."""
     svc = GenerationService(db)
+    settings = get_settings()
+    await svc.recover_stale_running_jobs(
+        timeout_seconds=settings.AI_JOB_TIMEOUT_SECONDS
+    )
+    await db.commit()
     items, total = await svc.list(
         organization_id=current_user.organization_id,
         study_id=study_id,

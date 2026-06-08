@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { usePermissions } from "@/hooks/usePermissions";
+import { canRemoveArtifact, usePermissions } from "@/hooks/usePermissions";
 import { studiesApi } from "@/lib/api/studies";
 import { artifactsApi } from "@/lib/api/artifacts";
-import type { ArtifactType } from "@/types";
+import { getApiErrorMessage } from "@/lib/api/errors";
+import type { Artifact, ArtifactType } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600",
@@ -39,7 +40,7 @@ const TYPE_LABELS: Record<string, string> = Object.fromEntries(
 );
 
 export default function ArtifactListPage({ params }: { params: { id: string } }) {
-  const { token, role } = useAuthStore();
+  const { token, role, user } = useAuthStore();
   const perms = usePermissions(role);
   const queryClient = useQueryClient();
   const studyId = params.id;
@@ -47,6 +48,8 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
   const [showNewModal, setShowNewModal] = useState(false);
   const [newForm, setNewForm] = useState({ name: "", artifact_type: "" as ArtifactType | "", description: "" });
   const [formError, setFormError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<Artifact | null>(null);
 
   const { data: study } = useQuery({
     queryKey: ["study", studyId, token],
@@ -58,6 +61,16 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
     queryKey: ["artifacts", studyId, token],
     queryFn: () => artifactsApi.list({ study_id: studyId, page_size: 100 }, token!),
     enabled: !!token,
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (artifactId: string) => artifactsApi.delete(artifactId, token!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      setRemoveTarget(null);
+      setActionError(null);
+    },
+    onError: (err) => setActionError(getApiErrorMessage(err, "Remove failed.")),
   });
 
   const createMutation = useMutation({
@@ -113,6 +126,11 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
       </div>
 
       <div className="px-8 py-6">
+        {actionError && (
+          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2">
+            {actionError}
+          </div>
+        )}
         <div className="bg-white border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -123,16 +141,17 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Version</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Tags</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Updated</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-sm">Loading…</td>
+                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">Loading…</td>
                 </tr>
               ) : artifacts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center">
+                  <td colSpan={7} className="px-4 py-10 text-center">
                     <p className="text-slate-400 text-sm mb-3">No artifacts in this study yet.</p>
                     {perms.canCreateArtifact && (
                       <button
@@ -179,6 +198,44 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
                       </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-400">{rel(a.updated_at)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setActionError(null);
+                            try {
+                              const blob = await artifactsApi.downloadContent(a.id, token!);
+                              const url = URL.createObjectURL(blob);
+                              const link = document.createElement("a");
+                              link.href = url;
+                              link.download = `${a.name.replace(/\s+/g, "_")}.json`;
+                              link.click();
+                              URL.revokeObjectURL(url);
+                            } catch (err) {
+                              setActionError(
+                                err instanceof Error ? err.message : "Download failed."
+                              );
+                            }
+                          }}
+                          className="text-[11px] text-brand-600 hover:text-brand-700 font-medium"
+                        >
+                          Download
+                        </button>
+                        {canRemoveArtifact(a, user?.id, perms) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActionError(null);
+                              setRemoveTarget(a);
+                            }}
+                            className="text-[11px] text-red-600 hover:text-red-700 font-medium"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -186,6 +243,39 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
           </table>
         </div>
       </div>
+
+      {removeTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white w-full max-w-md border border-slate-200 shadow-xl">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="font-display font-semibold text-slate-900">Remove artifact</h2>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-sm text-slate-700">
+                Are you sure you want to remove <strong>{removeTarget.name}</strong> from this study?
+                This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => removeMutation.mutate(removeTarget.id)}
+                  disabled={removeMutation.isPending}
+                  className="text-sm font-semibold font-display px-5 py-2 bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50"
+                >
+                  {removeMutation.isPending ? "Removing…" : "Yes, remove"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRemoveTarget(null)}
+                  className="text-slate-500 hover:text-slate-700 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New Artifact Modal */}
       {showNewModal && (

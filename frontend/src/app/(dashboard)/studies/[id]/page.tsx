@@ -15,6 +15,8 @@ import { adamApi } from "@/lib/api/adam";
 import { csrApi } from "@/lib/api/csr";
 import { graphApi } from "@/lib/api/graph";
 import { intakeApi } from "@/lib/api/intake";
+import { generationApi } from "@/lib/api/generation";
+import { intelligenceApi } from "@/lib/api/intelligence";
 import type { UploadedFile } from "@/types";
 
 const ARTIFACT_STATUS_COLORS: Record<string, string> = {
@@ -130,10 +132,26 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
   );
 
   const latestIntake = intakeSessions?.[0] ?? null;
-  const intakeCompiled = latestIntake?.status === "COMPILED";
+  const compiledIntake =
+    intakeSessions?.find((session) => session.status === "COMPILED") ?? null;
+  const intakeCompiled = !!compiledIntake;
   const intakeDomains = latestIntake?.domains_completed.length ?? 0;
   const hasProtocol = (artifactsData?.items ?? []).some((a) => a.artifact_type === "PROTOCOL");
   const hasIcf = (artifactsData?.items ?? []).some((a) => a.artifact_type === "ICF");
+  const hasSap = (artifactsData?.items ?? []).some((a) => a.artifact_type === "SAP");
+  const hasEdc = (artifactsData?.items ?? []).some((a) => a.artifact_type === "EDC_CRF");
+  const protocolArtifact = (artifactsData?.items ?? []).find((a) => a.artifact_type === "PROTOCOL");
+  const sapArtifact = (artifactsData?.items ?? []).find((a) => a.artifact_type === "SAP");
+
+  const { data: studyBrief } = useQuery({
+    queryKey: ["study-brief", compiledIntake?.id, token],
+    queryFn: () => intakeApi.getBrief(compiledIntake!.id, token!),
+    enabled: !!compiledIntake && !!token,
+  });
+
+  const [syntheticN, setSyntheticN] = useState(50);
+  const [syntheticSeed, setSyntheticSeed] = useState(42);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const { data: adamReadiness } = useQuery({
     queryKey: ["adam-readiness", studyId, token],
@@ -163,6 +181,72 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
       queryClient.invalidateQueries({ queryKey: ["csr-readiness", studyId] });
       router.push(`/studies/${studyId}/artifacts/${result.artifact_id}`);
     },
+  });
+
+  const generateEdcMutation = useMutation({
+    mutationFn: () =>
+      generationApi.createJob(
+        {
+          study_id: studyId,
+          artifact_type: "EDC_CRF",
+          model_id: "deterministic",
+          input_context: {
+            protocol_artifact_id: protocolArtifact?.id,
+            sap_artifact_id: sapArtifact?.id,
+          },
+        },
+        token!
+      ),
+    onSuccess: () => {
+      setGenerationError(null);
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["generation-jobs", studyId] });
+      router.push(`/studies/${studyId}/generation`);
+    },
+    onError: (err) => setGenerationError(getApiErrorMessage(err, "EDC generation failed.")),
+  });
+
+  const generateSapMutation = useMutation({
+    mutationFn: () =>
+      generationApi.generateFromBrief(
+        {
+          brief_id: studyBrief!.id,
+          artifact_type: "SAP",
+          model_id: "claude-sonnet-4-6",
+        },
+        token!
+      ),
+    onSuccess: () => {
+      setGenerationError(null);
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["generation-jobs", studyId] });
+      router.push(`/studies/${studyId}/generation`);
+    },
+    onError: (err) => setGenerationError(getApiErrorMessage(err, "SAP generation failed.")),
+  });
+
+  const generateSyntheticMutation = useMutation({
+    mutationFn: () =>
+      intelligenceApi.createSyntheticRun(
+        {
+          study_id: studyId,
+          target_n: syntheticN,
+          random_seed: syntheticSeed,
+        },
+        token!
+      ),
+    onSuccess: (run) => {
+      setGenerationError(null);
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["synthetic-runs", studyId] });
+      if (run.output_artifact_id) {
+        router.push(`/studies/${studyId}/artifacts/${run.output_artifact_id}`);
+      } else {
+        router.push("/intelligence/synthetic");
+      }
+    },
+    onError: (err) =>
+      setGenerationError(getApiErrorMessage(err, "Synthetic data generation failed.")),
   });
 
   const generateStudySdtmMutation = useMutation({
@@ -257,6 +341,105 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
       </div>
 
       <div className="px-8 py-6 space-y-6">
+        {perms.canTriggerGeneration &&
+          (intakeCompiled || hasProtocol || hasEdc) && (
+          <div className="bg-white border border-slate-200">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h2 className="font-display font-semibold text-slate-900 text-sm">AI Generation</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Generate SAP, EDC/eCRF, and synthetic data (after SAP). All runs appear in the context graph.
+              </p>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {intakeCompiled && !hasSap && studyBrief && (
+                <div className="px-5 py-4 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Statistical Analysis Plan (SAP)</p>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      Generate a draft SAP artifact from the compiled Study Brief.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => generateSapMutation.mutate()}
+                    disabled={generateSapMutation.isPending}
+                    className="shrink-0 text-xs bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white font-semibold px-4 py-2 transition-colors"
+                  >
+                    {generateSapMutation.isPending ? "Starting…" : "Generate SAP"}
+                  </button>
+                </div>
+              )}
+              {hasProtocol && !hasEdc && (
+                <div className="px-5 py-4 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">EDC / eCRF specification</p>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      Generate structured eCRF forms, fields, edit checks, and mock screens
+                      {hasSap ? " from protocol and SAP." : " from the protocol."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => generateEdcMutation.mutate()}
+                    disabled={generateEdcMutation.isPending}
+                    className="shrink-0 text-xs bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white font-semibold px-4 py-2 transition-colors"
+                  >
+                    {generateEdcMutation.isPending ? "Starting…" : "Generate EDC/eCRF"}
+                  </button>
+                </div>
+              )}
+              {hasSap && (
+                <div className="px-5 py-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Synthetic clinical data</p>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                        Generate reproducible patient-level CSV labeled SYNTHETIC from the SAP.
+                        Also uses Protocol and EDC artifacts when available.
+                      </p>
+                    </div>
+                    <div className="flex items-end gap-3 shrink-0">
+                      <div>
+                        <label className="block text-[10px] font-medium text-slate-500 mb-1">Subjects (N)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={500}
+                          value={syntheticN}
+                          onChange={(e) => setSyntheticN(Number(e.target.value))}
+                          className="w-20 border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-slate-500 mb-1">Seed</label>
+                        <input
+                          type="number"
+                          value={syntheticSeed}
+                          onChange={(e) => setSyntheticSeed(Number(e.target.value))}
+                          className="w-24 border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => generateSyntheticMutation.mutate()}
+                        disabled={generateSyntheticMutation.isPending}
+                        className="text-xs bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white font-semibold px-4 py-2 transition-colors"
+                      >
+                        {generateSyntheticMutation.isPending ? "Generating…" : "Generate synthetic data"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {generationError && (
+              <div className="px-5 py-3 border-t border-red-100 bg-red-50 text-red-700 text-xs">
+                {generationError}
+              </div>
+            )}
+          </div>
+        )}
+
         {(!hasProtocol || !hasIcf) && (
           <div className="bg-amber-50 border border-amber-200 px-5 py-4 flex items-start justify-between gap-4">
             <div>

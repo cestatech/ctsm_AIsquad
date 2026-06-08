@@ -36,8 +36,18 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(lambda c: None)  # connection check
 
-    # Recover generation jobs stuck PENDING after a dev server reload
+    # Recover generation jobs stuck after a dev server reload
     async with async_session_factory() as db:
+        from app.services.generation_service import GenerationService
+
+        gen_svc = GenerationService(db)
+        timed_out = await gen_svc.recover_stale_running_jobs(
+            timeout_seconds=settings.AI_JOB_TIMEOUT_SECONDS
+        )
+        if timed_out:
+            log.warning("Marked %s stale RUNNING generation job(s) as FAILED", timed_out)
+        await db.commit()
+
         result = await db.execute(
             select(GenerationJob).where(
                 GenerationJob.status == GenerationJobStatus.PENDING

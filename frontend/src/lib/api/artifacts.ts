@@ -58,6 +58,50 @@ export const artifactsApi = {
   getVersion: (id: string, versionId: string, token: string) =>
     apiClient.get<ArtifactVersion>(`/artifacts/${id}/versions/${versionId}`, { token }),
 
+  downloadCsv: async (id: string, token: string): Promise<{ blob: Blob; filename: string }> => {
+    const response = await fetch(`${API_URL}/artifacts/${id}/download-csv`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    });
+    if (!response.ok) {
+      let detail = "Failed to download CSV";
+      try {
+        const err = await response.json();
+        detail = (err as { detail?: string | { message?: string } }).detail
+          ? typeof (err as { detail: unknown }).detail === "string"
+            ? (err as { detail: string }).detail
+            : ((err as { detail: { message?: string } }).detail?.message ?? detail)
+          : detail;
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new Error(detail);
+    }
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match?.[1] ?? "synthetic_data.csv";
+    const blob = await response.blob();
+    return { blob, filename };
+  },
+
+  downloadContent: async (id: string, token: string): Promise<Blob> => {
+    const response = await fetch(`${API_URL}/artifacts/${id}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    });
+    if (!response.ok) {
+      let detail = "Failed to download artifact";
+      try {
+        const err = await response.json();
+        detail = (err as { detail?: string }).detail ?? detail;
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new Error(detail);
+    }
+    return response.blob();
+  },
+
   downloadDefineXml: async (id: string, token: string): Promise<Blob> => {
     const response = await fetch(`${API_URL}/artifacts/${id}/define-xml`, {
       headers: { Authorization: `Bearer ${token}` },

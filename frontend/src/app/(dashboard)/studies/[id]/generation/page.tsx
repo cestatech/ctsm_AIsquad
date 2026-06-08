@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
+import { usePermissions } from "@/hooks/usePermissions";
+import { getApiErrorMessage } from "@/lib/api/errors";
 import { generationApi } from "@/lib/api/generation";
 import { studiesApi } from "@/lib/api/studies";
 import type { GenerationJob } from "@/types";
@@ -34,7 +37,21 @@ function rel(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function JobRow({ job, studyId }: { job: GenerationJob; studyId: string }) {
+const ACTIVE_STATUSES = new Set(["PENDING", "QUEUED", "RUNNING"]);
+
+function JobRow({
+  job,
+  studyId,
+  canStop,
+  onStop,
+  isStopping,
+}: {
+  job: GenerationJob;
+  studyId: string;
+  canStop: boolean;
+  onStop: (jobId: string) => void;
+  isStopping: boolean;
+}) {
   const duration =
     job.started_at && job.completed_at
       ? `${Math.round((new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000)}s`
@@ -55,20 +72,34 @@ function JobRow({ job, studyId }: { job: GenerationJob; studyId: string }) {
       <td className="px-4 py-3 text-xs text-slate-400">{duration ?? "—"}</td>
       <td className="px-4 py-3 text-xs text-slate-400">{rel(job.created_at)}</td>
       <td className="px-4 py-3 text-xs">
-        {job.output_artifact_id ? (
-          <Link
-            href={`/studies/${studyId}/artifacts/${job.output_artifact_id}`}
-            className="text-brand-600 hover:text-brand-700 font-medium"
-          >
-            View artifact →
-          </Link>
-        ) : job.error_message ? (
-          <span className="text-red-600 truncate max-w-[200px] block" title={job.error_message}>
-            {job.error_message.slice(0, 60)}{job.error_message.length > 60 ? "…" : ""}
-          </span>
-        ) : (
-          <span className="text-slate-300">—</span>
-        )}
+        <div className="flex items-center gap-3">
+          {job.output_artifact_id ? (
+            <Link
+              href={`/studies/${studyId}/artifacts/${job.output_artifact_id}`}
+              className="text-brand-600 hover:text-brand-700 font-medium"
+            >
+              View artifact →
+            </Link>
+          ) : job.status === "CANCELLED" ? (
+            <span className="text-slate-500">Stopped</span>
+          ) : job.error_message ? (
+            <span className="text-red-600 truncate max-w-[160px] block" title={job.error_message}>
+              {job.error_message.slice(0, 60)}{job.error_message.length > 60 ? "…" : ""}
+            </span>
+          ) : (
+            <span className="text-slate-300">—</span>
+          )}
+          {canStop && ACTIVE_STATUSES.has(job.status) && (
+            <button
+              type="button"
+              onClick={() => onStop(job.id)}
+              disabled={isStopping}
+              className="text-red-600 hover:text-red-700 font-medium disabled:opacity-50"
+            >
+              {isStopping ? "Stopping…" : "Stop"}
+            </button>
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -77,7 +108,11 @@ function JobRow({ job, studyId }: { job: GenerationJob; studyId: string }) {
 export default function StudyGenerationPage() {
   const params = useParams<{ id: string }>();
   const studyId = params.id;
-  const { token } = useAuthStore();
+  const { token, role } = useAuthStore();
+  const perms = usePermissions(role);
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [stoppingJobId, setStoppingJobId] = useState<string | null>(null);
 
   const { data: study } = useQuery({
     queryKey: ["study", studyId, token],
@@ -94,6 +129,18 @@ export default function StudyGenerationPage() {
       const hasActive = jobs.some((j) => j.status === "PENDING" || j.status === "RUNNING" || j.status === "QUEUED");
       return hasActive ? 5000 : false;
     },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (jobId: string) => generationApi.cancelJob(jobId, token!),
+    onMutate: (jobId) => setStoppingJobId(jobId),
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["generation-jobs", studyId] });
+    },
+    onError: (err) =>
+      setActionError(getApiErrorMessage(err, "Failed to stop generation.")),
+    onSettled: () => setStoppingJobId(null),
   });
 
   const jobs = data?.items ?? [];
@@ -129,6 +176,11 @@ export default function StudyGenerationPage() {
       </div>
 
       <div className="px-8 py-6">
+        {actionError && (
+          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2">
+            {actionError}
+          </div>
+        )}
         <div className="bg-white border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -161,15 +213,24 @@ export default function StudyGenerationPage() {
                   </td>
                 </tr>
               ) : (
-                jobs.map((job) => <JobRow key={job.id} job={job} studyId={studyId} />)
+                jobs.map((job) => (
+                  <JobRow
+                    key={job.id}
+                    job={job}
+                    studyId={studyId}
+                    canStop={perms.canTriggerGeneration}
+                    onStop={(jobId) => cancelMutation.mutate(jobId)}
+                    isStopping={stoppingJobId === job.id && cancelMutation.isPending}
+                  />
+                ))
               )}
             </tbody>
           </table>
         </div>
 
-        {jobs.some((j) => j.status === "PENDING" || j.status === "RUNNING") && (
+        {jobs.some((j) => ACTIVE_STATUSES.has(j.status)) && (
           <p className="text-xs text-slate-400 mt-3 text-center">
-            Active jobs — page auto-refreshes every 5 seconds.
+            Active jobs — page auto-refreshes every 5 seconds. Use Stop to cancel queued or running work.
           </p>
         )}
       </div>

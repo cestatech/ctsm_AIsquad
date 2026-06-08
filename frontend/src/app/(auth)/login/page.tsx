@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { authApi } from "@/lib/api/auth";
 import { ApiClientError } from "@/lib/api/client";
@@ -10,11 +10,18 @@ import { ApiClientError } from "@/lib/api/client";
 export default function LoginPage() {
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
+  const { token, isBootstrapped } = useAuthStore();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isBootstrapped && token) {
+      router.replace("/dashboard");
+    }
+  }, [isBootstrapped, token, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

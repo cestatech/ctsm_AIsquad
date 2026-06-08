@@ -8,7 +8,14 @@ import { useAuthStore } from "@/store/authStore";
 import { intakeApi } from "@/lib/api/intake";
 import { studiesApi } from "@/lib/api/studies";
 import { generationApi } from "@/lib/api/generation";
-import { INTAKE_DOMAINS, type ArtifactType, type IntakeDomain, type SponsorIntake, type StudyBrief } from "@/types";
+import {
+  INTAKE_DOMAINS,
+  type ArtifactType,
+  type IntakeDomain,
+  type IntakeMessage,
+  type SponsorIntake,
+  type StudyBrief,
+} from "@/types";
 import { ApiClientError } from "@/lib/api/client";
 
 const DOMAIN_LABELS: Record<IntakeDomain, string> = Object.fromEntries(
@@ -145,6 +152,18 @@ export default function IntakePage() {
       setActiveIntake(data);
       setInput("");
     },
+    onError: (_err, message) => {
+      setActiveIntake((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          messages: prev.messages.filter(
+            (m) => !(m.id.startsWith("optimistic-") && m.content === message)
+          ),
+        };
+      });
+      setInput(message);
+    },
   });
 
   const compileMutation = useMutation({
@@ -163,8 +182,9 @@ export default function IntakePage() {
       generationApi.generateFromBrief({ brief_id: brief!.id, artifact_type: artifactType }, token!),
     onSuccess: (job) => {
       setGenError(null);
-      setGenSuccess(`${job.artifact_type} generation started (job ${job.id.slice(0, 8)}…). View progress in the Generation tab.`);
+      setGenSuccess(`${job.artifact_type} generation started (job ${job.id.slice(0, 8)}…).`);
       queryClient.invalidateQueries({ queryKey: ["generation-jobs", studyId] });
+      router.push(`/studies/${studyId}/generation`);
     },
     onError: (err) => {
       setGenError(err instanceof Error ? err.message : "Generation failed.");
@@ -172,16 +192,34 @@ export default function IntakePage() {
     },
   });
 
-  function handleSend() {
-    const trimmed = input.trim();
-    if (!trimmed || respondMutation.isPending) return;
+  function submitMessage(raw: string) {
+    const trimmed = raw.trim();
+    if (!trimmed || !activeIntake || respondMutation.isPending) return;
+
+    const optimisticMsg: IntakeMessage = {
+      id: `optimistic-${Date.now()}`,
+      intake_id: activeIntake.id,
+      role: "user",
+      content: trimmed,
+      domain: null,
+      created_at: new Date().toISOString(),
+    };
+
+    setActiveIntake((prev) =>
+      prev ? { ...prev, messages: [...prev.messages, optimisticMsg] } : prev
+    );
+    setInput("");
     respondMutation.mutate(trimmed);
+  }
+
+  function handleSend() {
+    submitMessage(input);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      submitMessage(e.currentTarget.value);
     }
   }
 
@@ -283,6 +321,15 @@ export default function IntakePage() {
                   {generateMutation.isPending && generateMutation.variables === "ICF"
                     ? "Starting…"
                     : "Generate ICF"}
+                </button>
+                <button
+                  onClick={() => generateMutation.mutate("SAP")}
+                  disabled={generateMutation.isPending}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold py-2 px-4 rounded-sm transition-colors"
+                >
+                  {generateMutation.isPending && generateMutation.variables === "SAP"
+                    ? "Starting…"
+                    : "Generate SAP"}
                 </button>
                 <Link
                   href={`/studies/${studyId}/generation`}
@@ -477,6 +524,13 @@ export default function IntakePage() {
                     className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-sm transition-colors"
                   >
                     {generateMutation.isPending && generateMutation.variables === "ICF" ? "Starting…" : "Generate ICF"}
+                  </button>
+                  <button
+                    onClick={() => generateMutation.mutate("SAP")}
+                    disabled={generateMutation.isPending}
+                    className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-sm transition-colors"
+                  >
+                    {generateMutation.isPending && generateMutation.variables === "SAP" ? "Starting…" : "Generate SAP"}
                   </button>
                 </div>
                 <div className="flex gap-2">

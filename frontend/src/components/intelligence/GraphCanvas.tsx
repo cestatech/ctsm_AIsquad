@@ -129,24 +129,35 @@ export function GraphCanvas({ studyId, token, onCountsChange }: GraphCanvasProps
   const {
     data: nodesData,
     isLoading: nodesLoading,
+    isFetching: nodesFetching,
     isError: nodesError,
   } = useQuery({
     queryKey: ["graph-nodes", studyId, token],
     queryFn: () => graphApi.listNodes({ study_id: studyId, page_size: 200 }, token),
     enabled: !!token && !!studyId,
-    staleTime: 60_000,
+    staleTime: 0,
   });
 
   const {
     data: edgesData,
     isLoading: edgesLoading,
+    isFetching: edgesFetching,
     isError: edgesError,
   } = useQuery({
     queryKey: ["graph-edges", studyId, token],
     queryFn: () => graphApi.listEdges({ study_id: studyId, page_size: 500 }, token),
     enabled: !!token && !!studyId,
-    staleTime: 60_000,
+    staleTime: 0,
   });
+
+  useEffect(() => {
+    setGraphNodes([]);
+    setGraphEdges([]);
+    setExpandedNodeIds(new Set());
+    setSelectedNode(null);
+    setNodes([]);
+    setEdges([]);
+  }, [studyId, setNodes, setEdges]);
 
   useEffect(() => {
     if (nodesData?.items) {
@@ -226,6 +237,7 @@ export function GraphCanvas({ studyId, token, onCountsChange }: GraphCanvasProps
   ]);
 
   const isLoading = nodesLoading || edgesLoading;
+  const isSwitchingStudy = nodesFetching || edgesFetching;
   const hasError = nodesError || edgesError;
 
   useEffect(() => {
@@ -357,6 +369,12 @@ export function GraphCanvas({ studyId, token, onCountsChange }: GraphCanvasProps
 
   return (
     <div className="relative w-full h-full bg-slate-50/50">
+      {isSwitchingStudy && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-50/80 backdrop-blur-[1px]">
+          <p className="text-sm text-slate-500">Loading context graph…</p>
+        </div>
+      )}
+
       <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-2 bg-white border border-slate-200 shadow-sm rounded-lg px-3 py-2">
         <div className="flex rounded-md border border-slate-200 overflow-hidden">
           <button

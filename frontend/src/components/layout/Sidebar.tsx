@@ -59,7 +59,9 @@ export function Sidebar() {
   });
 
   async function handleLogout() {
-    await authApi.logout().catch(() => null);
+    if (token) {
+      await authApi.logout(token).catch(() => null);
+    }
     clearAuth();
     router.push("/");
   }

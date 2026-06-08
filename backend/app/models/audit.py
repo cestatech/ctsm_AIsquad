@@ -74,6 +74,7 @@ class AuditAction(str, enum.Enum):
     AI_GENERATION_STARTED = "ai.generation_started"
     AI_GENERATION_COMPLETED = "ai.generation_completed"
     AI_GENERATION_FAILED = "ai.generation_failed"
+    AI_GENERATION_CANCELLED = "ai.generation_cancelled"
     AI_MAPPING_SUGGESTED = "ai.mapping_suggested"
 
     # Data

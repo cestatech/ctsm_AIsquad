@@ -15,6 +15,7 @@ interface Permissions {
   canViewAuditLog: boolean;
   canRunValidation: boolean;
   canTriggerGeneration: boolean;
+  canDeleteDraftArtifact: boolean;
   isAdmin: boolean;
   isContributor: boolean;
   isReviewer: boolean;
@@ -34,6 +35,7 @@ const PERMISSION_MAP: Record<Role, Permissions> = {
     canViewAuditLog: true,
     canRunValidation: true,
     canTriggerGeneration: true,
+    canDeleteDraftArtifact: true,
     isAdmin: true,
     isContributor: false,
     isReviewer: false,
@@ -51,6 +53,7 @@ const PERMISSION_MAP: Record<Role, Permissions> = {
     canViewAuditLog: false,
     canRunValidation: true,
     canTriggerGeneration: true,
+    canDeleteDraftArtifact: true,
     isAdmin: false,
     isContributor: true,
     isReviewer: false,
@@ -68,11 +71,27 @@ const PERMISSION_MAP: Record<Role, Permissions> = {
     canViewAuditLog: true,
     canRunValidation: true,
     canTriggerGeneration: false,
+    canDeleteDraftArtifact: false,
     isAdmin: false,
     isContributor: false,
     isReviewer: true,
   },
 };
+
+/** Whether the current user may remove a DRAFT artifact from the study. */
+export function canRemoveArtifact(
+  artifact: { status: string; created_by_id: string },
+  userId: string | undefined,
+  perms: Permissions
+): boolean {
+  if (!perms.canDeleteDraftArtifact || artifact.status !== "DRAFT") {
+    return false;
+  }
+  if (perms.isAdmin) {
+    return true;
+  }
+  return !!userId && artifact.created_by_id === userId;
+}
 
 /**
  * Returns permission flags for the current user's role.

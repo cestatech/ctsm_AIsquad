@@ -19,6 +19,7 @@ from app.models.user import User
 from app.services.generators.adam_deriver import ADaMDerivationGenerator
 from app.services.generators.base_generator import BaseGenerator
 from app.services.generators.csr_generator import CSRGenerator
+from app.services.generators.edc_generator import EDCGenerator
 from app.services.generators.icf_generator import ICFGenerator
 from app.services.generators.protocol_generator import ProtocolGenerator
 from app.services.generators.sap_generator import SAPGenerator
@@ -31,6 +32,7 @@ _GENERATOR_MAP: dict[ArtifactType, type[BaseGenerator]] = {
     ArtifactType.PROTOCOL: ProtocolGenerator,
     ArtifactType.ICF: ICFGenerator,
     ArtifactType.SAP: SAPGenerator,
+    ArtifactType.EDC_CRF: EDCGenerator,
     ArtifactType.SDTM_DATASET: SDTMMappingGenerator,
     ArtifactType.ADAM_DATASET: ADaMDerivationGenerator,
     ArtifactType.TLF: TLFAssembler,
@@ -63,6 +65,13 @@ async def execute_generation_job(job_id: UUID, organization_id: UUID) -> None:
             job = result.scalar_one_or_none()
             if job is None:
                 log.error("execute_generation_job: job %s not found", job_id)
+                return
+
+            if job.status == GenerationJobStatus.CANCELLED:
+                log.info(
+                    "execute_generation_job: job %s was cancelled before start",
+                    job_id,
+                )
                 return
 
             if job.status != GenerationJobStatus.PENDING:
@@ -107,7 +116,14 @@ async def execute_generation_job(job_id: UUID, organization_id: UUID) -> None:
                         select(GenerationJob).where(GenerationJob.id == job_id)
                     )
                     failed_job = err_result.scalar_one_or_none()
-                    if failed_job and failed_job.status != GenerationJobStatus.COMPLETED:
+                    if (
+                        failed_job
+                        and failed_job.status
+                        not in (
+                            GenerationJobStatus.COMPLETED,
+                            GenerationJobStatus.CANCELLED,
+                        )
+                    ):
                         failed_job.status = GenerationJobStatus.FAILED
                         failed_job.error_message = str(exc)[:2000]
                         await error_db.commit()

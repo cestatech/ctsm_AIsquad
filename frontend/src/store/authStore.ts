@@ -8,8 +8,13 @@ interface AuthState {
   token: string | null;
   user: User | null;
   role: Role;
+  isHydrated: boolean;
+  isBootstrapped: boolean;
   setAuth: (token: string, user: User, role?: Role) => void;
+  updateToken: (token: string) => void;
   clearAuth: () => void;
+  setHydrated: (value: boolean) => void;
+  setBootstrapped: (value: boolean) => void;
   isAuthenticated: () => boolean;
 }
 
@@ -19,10 +24,19 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       user: null,
       role: "ADMIN" as Role,
+      isHydrated: false,
+      isBootstrapped: false,
 
       setAuth: (token, user, role = "ADMIN") => set({ token, user, role }),
 
-      clearAuth: () => set({ token: null, user: null, role: "ADMIN" }),
+      updateToken: (token) => set({ token }),
+
+      clearAuth: () =>
+        set({ token: null, user: null, role: "ADMIN", isBootstrapped: true }),
+
+      setHydrated: (value) => set({ isHydrated: value }),
+
+      setBootstrapped: (value) => set({ isBootstrapped: value }),
 
       isAuthenticated: () => !!get().token,
     }),

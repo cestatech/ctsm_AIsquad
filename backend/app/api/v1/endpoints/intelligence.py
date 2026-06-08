@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -40,9 +40,13 @@ from app.repositories.intelligence_repository import (
     SyntheticDataRepository as SyntheticDataRunRepository,
 )
 from app.schemas.intelligence import (
+    CreateSyntheticDataRunRequest,
+    SimulationAssumptionResponse,
+    SyntheticDataRunDetailResponse,
     SyntheticDataRunListResponse,
     SyntheticDataRunResponse,
 )
+from app.services.synthetic_data_service import SyntheticDataService
 from app.services.intelligence_service import (
     AIDecisionService,
     DataLineageService,
@@ -418,4 +422,74 @@ async def list_synthetic_runs(
         total=total,
         page=page,
         page_size=page_size,
+    )
+
+
+@router.post(
+    "/synthetic-runs",
+    response_model=SyntheticDataRunDetailResponse,
+    status_code=201,
+    summary="Create and execute a synthetic data run",
+)
+async def create_synthetic_run(
+    body: CreateSyntheticDataRunRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SyntheticDataRunDetailResponse:
+    """Generate reproducible synthetic patient-level data labeled SYNTHETIC."""
+    svc = SyntheticDataService(db)
+    run = await svc.create_run(
+        study_id=body.study_id,
+        target_n=body.target_n,
+        random_seed=body.random_seed,
+        run_name=body.run_name,
+        actor=current_user,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    assumptions = list(run.assumptions) if run.assumptions else []
+    return SyntheticDataRunDetailResponse(
+        **SyntheticDataRunResponse.model_validate(run).model_dump(),
+        assumptions=[SimulationAssumptionResponse.model_validate(a) for a in assumptions],
+    )
+
+
+@router.get(
+    "/synthetic-runs/{run_id}",
+    response_model=SyntheticDataRunDetailResponse,
+    summary="Get synthetic data run with assumptions",
+)
+async def get_synthetic_run(
+    run_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SyntheticDataRunDetailResponse:
+    """Return a synthetic data run and its documented assumptions."""
+    from sqlalchemy.orm import selectinload
+    from sqlalchemy import select
+    from app.models.intelligence import SyntheticDataRun
+
+    result = await db.execute(
+        select(SyntheticDataRun)
+        .where(
+            SyntheticDataRun.id == run_id,
+            SyntheticDataRun.organization_id == current_user.organization_id,
+        )
+        .options(selectinload(SyntheticDataRun.assumptions))
+    )
+    run = result.scalar_one_or_none()
+    if run is None:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": "Synthetic data run not found."},
+        )
+    return SyntheticDataRunDetailResponse(
+        **SyntheticDataRunResponse.model_validate(run).model_dump(),
+        assumptions=[
+            SimulationAssumptionResponse.model_validate(a) for a in run.assumptions
+        ],
     )

@@ -83,4 +83,29 @@ export const intelligenceApi = {
       params: params as Record<string, string | number | boolean | undefined>,
       token,
     }),
+
+  createSyntheticRun: (
+    body: { study_id: string; target_n: number; random_seed: number; run_name?: string },
+    token: string
+  ) =>
+    apiClient.post<SyntheticDataRunDetail>("/intelligence/synthetic-runs", { body, token }),
+
+  getSyntheticRun: (runId: string, token: string) =>
+    apiClient.get<SyntheticDataRunDetail>(`/intelligence/synthetic-runs/${runId}`, { token }),
 };
+
+export interface SimulationAssumption {
+  id: string;
+  assumption_type: string;
+  domain: string | null;
+  variable: string | null;
+  description: string;
+  rationale: string | null;
+  parameters: Record<string, unknown>;
+  source_reference: string | null;
+  created_at: string;
+}
+
+export interface SyntheticDataRunDetail extends SyntheticDataRun {
+  assumptions: SimulationAssumption[];
+}

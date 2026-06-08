@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { getApiErrorMessage } from "@/lib/api/errors";
 import { generationApi } from "@/lib/api/generation";
 import type { ArtifactType, GenerationJob } from "@/types";
 
@@ -29,8 +30,19 @@ const ARTIFACT_TYPES: ArtifactType[] = [
 ];
 
 const PAGE_SIZE = 25;
+const ACTIVE_STATUSES = new Set(["PENDING", "QUEUED", "RUNNING"]);
 
-function JobRow({ job }: { job: GenerationJob }) {
+function JobRow({
+  job,
+  canStop,
+  onStop,
+  isStopping,
+}: {
+  job: GenerationJob;
+  canStop: boolean;
+  onStop: (jobId: string) => void;
+  isStopping: boolean;
+}) {
   const duration =
     job.started_at && job.completed_at
       ? Math.round((new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000)
@@ -65,6 +77,20 @@ function JobRow({ job }: { job: GenerationJob }) {
           month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
         })}
       </td>
+      <td className="px-4 py-3 text-xs">
+        {canStop && ACTIVE_STATUSES.has(job.status) ? (
+          <button
+            type="button"
+            onClick={() => onStop(job.id)}
+            disabled={isStopping}
+            className="text-red-600 hover:text-red-700 font-medium disabled:opacity-50"
+          >
+            {isStopping ? "Stopping…" : "Stop"}
+          </button>
+        ) : (
+          <span className="text-slate-300">—</span>
+        )}
+      </td>
     </tr>
   );
 }
@@ -76,6 +102,7 @@ export default function GenerationPage() {
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
   const [jobError, setJobError] = useState<string | null>(null);
+  const [stoppingJobId, setStoppingJobId] = useState<string | null>(null);
   const [form, setForm] = useState({
     study_id: "",
     artifact_type: "PROTOCOL" as ArtifactType,
@@ -87,6 +114,18 @@ export default function GenerationPage() {
     queryFn: () => generationApi.listJobs({ page, page_size: PAGE_SIZE }, token!),
     enabled: !!token,
     refetchInterval: 10_000,
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (jobId: string) => generationApi.cancelJob(jobId, token!),
+    onMutate: (jobId) => setStoppingJobId(jobId),
+    onSuccess: () => {
+      setJobError(null);
+      queryClient.invalidateQueries({ queryKey: ["generation-jobs"] });
+    },
+    onError: (err) =>
+      setJobError(getApiErrorMessage(err, "Failed to stop generation.")),
+    onSettled: () => setStoppingJobId(null),
   });
 
   const createMutation = useMutation({
@@ -148,16 +187,17 @@ export default function GenerationPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Output / Error</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Duration</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Triggered</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">Loading…</td>
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-sm">Loading…</td>
                 </tr>
               ) : jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-sm">
                     No generation jobs yet.{" "}
                     {perms.canTriggerGeneration && (
                       <button onClick={() => setShowNew(true)} className="text-brand-600 hover:underline">
@@ -167,7 +207,15 @@ export default function GenerationPage() {
                   </td>
                 </tr>
               ) : (
-                jobs.map((job) => <JobRow key={job.id} job={job} />)
+                jobs.map((job) => (
+                  <JobRow
+                    key={job.id}
+                    job={job}
+                    canStop={perms.canTriggerGeneration}
+                    onStop={(jobId) => cancelMutation.mutate(jobId)}
+                    isStopping={stoppingJobId === job.id && cancelMutation.isPending}
+                  />
+                ))
               )}
             </tbody>
           </table>

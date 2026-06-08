@@ -10,6 +10,8 @@ from app.services.generators.base_generator import BaseGenerator
 _SYSTEM = """You are a senior biostatistician with expertise in ICH E9(R1) estimands and regulatory submission standards (FDA, EMA).
 
 Generate a Statistical Analysis Plan as a single JSON object. No prose outside the JSON.
+Use strict JSON: double-quoted strings only, escape internal quotes, no trailing commas.
+Keep each text field concise (under 400 characters) so the full document fits in one response.
 
 Required schema:
 {
@@ -71,6 +73,7 @@ class SAPGenerator(BaseGenerator):
         self, job: GenerationJob, study: Study, model_id: str
     ) -> dict:
         ctx = job.input_context or {}
+        brief_block = self._format_brief_for_prompt(job)
         user_prompt = f"""Generate a Statistical Analysis Plan for the following clinical trial.
 
 Study details:
@@ -84,10 +87,30 @@ Study details:
 - Sample Size: {ctx.get("sample_size", "To be determined")}
 - Statistical Method Preferences: {ctx.get("stat_methods", "MMRM for continuous endpoints, logistic regression for binary")}
 - Estimand Framework: {ctx.get("estimand_framework", "ICH E9(R1) treatment policy estimand")}
-
+{brief_block}
+When a Study Brief is provided above, derive all SAP sections from it.
 Return only valid JSON."""
 
         text = await self._call_claude(
-            system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id
+            system_prompt=_SYSTEM,
+            user_prompt=user_prompt,
+            model_id=model_id,
+            max_tokens=8192,
         )
-        return self._parse_json_response(text)
+        try:
+            return self._parse_json_response(text)
+        except ValueError:
+            repair_text = await self._call_claude(
+                system_prompt=(
+                    "You fix invalid JSON. Return ONLY a single valid JSON object. "
+                    "No markdown fences or commentary."
+                ),
+                user_prompt=(
+                    "The following Statistical Analysis Plan JSON is invalid. "
+                    "Repair syntax errors and return valid JSON only:\n\n"
+                    f"{text[:14000]}"
+                ),
+                model_id=model_id,
+                max_tokens=8192,
+            )
+            return self._parse_json_response(repair_text)

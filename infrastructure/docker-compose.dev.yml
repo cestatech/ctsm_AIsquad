@@ -53,6 +53,7 @@ services:
     restart: unless-stopped
     env_file:
       - ../.env
+      - ../backend/.env
     ports:
       - "8000:8000"
     environment:
@@ -68,11 +69,8 @@ services:
       STORAGE_LOCAL_PATH: /tmp/celerius-storage
       PINNACLE21_ENABLED: ${PINNACLE21_ENABLED:-false}
       PINNACLE21_API_BASE_URL: ${PINNACLE21_API_BASE_URL:-https://api.pinnacle21.com}
-      PINNACLE21_API_KEY: ${PINNACLE21_API_KEY:-}
-      PINNACLE21_PROJECT_ID: ${PINNACLE21_PROJECT_ID:-}
       PINNACLE21_RULE_SET_VERSION: ${PINNACLE21_RULE_SET_VERSION:-CE 3.1}
       SDTM_IG_VERSION: ${SDTM_IG_VERSION:-3.3}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ../backend:/app
       - ../database:/database:ro

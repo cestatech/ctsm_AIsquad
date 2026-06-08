@@ -9,13 +9,14 @@ import json
 from datetime import UTC, datetime
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ArtifactLockedError, WorkflowError
 from app.core.permissions import Permission, check_permission
 from app.models.artifact import Artifact, ArtifactStatus, ArtifactType, ArtifactVersion
 from app.models.audit import AuditAction
-from app.models.user import User
+from app.models.user import Role, User
 from app.models.notification import NotificationType
 from app.repositories.artifact_repository import ArtifactRepository
 from app.services.audit_service import AuditService
@@ -272,6 +273,83 @@ class ArtifactService:
         artifact.locked_at = datetime.now(UTC)
         artifact.locked_by_id = user.id
         return artifact
+
+    async def delete_artifact(
+        self,
+        artifact_id: UUID,
+        organization_id: UUID,
+        user: User,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        """Soft-delete a DRAFT artifact. Contributors may delete only their own."""
+        check_permission(user, Permission.ARTIFACT_DELETE_DRAFT)
+
+        artifact = await self._repo.get_by_id(artifact_id, organization_id)
+
+        if artifact.status != ArtifactStatus.DRAFT:
+            raise WorkflowError(
+                f"Cannot delete artifact in status {artifact.status}. "
+                "Only DRAFT artifacts can be removed from a study."
+            )
+
+        if user.effective_role != Role.ADMIN and artifact.created_by_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "PERMISSION_DENIED",
+                    "message": "Only the creator or an Admin can delete this artifact.",
+                },
+            )
+
+        before_state = artifact.to_audit_dict()
+        artifact.deleted_at = datetime.now(UTC)
+
+        await self._audit.log(
+            action=AuditAction.ARTIFACT_DELETED,
+            resource_type="artifact",
+            organization_id=organization_id,
+            actor_user_id=user.id,
+            resource_id=artifact.id,
+            before_state=before_state,
+            after_state={"deleted_at": artifact.deleted_at.isoformat()},
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+
+    async def get_artifact_export(
+        self,
+        artifact_id: UUID,
+        organization_id: UUID,
+    ) -> tuple[Artifact, dict]:
+        """Return artifact metadata and current version content for download."""
+        artifact = await self._repo.get_by_id(artifact_id, organization_id)
+        if artifact.current_version_id is None:
+            return artifact, {}
+        version = await self._repo.get_version(artifact.current_version_id)
+        return artifact, version.content or {}
+
+    async def get_artifact_csv_export(
+        self,
+        artifact_id: UUID,
+        organization_id: UUID,
+    ) -> tuple[str, str]:
+        """Return CSV filename and body for synthetic/tabular artifacts."""
+        from fastapi import HTTPException, status
+
+        from app.services.synthetic_data_service import SyntheticDataService
+
+        artifact, content = await self.get_artifact_export(artifact_id, organization_id)
+        try:
+            return SyntheticDataService.csv_from_content(content, artifact.name)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "CSV_NOT_AVAILABLE",
+                    "message": str(exc),
+                },
+            ) from exc
 
     async def _transition(
         self,

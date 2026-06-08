@@ -224,3 +224,28 @@ class SyntheticDataRunListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class SimulationAssumptionResponse(BaseModel):
+    id: UUID
+    assumption_type: str
+    domain: str | None
+    variable: str | None
+    description: str
+    rationale: str | None
+    parameters: dict
+    source_reference: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CreateSyntheticDataRunRequest(BaseModel):
+    study_id: UUID
+    target_n: int = Field(ge=1, le=10_000, default=50)
+    random_seed: int = Field(ge=0, default=42)
+    run_name: str | None = Field(default=None, max_length=256)
+
+
+class SyntheticDataRunDetailResponse(SyntheticDataRunResponse):
+    assumptions: list[SimulationAssumptionResponse] = []

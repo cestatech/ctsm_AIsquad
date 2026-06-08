@@ -1,3 +1,4 @@
+import { refreshAccessToken } from "@/lib/auth/session";
 import type { ApiError } from "@/types";
 import { formatApiError } from "./errors";
 
@@ -17,6 +18,7 @@ class ApiClient {
       body?: unknown;
       params?: Record<string, string | number | boolean | undefined>;
       token?: string;
+      _retried?: boolean;
     } = {}
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`);
@@ -44,6 +46,24 @@ class ApiClient {
       body: options.body ? JSON.stringify(options.body) : undefined,
       credentials: "include", // for refresh token cookie
     });
+
+    if (
+      response.status === 401 &&
+      options.token &&
+      !options._retried &&
+      !path.startsWith("/auth/login") &&
+      !path.startsWith("/auth/register") &&
+      path !== "/auth/refresh"
+    ) {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        return this.request<T>(method, path, {
+          ...options,
+          token: newToken,
+          _retried: true,
+        });
+      }
+    }
 
     if (!response.ok) {
       let error: ApiError;

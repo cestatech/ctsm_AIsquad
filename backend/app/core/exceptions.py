@@ -17,6 +17,16 @@ class WorkflowError(CeleriusError):
         super().__init__(message, code="WORKFLOW_ERROR")
 
 
+class GenerationCancelledError(CeleriusError):
+    """Raised when a generation job was cancelled before completion."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Generation job was cancelled.",
+            code="GENERATION_CANCELLED",
+        )
+
+
 class ArtifactLockedError(CeleriusError):
     """Raised when attempting to modify a LOCKED artifact."""
 

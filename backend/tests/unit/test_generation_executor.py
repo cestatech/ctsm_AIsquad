@@ -94,6 +94,19 @@ class TestExecuteGenerationJob:
 
         db.commit.assert_not_called()
 
+    async def test_cancelled_job_returns_silently(self):
+        """A cancelled job is skipped before any generator runs."""
+        job = _make_job(status=GenerationJobStatus.CANCELLED)
+        db = _make_db(job=job)
+
+        with patch(
+            "app.services.generation_executor.async_session_factory",
+            return_value=_ctx(db),
+        ):
+            await execute_generation_job(job.id, job.organization_id)
+
+        db.commit.assert_not_called()
+
     async def test_job_not_pending_returns_silently(self):
         """A job already RUNNING or COMPLETED is skipped without touching the DB."""
         job = _make_job(status=GenerationJobStatus.RUNNING)

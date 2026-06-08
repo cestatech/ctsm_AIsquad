@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
 import { StudyPicker } from "@/components/intelligence/StudyPicker";
@@ -12,6 +12,12 @@ export default function ContextGraphPage() {
   const [nodeCount, setNodeCount] = useState(0);
   const [edgeCount, setEdgeCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    setNodeCount(0);
+    setEdgeCount(0);
+    setIsLoading(!!studyId);
+  }, [studyId]);
 
   return (
     <div className="flex flex-col h-screen">
@@ -40,6 +46,7 @@ export default function ContextGraphPage() {
           </div>
         ) : token ? (
           <GraphCanvas
+            key={studyId}
             studyId={studyId}
             token={token}
             onCountsChange={(nodes, edges, loading) => {

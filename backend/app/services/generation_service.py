@@ -6,6 +6,7 @@ Actual generation execution runs as an async background task (not yet wired).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -133,6 +134,57 @@ class GenerationService:
             offset=offset,
         )
 
+    async def cancel_job(
+        self,
+        job_id: UUID,
+        actor: User,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> GenerationJob:
+        """Cancel a PENDING, QUEUED, or RUNNING generation job."""
+        check_permission(actor, Permission.AI_GENERATION_TRIGGER)
+        job = await self._repo.get_by_id(job_id, actor.organization_id)
+
+        if job.status not in (
+            GenerationJobStatus.PENDING,
+            GenerationJobStatus.QUEUED,
+            GenerationJobStatus.RUNNING,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "JOB_NOT_CANCELLABLE",
+                    "message": (
+                        f"Job status {job.status.value} cannot be cancelled. "
+                        "Only active jobs can be stopped."
+                    ),
+                },
+            )
+
+        before_state = {
+            "status": job.status.value,
+            "artifact_type": job.artifact_type.value,
+        }
+        job.status = GenerationJobStatus.CANCELLED
+        job.error_message = "Cancelled by user"
+        job.completed_at = datetime.now(UTC)
+
+        await self._audit.log(
+            action=AuditAction.AI_GENERATION_CANCELLED,
+            resource_type="generation_job",
+            organization_id=actor.organization_id,
+            actor_user_id=actor.id,
+            resource_id=job.id,
+            before_state=before_state,
+            after_state={
+                "status": job.status.value,
+                "artifact_type": job.artifact_type.value,
+            },
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        return job
+
     async def retry_job(
         self,
         job_id: UUID,
@@ -175,3 +227,44 @@ class GenerationService:
     ) -> list[GenerationJob]:
         """Return PENDING jobs for background recovery."""
         return await self._repo.list_pending(organization_id, limit=limit)
+
+    async def recover_stale_running_jobs(
+        self, timeout_seconds: int = 300
+    ) -> int:
+        """Mark stale RUNNING and abandoned PENDING jobs as FAILED."""
+        from sqlalchemy import select
+
+        now = datetime.now(UTC)
+        running_cutoff = now - timedelta(seconds=timeout_seconds)
+        pending_cutoff = now - timedelta(seconds=120)
+
+        running_result = await self._db.execute(
+            select(GenerationJob).where(
+                GenerationJob.status == GenerationJobStatus.RUNNING,
+                GenerationJob.started_at.is_not(None),
+                GenerationJob.started_at < running_cutoff,
+            )
+        )
+        pending_result = await self._db.execute(
+            select(GenerationJob).where(
+                GenerationJob.status == GenerationJobStatus.PENDING,
+                GenerationJob.started_at.is_(None),
+                GenerationJob.created_at < pending_cutoff,
+            )
+        )
+        running_jobs = list(running_result.scalars().all())
+        pending_jobs = list(pending_result.scalars().all())
+        for job in running_jobs:
+            job.status = GenerationJobStatus.FAILED
+            job.error_message = (
+                "Generation timed out or was interrupted. "
+                "Use Stop to cancel active jobs, or retry after fixing configuration."
+            )[:2000]
+            job.completed_at = now
+        for job in pending_jobs:
+            job.status = GenerationJobStatus.FAILED
+            job.error_message = (
+                "Generation never started. Check ANTHROPIC_API_KEY and backend logs."
+            )[:2000]
+            job.completed_at = now
+        return len(running_jobs) + len(pending_jobs)

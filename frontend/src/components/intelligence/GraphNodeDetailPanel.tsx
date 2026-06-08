@@ -84,9 +84,32 @@ function DecisionCard({
           {isLoadingFull && !reasoning ? (
             <p className="text-[11px] text-slate-400">Loading reasoning…</p>
           ) : reasoning ? (
-            <p className="text-[12px] text-slate-700 bg-slate-50 border border-slate-100 rounded-md px-3 py-2.5 leading-relaxed whitespace-pre-wrap">
-              {reasoning}
-            </p>
+            <div className="text-[12px] text-slate-700 bg-slate-50 border border-slate-100 rounded-md px-3 py-2.5 leading-relaxed space-y-3">
+              {reasoning.split("\n\n").map((paragraph, idx) => {
+                const lines = paragraph.split("\n");
+                const title = lines[0];
+                const body = lines.slice(1).join("\n");
+                const looksLikeSection =
+                  body.length > 0 && title.length < 80 && !title.endsWith(".");
+
+                if (looksLikeSection) {
+                  return (
+                    <div key={idx}>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                        {title}
+                      </p>
+                      <p className="whitespace-pre-wrap">{body}</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <p key={idx} className="whitespace-pre-wrap">
+                    {paragraph}
+                  </p>
+                );
+              })}
+            </div>
           ) : (
             <p className="text-[11px] text-slate-400 italic">No reasoning recorded for this decision.</p>
           )}

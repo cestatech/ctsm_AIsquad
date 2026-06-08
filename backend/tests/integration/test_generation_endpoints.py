@@ -171,6 +171,34 @@ class TestGenerationFromBrief:
         assert data["status"] == "PENDING"
         assert data["study_id"] == str(i_brief.study_id)
 
+    async def test_admin_can_generate_sap_from_brief(
+        self, iclient: AsyncClient, i_brief: StudyBrief, admin_tok: str
+    ):
+        with patch("app.api.v1.endpoints.generation.execute_generation_job"):
+            resp = await iclient.post(
+                "/api/v1/generation/jobs/from-brief",
+                json={"brief_id": str(i_brief.id), "artifact_type": "SAP"},
+                headers={"Authorization": f"Bearer {admin_tok}"},
+            )
+        assert resp.status_code == 201
+        assert resp.json()["artifact_type"] == "SAP"
+
+    async def test_admin_can_create_edc_generation_job(
+        self, iclient: AsyncClient, i_study, admin_tok: str
+    ):
+        with patch("app.api.v1.endpoints.generation.execute_generation_job"):
+            resp = await iclient.post(
+                "/api/v1/generation/jobs",
+                json={
+                    "study_id": str(i_study.id),
+                    "artifact_type": "EDC_CRF",
+                    "model_id": "deterministic",
+                },
+                headers={"Authorization": f"Bearer {admin_tok}"},
+            )
+        assert resp.status_code == 201
+        assert resp.json()["artifact_type"] == "EDC_CRF"
+
     async def test_invalid_brief_id_returns_404(
         self, iclient: AsyncClient, admin_tok: str
     ):
