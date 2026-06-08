@@ -488,6 +488,15 @@ class ADAMGenerationService:
             datasets = spec["datasets"]
             trace_notes = spec["traceability_notes"]
 
+        datasets = self._enrich_bds_datasets(sdtm_domains, datasets)
+        trace_notes = list(trace_notes)
+        for ds in datasets:
+            code = ds.get("dataset")
+            if code in ("ADLB", "ADVS", "ADTTE") and not any(
+                code in n for n in trace_notes
+            ):
+                trace_notes.append(f"{code} auto-derived from SDTM source domain(s)")
+
         return {
             "document_type": "ADAM_SPECIFICATION",
             "version": "1.0",
@@ -651,7 +660,256 @@ Derive ADaM analysis datasets with full variable derivations and population flag
         if ae:
             trace.append("ADAE derived from SDTM AE domain")
 
+        datasets = ADAMGenerationService._enrich_bds_datasets(sdtm_domains, datasets)
         return {"datasets": datasets, "traceability_notes": trace}
+
+    @staticmethod
+    def _enrich_bds_datasets(
+        sdtm_domains: list[dict], datasets: list[dict]
+    ) -> list[dict]:
+        """Add ADLB, ADVS, ADTTE when source SDTM domains are present."""
+        existing = {d.get("dataset") for d in datasets}
+        domain_codes = {d.get("domain") for d in sdtm_domains}
+
+        if "LB" in domain_codes and "ADLB" not in existing:
+            lb = next(d for d in sdtm_domains if d.get("domain") == "LB")
+            datasets.append(ADAMGenerationService._derive_adlb(lb))
+        if "VS" in domain_codes and "ADVS" not in existing:
+            vs = next(d for d in sdtm_domains if d.get("domain") == "VS")
+            datasets.append(ADAMGenerationService._derive_advs(vs))
+        if ("AE" in domain_codes or "DS" in domain_codes) and "ADTTE" not in existing:
+            ae = next((d for d in sdtm_domains if d.get("domain") == "AE"), None)
+            ds = next((d for d in sdtm_domains if d.get("domain") == "DS"), None)
+            source = ae or ds
+            src_dom = "AE" if ae else "DS"
+            datasets.append(ADAMGenerationService._derive_adtte(source, src_dom))
+
+        return datasets
+
+    @staticmethod
+    def _bds_var(
+        name: str,
+        label: str,
+        derivation: str,
+        origin: str,
+        vtype: str = "Num",
+    ) -> dict:
+        return {
+            "variable": name,
+            "label": label,
+            "type": vtype,
+            "origin": origin,
+            "derivation": derivation,
+            "controlled_terminology": None,
+            "notes": "BDS auto-derivation",
+        }
+
+    @staticmethod
+    def _derive_adlb(lb_domain: dict) -> dict:
+        """Derive ADLB (Laboratory Results BDS) from SDTM LB domain."""
+        obs = lb_domain.get("observations", [])
+        bds_vars = [
+            ADAMGenerationService._bds_var(
+                "PARAMCD", "Parameter Code", "LB.LBTESTCD", "SDTM.LB", "Char"
+            ),
+            ADAMGenerationService._bds_var(
+                "PARAM", "Parameter", "LB.LBTEST", "SDTM.LB", "Char"
+            ),
+            ADAMGenerationService._bds_var(
+                "AVAL", "Analysis Value", "numeric(LB.LBSTRESN)", "SDTM.LB"
+            ),
+            ADAMGenerationService._bds_var(
+                "AVALC", "Analysis Value (C)", "LB.LBSTRESC", "SDTM.LB", "Char"
+            ),
+            ADAMGenerationService._bds_var(
+                "BASE", "Baseline Value", "first(AVAL) per USUBJID/PARAMCD", "Derived"
+            ),
+            ADAMGenerationService._bds_var(
+                "CHG", "Change from Baseline", "AVAL - BASE", "Derived"
+            ),
+            ADAMGenerationService._bds_var(
+                "PCHG", "Percent Change", "100 * (CHG / BASE)", "Derived"
+            ),
+            ADAMGenerationService._bds_var(
+                "ANRLO", "Analysis Normal Range Lower", "LB.LBSTNRLO", "SDTM.LB"
+            ),
+            ADAMGenerationService._bds_var(
+                "ANRHI", "Analysis Normal Range Upper", "LB.LBSTNRHI", "SDTM.LB"
+            ),
+            ADAMGenerationService._bds_var(
+                "ANL01FL", "Analysis Flag 01", "Y if post-baseline", "Derived", "Char"
+            ),
+        ]
+        derived_obs = []
+        for row in obs:
+            if not isinstance(row, dict):
+                continue
+            derived_obs.append({
+                "USUBJID": row.get("USUBJID"),
+                "PARAMCD": row.get("LBTESTCD") or row.get("LBTEST"),
+                "AVAL": row.get("LBSTRESN") or row.get("LBORRES"),
+                "AVALC": row.get("LBSTRESC") or row.get("LBORRES"),
+                "VISIT": row.get("VISIT"),
+            })
+        return {
+            "dataset": "ADLB",
+            "label": "Laboratory Results Analysis Dataset",
+            "structure": "One record per subject per visit per parameter",
+            "source_domains": ["LB"],
+            "key_variables": ["STUDYID", "USUBJID", "PARAMCD", "AVISIT"],
+            "variables": bds_vars,
+            "population_flags": [],
+            "observations": derived_obs,
+            "observation_count": len(derived_obs),
+        }
+
+    @staticmethod
+    def _derive_advs(vs_domain: dict) -> dict:
+        """Derive ADVS (Vital Signs BDS) from SDTM VS domain."""
+        obs = vs_domain.get("observations", [])
+        param_map = {
+            "SYSBP": ("Systolic Blood Pressure", "VS.VSTESTCD='SYSBP'"),
+            "DIABP": ("Diastolic Blood Pressure", "VS.VSTESTCD='DIABP'"),
+            "PULSE": ("Pulse Rate", "VS.VSTESTCD='PULSE'"),
+            "TEMP": ("Temperature", "VS.VSTESTCD='TEMP'"),
+            "WEIGHT": ("Weight", "VS.VSTESTCD='WEIGHT'"),
+            "HEIGHT": ("Height", "VS.VSTESTCD='HEIGHT'"),
+            "BMI": ("Body Mass Index", "derived from WEIGHT/HEIGHT"),
+        }
+        bds_vars = [
+            ADAMGenerationService._bds_var(
+                "PARAMCD", "Parameter Code", "VS.VSTESTCD", "SDTM.VS", "Char"
+            ),
+            ADAMGenerationService._bds_var(
+                "PARAM", "Parameter", "VS.VSTEST", "SDTM.VS", "Char"
+            ),
+            ADAMGenerationService._bds_var(
+                "AVAL", "Analysis Value", "numeric(VS.VSSTRESN)", "SDTM.VS"
+            ),
+            ADAMGenerationService._bds_var(
+                "BASE", "Baseline Value", "first(AVAL) per USUBJID/PARAMCD", "Derived"
+            ),
+            ADAMGenerationService._bds_var(
+                "CHG", "Change from Baseline", "AVAL - BASE", "Derived"
+            ),
+            ADAMGenerationService._bds_var(
+                "PCHG", "Percent Change", "100 * (CHG / BASE)", "Derived"
+            ),
+            ADAMGenerationService._bds_var(
+                "ANRLO", "Analysis Normal Range Lower", "VS.VSSTNRLO", "SDTM.VS"
+            ),
+            ADAMGenerationService._bds_var(
+                "ANRHI", "Analysis Normal Range Upper", "VS.VSSTNRHI", "SDTM.VS"
+            ),
+        ]
+        derived_obs = []
+        for row in obs:
+            if not isinstance(row, dict):
+                continue
+            testcd = str(row.get("VSTESTCD") or row.get("VSTEST") or "").upper()
+            paramcd = testcd if testcd in param_map else testcd[:6] or "VS"
+            derived_obs.append({
+                "USUBJID": row.get("USUBJID"),
+                "PARAMCD": paramcd,
+                "AVAL": row.get("VSSTRESN") or row.get("VSORRES"),
+                "VISIT": row.get("VISIT"),
+            })
+        return {
+            "dataset": "ADVS",
+            "label": "Vital Signs Analysis Dataset",
+            "structure": "One record per subject per visit per parameter",
+            "source_domains": ["VS"],
+            "key_variables": ["STUDYID", "USUBJID", "PARAMCD", "AVISIT"],
+            "variables": bds_vars,
+            "population_flags": [],
+            "observations": derived_obs,
+            "observation_count": len(derived_obs),
+            "parameter_catalog": list(param_map.keys()),
+        }
+
+    @staticmethod
+    def _derive_adtte(source_domain: dict, src_dom: str = "AE") -> dict:
+        """Derive ADTTE (Time-to-Event BDS) from SDTM AE or DS domain."""
+        obs = source_domain.get("observations", [])
+        if src_dom == "AE":
+            bds_vars = [
+                ADAMGenerationService._bds_var(
+                    "AVAL", "Analysis Value (days)", "AE.AESTDY or date diff", "SDTM.AE"
+                ),
+                ADAMGenerationService._bds_var(
+                    "CNSR", "Censoring Flag", "0=event, 1=censored", "Derived", "Char"
+                ),
+                ADAMGenerationService._bds_var(
+                    "EVNTDESC", "Event Description", "AE.AEDECOD", "SDTM.AE", "Char"
+                ),
+                ADAMGenerationService._bds_var(
+                    "SRCDOM", "Source Domain", "'AE'", "Derived", "Char"
+                ),
+                ADAMGenerationService._bds_var(
+                    "SRCVAR", "Source Variable", "'AESTDTC'", "Derived", "Char"
+                ),
+                ADAMGenerationService._bds_var(
+                    "STARTDT", "Time-to-Event Origin Date", "ADSL.RANDDT", "ADSL"
+                ),
+            ]
+            derived_obs = []
+            for row in obs:
+                if not isinstance(row, dict):
+                    continue
+                derived_obs.append({
+                    "USUBJID": row.get("USUBJID"),
+                    "AVAL": row.get("AESTDY") or row.get("AEDUR"),
+                    "CNSR": "0" if row.get("AESER") == "Y" else "1",
+                    "EVNTDESC": row.get("AEDECOD") or row.get("AETERM"),
+                    "SRCDOM": "AE",
+                    "SRCVAR": "AESTDTC",
+                })
+        else:
+            bds_vars = [
+                ADAMGenerationService._bds_var(
+                    "AVAL", "Analysis Value (days)", "DS.DSDY or date diff", "SDTM.DS"
+                ),
+                ADAMGenerationService._bds_var(
+                    "CNSR", "Censoring Flag", "0=discontinued, 1=censored", "Derived",
+                    "Char",
+                ),
+                ADAMGenerationService._bds_var(
+                    "EVNTDESC", "Event Description", "DS.DSDECOD", "SDTM.DS", "Char"
+                ),
+                ADAMGenerationService._bds_var(
+                    "SRCDOM", "Source Domain", "'DS'", "Derived", "Char"
+                ),
+                ADAMGenerationService._bds_var(
+                    "SRCVAR", "Source Variable", "'DSSTDTC'", "Derived", "Char"
+                ),
+                ADAMGenerationService._bds_var(
+                    "STARTDT", "Time-to-Event Origin Date", "ADSL.RANDDT", "ADSL"
+                ),
+            ]
+            derived_obs = []
+            for row in obs:
+                if not isinstance(row, dict):
+                    continue
+                derived_obs.append({
+                    "USUBJID": row.get("USUBJID"),
+                    "AVAL": row.get("DSDY"),
+                    "CNSR": "0",
+                    "EVNTDESC": row.get("DSDECOD") or row.get("DSTERM"),
+                    "SRCDOM": "DS",
+                    "SRCVAR": "DSSTDTC",
+                })
+
+        return {
+            "dataset": "ADTTE",
+            "label": "Time-to-Event Analysis Dataset",
+            "structure": "One record per subject per time-to-event parameter",
+            "source_domains": [src_dom],
+            "key_variables": ["STUDYID", "USUBJID", "PARAMCD"],
+            "variables": bds_vars,
+            "population_flags": [],
+            "observations": derived_obs,
+            "observation_count": len(derived_obs),
+        }
 
     @staticmethod
     def _parse_json(text: str) -> dict:

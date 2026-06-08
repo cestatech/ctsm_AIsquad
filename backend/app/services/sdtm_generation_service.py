@@ -40,6 +40,7 @@ from app.services.intelligence_service import AIDecisionService, DataLineageServ
 from app.services.mapping_service import MappingService
 from app.services.upload_service import UploadService
 from app.services.dual_programmer_qc_service import DualProgrammerQCService
+from app.services.pinnacle21_service import Pinnacle21Service
 from app.services.validation_service import ValidationService
 from app.models.statistical_qc import StatisticalQCWorkflow
 
@@ -423,6 +424,19 @@ class SDTMGenerationService:
             ip_address=ip_address,
             user_agent=user_agent,
         )
+
+        if self._settings.pinnacle21_configured:
+            p21 = Pinnacle21Service(self._db, self._settings)
+            await p21.validate_sdtm_dataset(
+                dataset_path=f"artifact:{artifact.id}",
+                ig_version=self._settings.SDTM_IG_VERSION,
+                rule_set=self._settings.PINNACLE21_RULE_SET_VERSION,
+                organization_id=actor.organization_id,
+                study_id=study_id,
+                validation_run_id=validation_run.id,
+                artifact_id=artifact.id,
+                actor=actor,
+            )
 
         await self._audit.log(
             action=AuditAction.AI_GENERATION_COMPLETED,

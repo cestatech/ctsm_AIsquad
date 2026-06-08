@@ -24,6 +24,7 @@ from app.models.upload import UploadedFile
 from app.models.raw_data import RawDataset, RawField, FieldMappingVersion
 from app.models.validation import ValidationRun
 from app.models.statistical_qc import StatisticalProgramQCRun
+from app.models.submission import SubmissionPackage, SubmissionPackageStatus
 
 __all__ = [
     "AuditLog",
@@ -58,4 +59,7 @@ __all__ = [
     "User",
     "RefreshToken",
     "ValidationRun",
+    "StatisticalProgramQCRun",
+    "SubmissionPackage",
+    "SubmissionPackageStatus",
 ]

@@ -97,6 +97,7 @@ class GraphNodeType(str, enum.Enum):
 
     # Regulatory
     REGULATORY_SUBMISSION = "REGULATORY_SUBMISSION"
+    SUBMISSION_PACKAGE = "SUBMISSION_PACKAGE"
     AUDIT_EVENT = "AUDIT_EVENT"
 
     # Generic artifact (maps to existing Artifact model)
@@ -147,6 +148,7 @@ class GraphEdgeType(str, enum.Enum):
 
     PART_OF = "PART_OF"
     HAS_MEMBER = "HAS_MEMBER"
+    INCLUDES = "INCLUDES"
 
 
 class GraphNode(UUIDMixin, Base):

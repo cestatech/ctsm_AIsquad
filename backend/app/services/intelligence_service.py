@@ -515,6 +515,7 @@ class ValidationIntelligenceService:
         is_ai_evaluated: bool = False,
         ai_decision_id: UUID | None = None,
         graph_node_id: UUID | None = None,
+        source: str = "INTERNAL",
     ) -> ValidationEvidence:
         evidence = ValidationEvidence(
             organization_id=organization_id,
@@ -535,6 +536,7 @@ class ValidationIntelligenceService:
             is_ai_evaluated=is_ai_evaluated,
             ai_decision_id=ai_decision_id,
             graph_node_id=graph_node_id,
+            source=source,
         )
         evidence = await self._repo.create(evidence)
 

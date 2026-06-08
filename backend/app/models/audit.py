@@ -84,6 +84,7 @@ class AuditAction(str, enum.Enum):
 
     # Submission
     SUBMISSION_PACKAGE_CREATED = "submission.package_created"
+    SUBMISSION_PACKAGE_STATUS_CHANGED = "submission.package_status_changed"
     SUBMISSION_PACKAGE_EXPORTED = "submission.package_exported"
 
 

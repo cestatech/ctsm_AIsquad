@@ -169,6 +169,7 @@ class ValidationEvidenceResponse(BaseModel):
     finding_severity: str | None
     finding_message: str | None
     finding_details: dict
+    source: str = "INTERNAL"
     is_ai_evaluated: bool
     ai_decision_id: UUID | None
     waived_by_id: UUID | None
