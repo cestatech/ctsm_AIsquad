@@ -22,10 +22,36 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: verify DB connection, warm caches
-    from app.db.session import engine
+    import asyncio
+    import logging
+
+    from sqlalchemy import select
+
+    from app.db.session import async_session_factory, engine
+    from app.models.generation import GenerationJob, GenerationJobStatus
+    from app.services.generation_executor import execute_generation_job
+
+    log = logging.getLogger(__name__)
 
     async with engine.begin() as conn:
         await conn.run_sync(lambda c: None)  # connection check
+
+    # Recover generation jobs stuck PENDING after a dev server reload
+    async with async_session_factory() as db:
+        result = await db.execute(
+            select(GenerationJob).where(
+                GenerationJob.status == GenerationJobStatus.PENDING
+            )
+        )
+        stale_jobs = list(result.scalars().all())
+        for job in stale_jobs:
+            log.info(
+                "Recovering stale PENDING generation job %s (%s)",
+                job.id,
+                job.artifact_type.value,
+            )
+            asyncio.create_task(execute_generation_job(job.id, job.organization_id))
+
     yield
     # Shutdown: close DB pool
     await engine.dispose()

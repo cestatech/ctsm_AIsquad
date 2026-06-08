@@ -132,3 +132,46 @@ class GenerationService:
             limit=page_size,
             offset=offset,
         )
+
+    async def retry_job(
+        self,
+        job_id: UUID,
+        actor: User,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> GenerationJob:
+        """Reset a PENDING or FAILED job so the executor can run again."""
+        check_permission(actor, Permission.AI_GENERATION_TRIGGER)
+        job = await self._repo.get_by_id(job_id, actor.organization_id)
+        if job.status not in (
+            GenerationJobStatus.PENDING,
+            GenerationJobStatus.FAILED,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "JOB_NOT_RETRYABLE",
+                    "message": f"Job status {job.status.value} cannot be retried.",
+                },
+            )
+        job.status = GenerationJobStatus.PENDING
+        job.error_message = None
+        job.started_at = None
+        job.completed_at = None
+        await self._audit.log(
+            action=AuditAction.AI_GENERATION_STARTED,
+            resource_type="generation_job",
+            organization_id=actor.organization_id,
+            actor_user_id=actor.id,
+            resource_id=job.id,
+            after_state={"action": "retry", "artifact_type": job.artifact_type.value},
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        return job
+
+    async def list_stale_pending(
+        self, organization_id: UUID, *, limit: int = 20
+    ) -> list[GenerationJob]:
+        """Return PENDING jobs for background recovery."""
+        return await self._repo.list_pending(organization_id, limit=limit)

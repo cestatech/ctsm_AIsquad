@@ -50,6 +50,7 @@ async def create_generation_job(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    await db.commit()
     background_tasks.add_task(execute_generation_job, job.id, job.organization_id)
     return GenerationJobResponse.model_validate(job)
 
@@ -77,6 +78,32 @@ async def create_generation_job_from_brief(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    await db.commit()
+    background_tasks.add_task(execute_generation_job, job.id, job.organization_id)
+    return GenerationJobResponse.model_validate(job)
+
+
+@router.post(
+    "/jobs/{job_id}/retry",
+    response_model=GenerationJobResponse,
+    summary="Retry a stuck or failed generation job",
+)
+async def retry_generation_job(
+    job_id: UUID,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GenerationJobResponse:
+    """Re-queue PENDING or FAILED jobs. Admin or Contributor."""
+    svc = GenerationService(db)
+    job = await svc.retry_job(
+        job_id=job_id,
+        actor=current_user,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
     background_tasks.add_task(execute_generation_job, job.id, job.organization_id)
     return GenerationJobResponse.model_validate(job)
 

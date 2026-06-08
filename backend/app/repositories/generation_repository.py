@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.generation import GenerationJob
+from app.models.generation import GenerationJob, GenerationJobStatus
 
 
 class GenerationRepository:
@@ -62,3 +62,17 @@ class GenerationRepository:
         self._db.add(job)
         await self._db.flush()
         return job
+
+    async def list_pending(
+        self, organization_id: UUID, *, limit: int = 20
+    ) -> list[GenerationJob]:
+        result = await self._db.execute(
+            select(GenerationJob)
+            .where(
+                GenerationJob.organization_id == organization_id,
+                GenerationJob.status == GenerationJobStatus.PENDING,
+            )
+            .order_by(GenerationJob.created_at.asc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())

@@ -84,6 +84,9 @@ When a Study Brief is provided above, derive all protocol sections from it.
 Return only valid JSON matching the required schema."""
 
         text = await self._call_claude(
-            system_prompt=_SYSTEM, user_prompt=user_prompt, model_id=model_id
+            system_prompt=_SYSTEM,
+            user_prompt=user_prompt,
+            model_id=model_id,
+            max_tokens=8000,
         )
         return self._parse_json_response(text)

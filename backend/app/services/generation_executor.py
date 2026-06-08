@@ -48,6 +48,9 @@ async def execute_generation_job(job_id: UUID, organization_id: UUID) -> None:
     Failures are caught, logged, and written to the job record so the UI
     can surface them — they do not crash the worker.
     """
+    log.info(
+        "execute_generation_job: starting job %s (org %s)", job_id, organization_id
+    )
     async with async_session_factory() as db:
         try:
             # Load job
@@ -96,20 +99,17 @@ async def execute_generation_job(job_id: UUID, organization_id: UUID) -> None:
             await generator.run(job=job, actor=actor)
             await db.commit()
 
-        except Exception:
+        except Exception as exc:
             log.exception("execute_generation_job: unhandled error for job %s", job_id)
-            # attempt to persist FAILED status
             try:
                 async with async_session_factory() as error_db:
                     err_result = await error_db.execute(
                         select(GenerationJob).where(GenerationJob.id == job_id)
                     )
                     failed_job = err_result.scalar_one_or_none()
-                    if failed_job and failed_job.status == GenerationJobStatus.RUNNING:
+                    if failed_job and failed_job.status != GenerationJobStatus.COMPLETED:
                         failed_job.status = GenerationJobStatus.FAILED
-                        failed_job.error_message = (
-                            "Internal executor error — check server logs"
-                        )
+                        failed_job.error_message = str(exc)[:2000]
                         await error_db.commit()
             except Exception:
                 log.exception(

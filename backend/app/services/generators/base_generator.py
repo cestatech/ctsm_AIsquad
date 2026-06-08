@@ -12,6 +12,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
+from uuid import UUID
 import anthropic
 from anthropic.types import TextBlock
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,6 +71,7 @@ class BaseGenerator(ABC):
         On any exception the job is marked FAILED with the error message.
         """
         await self._mark_running(job)
+        await self._db.commit()
 
         try:
             study = await self._study_repo.get(job.study_id, job.organization_id)

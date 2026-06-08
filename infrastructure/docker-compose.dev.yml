@@ -72,6 +72,7 @@ services:
       PINNACLE21_PROJECT_ID: ${PINNACLE21_PROJECT_ID:-}
       PINNACLE21_RULE_SET_VERSION: ${PINNACLE21_RULE_SET_VERSION:-CE 3.1}
       SDTM_IG_VERSION: ${SDTM_IG_VERSION:-3.3}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ../backend:/app
       - ../database:/database:ro
