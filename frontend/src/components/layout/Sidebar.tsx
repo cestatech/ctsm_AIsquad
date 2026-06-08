@@ -82,6 +82,9 @@ export function Sidebar() {
   });
 
   const isIntelligence = pathname.startsWith("/intelligence");
+  const studyPathMatch = pathname.match(/^\/studies\/([^/]+)/);
+  const activeStudyId =
+    studyPathMatch && studyPathMatch[1] !== "new" ? studyPathMatch[1] : null;
 
   const initials = user.full_name
     .split(" ")
@@ -121,6 +124,26 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {activeStudyId && (
+          <div className="pt-3 pb-1">
+            <div className="px-3 mb-1">
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
+                Study Workspace
+              </span>
+            </div>
+            <Link
+              href={`/studies/${activeStudyId}/submission`}
+              className={`w-full flex items-center px-3 py-1.5 text-sm transition-colors text-left rounded-sm ${
+                pathname === `/studies/${activeStudyId}/submission`
+                  ? "bg-brand-500/20 text-white border-l-2 border-brand-400"
+                  : "text-slate-500 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+              }`}
+            >
+              <span className="text-xs">Submission Readiness</span>
+            </Link>
+          </div>
+        )}
 
         <div className="pt-3 pb-1">
           <div className="px-3 mb-1">
