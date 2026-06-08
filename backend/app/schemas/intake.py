@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from app.models.intake import IntakeStatus
+from app.models.intake import IntakeStatus, SponsorIntake
 
 
 class IntakeMessageResponse(BaseModel):
@@ -34,6 +34,26 @@ class IntakeResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="before")
+    @classmethod
+    def filter_hidden_messages(cls, data: object) -> object:
+        """Exclude hidden trigger messages without mutating ORM relationships."""
+        if isinstance(data, SponsorIntake):
+            visible = [m for m in data.messages if not m.is_hidden]
+            return {
+                "id": data.id,
+                "organization_id": data.organization_id,
+                "study_id": data.study_id,
+                "created_by_id": data.created_by_id,
+                "status": data.status,
+                "domains_completed": data.domains_completed,
+                "ready_to_compile": data.ready_to_compile,
+                "messages": visible,
+                "created_at": data.created_at,
+                "updated_at": data.updated_at,
+            }
+        return data
 
 
 class IntakeRespondRequest(BaseModel):

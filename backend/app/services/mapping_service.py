@@ -11,6 +11,8 @@ graph edge (RawField maps_to eCRFField or SDTMVariable).
 
 from __future__ import annotations
 
+import csv
+import io
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -19,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.permissions import Permission, check_permission
 from app.models.audit import AuditAction
 from app.models.graph import GraphEdgeType, GraphNodeType
+from app.models.intelligence import DataLineageType
 from app.models.raw_data import FieldMappingVersion, RawDataset, RawField
 from app.models.user import User
 from app.repositories.raw_data_repository import (
@@ -30,6 +33,7 @@ from app.repositories.upload_repository import UploadRepository
 from app.schemas.raw_data import MappingValidationResult
 from app.services.audit_service import AuditService
 from app.services.context_graph_service import ContextGraphService
+from app.services.intelligence_service import DataLineageService
 
 
 class MappingService:
@@ -43,6 +47,7 @@ class MappingService:
         self._version_repo = FieldMappingVersionRepository(db)
         self._audit = AuditService(db)
         self._graph = ContextGraphService(db)
+        self._lineage = DataLineageService(db)
 
     # ------------------------------------------------------------------
     # Read
@@ -95,6 +100,8 @@ class MappingService:
         actor: User,
         ip_address: str | None = None,
         user_agent: str | None = None,
+        ai_decision_id: UUID | None = None,
+        is_ai_generated: bool = False,
     ) -> RawField:
         """Set or update the eCRF/SDTM mapping for a raw field."""
         check_permission(actor, Permission.ARTIFACT_EDIT)
@@ -137,10 +144,21 @@ class MappingService:
         await self._register_mapping_graph_edges(
             field=field,
             actor=actor,
+            ai_decision_id=ai_decision_id,
+            is_ai_generated=is_ai_generated,
+        )
+
+        await self._record_mapping_lineage(
+            field=field,
+            actor=actor,
+            mapped_ecrf_field_id=mapped_ecrf_field_id,
+            mapped_sdtm_variable_id=mapped_sdtm_variable_id,
+            ai_decision_id=ai_decision_id,
+            is_ai_generated=is_ai_generated,
         )
 
         await self._audit.log(
-            action=AuditAction.STUDY_UPDATED,
+            action=AuditAction.DATA_FIELD_MAPPED,
             resource_type="raw_field_mapping",
             organization_id=actor.organization_id,
             actor_user_id=actor.id,
@@ -158,6 +176,7 @@ class MappingService:
         )
 
         await self._db.flush()
+        await self._db.refresh(field)
         return field
 
     async def approve_mapping(
@@ -221,7 +240,7 @@ class MappingService:
         )
 
         await self._audit.log(
-            action=AuditAction.STUDY_UPDATED,
+            action=AuditAction.DATA_MAPPING_APPROVED,
             resource_type="raw_field_mapping_approved",
             organization_id=actor.organization_id,
             actor_user_id=actor.id,
@@ -233,6 +252,7 @@ class MappingService:
         )
 
         await self._db.flush()
+        await self._db.refresh(field)
         return field
 
     async def reject_mapping(
@@ -282,6 +302,78 @@ class MappingService:
         await self._db.flush()
         return field
 
+    async def bulk_approve_mappings(
+        self,
+        dataset_id: UUID,
+        notes: str | None,
+        actor: User,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> tuple[list[RawField], int]:
+        """Approve all PENDING_APPROVAL mappings in a dataset."""
+        check_permission(actor, Permission.ARTIFACT_APPROVE)
+
+        fields = await self.list_fields_for_dataset(dataset_id, actor.organization_id)
+        pending = [f for f in fields if f.mapping_status == "PENDING_APPROVAL"]
+        approved: list[RawField] = []
+
+        for field in pending:
+            result = await self.approve_mapping(
+                field_id=field.id,
+                notes=notes,
+                actor=actor,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+            approved.append(result)
+
+        if approved:
+            await self._audit.log(
+                action=AuditAction.DATA_MAPPING_APPROVED,
+                resource_type="raw_dataset_bulk_approve",
+                organization_id=actor.organization_id,
+                actor_user_id=actor.id,
+                resource_id=dataset_id,
+                after_state={
+                    "approved_count": len(approved),
+                    "dataset_id": str(dataset_id),
+                },
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+
+        return approved, len(pending)
+
+    async def export_mappings_csv(
+        self, dataset_id: UUID, organization_id: UUID
+    ) -> str:
+        """Export all field mappings for a dataset as CSV."""
+        dataset = await self.get_dataset(dataset_id, organization_id)
+        fields = await self._field_repo.list_for_dataset(dataset_id, organization_id)
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow([
+            "dataset_name",
+            "column_name",
+            "inferred_type",
+            "mapped_ecrf_field_id",
+            "mapped_sdtm_variable_id",
+            "mapping_status",
+            "mapping_version",
+        ])
+        for field in fields:
+            writer.writerow([
+                dataset.dataset_name,
+                field.column_name,
+                field.inferred_type,
+                field.mapped_ecrf_field_id or "",
+                field.mapped_sdtm_variable_id or "",
+                field.mapping_status,
+                field.mapping_version,
+            ])
+        return buffer.getvalue()
+
     async def validate_mapping(
         self, dataset_id: UUID, organization_id: UUID
     ) -> MappingValidationResult:
@@ -324,7 +416,11 @@ class MappingService:
     # ------------------------------------------------------------------
 
     async def _register_mapping_graph_edges(
-        self, field: RawField, actor: User
+        self,
+        field: RawField,
+        actor: User,
+        ai_decision_id: UUID | None = None,
+        is_ai_generated: bool = False,
     ) -> None:
         """Register MAPS_TO graph edges for the field's current mapping targets."""
         field_node, _ = await self._graph.register_domain_record(
@@ -354,6 +450,8 @@ class MappingService:
                 target_node_id=ecrf_node.id,
                 edge_type=GraphEdgeType.MAPS_TO,
                 study_id=field.study_id,
+                is_ai_generated=is_ai_generated,
+                ai_decision_id=ai_decision_id,
                 actor=actor,
             )
 
@@ -372,7 +470,51 @@ class MappingService:
                 organization_id=actor.organization_id,
                 source_node_id=field_node.id,
                 target_node_id=sdtm_node.id,
-                edge_type=GraphEdgeType.ECR_TO_SDTM,
+                edge_type=GraphEdgeType.MAPS_TO,
                 study_id=field.study_id,
+                is_ai_generated=is_ai_generated,
+                ai_decision_id=ai_decision_id,
                 actor=actor,
+            )
+
+    async def _record_mapping_lineage(
+        self,
+        field: RawField,
+        actor: User,
+        mapped_ecrf_field_id: str | None,
+        mapped_sdtm_variable_id: str | None,
+        ai_decision_id: UUID | None = None,
+        is_ai_generated: bool = False,
+    ) -> None:
+        """Record field-level lineage for raw → eCRF/SDTM mapping."""
+        logic_prefix = "AI-suggested" if is_ai_generated else "Manual"
+        if mapped_ecrf_field_id:
+            await self._lineage.record_field_lineage(
+                organization_id=actor.organization_id,
+                lineage_type=DataLineageType.MAPPED,
+                source_type="raw_field",
+                source_id=field.id,
+                source_field=field.column_name,
+                target_type="ecr_field",
+                target_field=mapped_ecrf_field_id,
+                transformation_logic=f"{logic_prefix} raw column to eCRF field mapping",
+                study_id=field.study_id,
+                created_by=actor,
+                is_ai_generated=is_ai_generated,
+                ai_decision_id=ai_decision_id,
+            )
+        if mapped_sdtm_variable_id:
+            await self._lineage.record_field_lineage(
+                organization_id=actor.organization_id,
+                lineage_type=DataLineageType.MAPPED,
+                source_type="raw_field",
+                source_id=field.id,
+                source_field=field.column_name,
+                target_type="sdtm_variable",
+                target_field=mapped_sdtm_variable_id,
+                transformation_logic=f"{logic_prefix} raw column to SDTM variable mapping",
+                study_id=field.study_id,
+                created_by=actor,
+                is_ai_generated=is_ai_generated,
+                ai_decision_id=ai_decision_id,
             )

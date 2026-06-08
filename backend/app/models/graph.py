@@ -413,6 +413,11 @@ class GraphEvent(UUIDMixin, Base):
 
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
+    # Phase 3: deduplicate mandatory workflow events on retry
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+
     # Immutable — no updated_at
     created_at: Mapped[str] = mapped_column(
         DateTime(timezone=True),

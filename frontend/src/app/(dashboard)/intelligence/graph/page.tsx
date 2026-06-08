@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ReactFlow, {
   Background,
@@ -19,6 +19,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { useAuthStore } from "@/store/authStore";
 import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
+import Link from "next/link";
 import { graphApi } from "@/lib/api/graph";
 import { StudyPicker } from "@/components/intelligence/StudyPicker";
 import type { GraphEdge, GraphNode } from "@/types";
@@ -27,14 +28,25 @@ import type { GraphEdge, GraphNode } from "@/types";
 
 const TYPE_COLUMN: Record<string, number> = {
   STUDY: 0,
+  INTAKE_SESSION: 0,
+  STUDY_BRIEF: 0,
   PROTOCOL: 0,
-  OBJECTIVE: 1,
-  ENDPOINT: 2,
-  ECR_FIELD: 3,
-  SDTM_VARIABLE: 4,
-  ADAM_VARIABLE: 5,
-  TLF: 6,
-  CSR_SECTION: 7,
+  ARTIFACT: 1,
+  UPLOADED_FILE: 1,
+  RAW_DATASET: 1,
+  SYNTHETIC_DATA_RUN: 1,
+  OBJECTIVE: 2,
+  ENDPOINT: 3,
+  ECR_FIELD: 4,
+  RAW_DATA_FIELD: 4,
+  SDTM_DOMAIN: 5,
+  SDTM_VARIABLE: 5,
+  ADAM_DATASET: 6,
+  ADAM_VARIABLE: 6,
+  TLF: 7,
+  CSR_SECTION: 8,
+  AI_DECISION: 9,
+  AI_AGENT: 9,
 };
 
 type NodeColors = { bg: string; border: string; badge: string; text: string };
@@ -49,6 +61,13 @@ const TYPE_COLORS: Record<string, NodeColors> = {
   ADAM_VARIABLE:  { bg: "#f0fdfa", border: "#14b8a6", badge: "#99f6e4", text: "#134e4a" },
   TLF:            { bg: "#fffbeb", border: "#f59e0b", badge: "#fde68a", text: "#78350f" },
   CSR_SECTION:    { bg: "#fff7ed", border: "#f97316", badge: "#fed7aa", text: "#7c2d12" },
+  ARTIFACT:       { bg: "#f1f5f9", border: "#64748b", badge: "#e2e8f0", text: "#334155" },
+  RAW_DATASET:    { bg: "#fef3c7", border: "#d97706", badge: "#fde68a", text: "#92400e" },
+  ADAM_DATASET:   { bg: "#f0fdfa", border: "#0d9488", badge: "#99f6e4", text: "#134e4a" },
+  INTAKE_SESSION: { bg: "#fdf4ff", border: "#c026d3", badge: "#f5d0fe", text: "#86198f" },
+  STUDY_BRIEF:    { bg: "#fdf4ff", border: "#a21caf", badge: "#f5d0fe", text: "#701a75" },
+  AI_DECISION:    { bg: "#eef2ff", border: "#4f46e5", badge: "#c7d2fe", text: "#312e81" },
+  SYNTHETIC_DATA_RUN: { bg: "#fffbeb", border: "#b45309", badge: "#fde68a", text: "#78350f" },
 };
 const DEFAULT_COLORS: NodeColors = { bg: "#f8fafc", border: "#94a3b8", badge: "#e2e8f0", text: "#334155" };
 
@@ -151,10 +170,38 @@ function buildEdges(apiEdges: GraphEdge[]): Edge[] {
 
 // ─── detail panel ────────────────────────────────────────────────────────────
 
-function NodeDetail({ node, onClose }: { node: GraphNode; onClose: () => void }) {
+function NodeDetail({
+  node,
+  token,
+  studyId,
+  onClose,
+}: {
+  node: GraphNode;
+  token: string;
+  studyId: string | null;
+  onClose: () => void;
+}) {
   const c = TYPE_COLORS[node.node_type] ?? DEFAULT_COLORS;
+
+  const { data: context, isLoading: contextLoading } = useQuery({
+    queryKey: ["graph-context", node.id, token],
+    queryFn: () => graphApi.getNodeContext(node.id, token),
+    enabled: !!token && !!node.id,
+  });
+
+  const { data: impact, isLoading: impactLoading } = useQuery({
+    queryKey: ["graph-impact", node.id, token],
+    queryFn: () => graphApi.getImpact(node.id, token),
+    enabled: !!token && !!node.id,
+  });
+
+  const artifactLink =
+    node.external_type === "artifact" && node.external_id && studyId
+      ? `/studies/${studyId}/artifacts/${node.external_id}`
+      : null;
+
   return (
-    <div className="absolute top-4 right-4 w-72 bg-white border border-slate-200 shadow-lg z-10 rounded-sm overflow-hidden">
+    <div className="absolute top-4 right-4 w-96 max-h-[85vh] overflow-y-auto bg-white border border-slate-200 shadow-lg z-10 rounded-sm">
       <div className="px-4 py-3 border-b border-slate-100 flex items-start justify-between gap-2" style={{ background: c.bg }}>
         <div>
           <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-sm" style={{ background: c.badge, color: c.text }}>
@@ -169,8 +216,18 @@ function NodeDetail({ node, onClose }: { node: GraphNode; onClose: () => void })
           <p className="text-xs text-slate-600 leading-relaxed">{node.description}</p>
         </div>
       )}
+      {artifactLink && (
+        <div className="px-4 py-2.5 border-b border-slate-100">
+          <Link
+            href={artifactLink}
+            className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+          >
+            Open artifact →
+          </Link>
+        </div>
+      )}
       {Object.keys(node.properties ?? {}).length > 0 && (
-        <div className="px-4 py-3">
+        <div className="px-4 py-3 border-b border-slate-100">
           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Properties</p>
           <div className="space-y-1.5">
             {Object.entries(node.properties).map(([k, v]) => (
@@ -182,6 +239,96 @@ function NodeDetail({ node, onClose }: { node: GraphNode; onClose: () => void })
           </div>
         </div>
       )}
+      <div className="px-4 py-3 border-b border-slate-100">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
+          AI reasoning
+        </p>
+        {contextLoading ? (
+          <p className="text-[11px] text-slate-400">Loading reasoning…</p>
+        ) : context?.ai_decisions.length ? (
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {context.ai_decisions.map((d) => (
+              <div key={d.id} className="bg-indigo-50 border border-indigo-100 px-2.5 py-2 rounded-sm">
+                <p className="text-[10px] font-semibold text-indigo-900">
+                  {d.agent_name} · {d.decision_type}
+                </p>
+                {d.edge_type && (
+                  <p className="text-[10px] text-indigo-600 mt-0.5">
+                    via {d.edge_type.replace(/_/g, " ")}
+                  </p>
+                )}
+                <p className="text-[11px] text-slate-700 mt-1 leading-relaxed">
+                  {d.reasoning ?? "No reasoning recorded."}
+                </p>
+                <Link
+                  href={`/intelligence/decisions`}
+                  className="text-[10px] text-brand-600 hover:text-brand-700 mt-1 inline-block"
+                >
+                  View in decisions →
+                </Link>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-slate-400">No linked AI decisions for this node.</p>
+        )}
+      </div>
+      <div className="px-4 py-3 border-b border-slate-100">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
+          Relationships
+        </p>
+        {contextLoading ? (
+          <p className="text-[11px] text-slate-400">Loading…</p>
+        ) : (
+          <div className="space-y-1 text-[11px] text-slate-600">
+            <p>
+              <span className="font-semibold">{context?.outgoing.length ?? 0}</span> outgoing ·{" "}
+              <span className="font-semibold">{context?.incoming.length ?? 0}</span> incoming
+            </p>
+            {(context?.outgoing ?? []).slice(0, 3).map((e) => (
+              <p key={e.id} className="truncate">
+                → {e.edge_type.replace(/_/g, " ")}
+                {e.is_ai_generated && (
+                  <span className="text-indigo-600 ml-1">(AI)</span>
+                )}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="px-4 py-3 border-b border-slate-100">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
+          Downstream impact
+        </p>
+        {impactLoading ? (
+          <p className="text-[11px] text-slate-400">Analyzing…</p>
+        ) : impact ? (
+          <div className="space-y-2">
+            <p className="text-[11px] text-slate-600">
+              <span className="font-semibold text-slate-900">
+                {impact.affected_downstream_count}
+              </span>{" "}
+              downstream node{impact.affected_downstream_count !== 1 ? "s" : ""} affected
+            </p>
+            {impact.affected_nodes.length > 0 ? (
+              <ul className="space-y-1 max-h-28 overflow-y-auto">
+                {impact.affected_nodes.slice(0, 8).map((n) => (
+                  <li key={n.id} className="text-[11px] text-slate-600 flex justify-between gap-2">
+                    <span className="truncate">{n.label}</span>
+                    <span className="text-slate-400 shrink-0 font-mono text-[10px]">
+                      {n.node_type}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[11px] text-slate-400">No downstream dependencies.</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-[11px] text-slate-400">Impact data unavailable.</p>
+        )}
+      </div>
       <div className="px-4 py-2 border-t border-slate-100 bg-slate-50">
         <p className="text-[10px] text-slate-400 font-mono">{node.id}</p>
       </div>
@@ -198,27 +345,39 @@ export default function ContextGraphPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  const { isLoading: nodesLoading } = useQuery({
+  const {
+    data: nodesData,
+    isLoading: nodesLoading,
+    isError: nodesError,
+  } = useQuery({
     queryKey: ["graph-nodes", studyId, token],
-    queryFn: async () => {
-      const data = await graphApi.listNodes({ study_id: studyId!, page_size: 500 }, token!);
-      setNodes(buildNodes(data.items));
-      return data;
-    },
+    queryFn: () => graphApi.listNodes({ study_id: studyId!, page_size: 200 }, token!),
     enabled: !!token && !!studyId,
     staleTime: 60_000,
   });
 
-  const { isLoading: edgesLoading } = useQuery({
+  const {
+    data: edgesData,
+    isLoading: edgesLoading,
+    isError: edgesError,
+  } = useQuery({
     queryKey: ["graph-edges", studyId, token],
-    queryFn: async () => {
-      const data = await graphApi.listEdges({ study_id: studyId!, page_size: 1000 }, token!);
-      setEdges(buildEdges(data.items));
-      return data;
-    },
+    queryFn: () => graphApi.listEdges({ study_id: studyId!, page_size: 500 }, token!),
     enabled: !!token && !!studyId,
     staleTime: 60_000,
   });
+
+  useEffect(() => {
+    if (nodesData?.items) {
+      setNodes(buildNodes(nodesData.items));
+    }
+  }, [nodesData, setNodes]);
+
+  useEffect(() => {
+    if (edgesData?.items) {
+      setEdges(buildEdges(edgesData.items));
+    }
+  }, [edgesData, setEdges]);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -228,6 +387,9 @@ export default function ContextGraphPage() {
   );
 
   const isLoading = nodesLoading || edgesLoading;
+  const hasError = nodesError || edgesError;
+  const nodeCount = nodesData?.items.length ?? nodes.length;
+  const edgeCount = edgesData?.items.length ?? edges.length;
 
   return (
     <div className="flex flex-col h-screen">
@@ -237,7 +399,7 @@ export default function ContextGraphPage() {
           <div>
             <h1 className="font-display text-xl font-bold text-slate-900">Context Graph</h1>
             <p className="text-slate-500 text-sm mt-0.5">
-              {nodes.length} nodes · {edges.length} edges
+              {nodeCount} nodes · {edgeCount} edges
               {isLoading && " · Loading…"}
             </p>
           </div>
@@ -252,6 +414,19 @@ export default function ContextGraphPage() {
             <div className="text-center">
               <p className="font-display font-semibold text-slate-700 mb-1">Select a study</p>
               <p className="text-slate-400 text-sm">Choose a study above to render its context graph.</p>
+            </div>
+          </div>
+        ) : hasError ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-sm text-red-600">Failed to load graph data. Refresh the page.</p>
+          </div>
+        ) : nodeCount === 0 && !isLoading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center max-w-sm">
+              <p className="font-display font-semibold text-slate-700 mb-1">No graph nodes yet</p>
+              <p className="text-slate-400 text-sm">
+                Run intake, upload raw data, or generate SDTM/ADaM to populate the context graph.
+              </p>
             </div>
           </div>
         ) : (
@@ -285,8 +460,13 @@ export default function ContextGraphPage() {
           </ReactFlow>
         )}
 
-        {selectedNode && (
-          <NodeDetail node={selectedNode} onClose={() => setSelectedNode(null)} />
+        {selectedNode && token && (
+          <NodeDetail
+            node={selectedNode}
+            token={token}
+            studyId={studyId}
+            onClose={() => setSelectedNode(null)}
+          />
         )}
       </div>
     </div>

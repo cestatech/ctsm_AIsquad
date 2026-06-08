@@ -66,6 +66,7 @@ class ProtocolGenerator(BaseGenerator):
         self, job: GenerationJob, study: Study, model_id: str
     ) -> dict:
         ctx = job.input_context or {}
+        brief_block = self._format_brief_for_prompt(job)
         user_prompt = f"""Generate a complete clinical trial protocol for the following study.
 
 Study details:
@@ -78,7 +79,8 @@ Study details:
 - Primary Objective: {ctx.get("primary_objective", "Evaluate efficacy and safety")}
 - Treatment Arms: {ctx.get("treatment_arms", "To be specified")}
 - Additional context: {ctx.get("additional_context", "")}
-
+{brief_block}
+When a Study Brief is provided above, derive all protocol sections from it.
 Return only valid JSON matching the required schema."""
 
         text = await self._call_claude(

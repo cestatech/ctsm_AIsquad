@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { GraphEdge, GraphNode, PaginatedResponse } from "@/types";
+import type { GraphEdge, GraphEvent, GraphNode, PaginatedResponse } from "@/types";
 
 interface NodeListParams {
   study_id?: string;
@@ -68,4 +68,83 @@ export const graphApi = {
       params: { study_id: studyId },
       token,
     }),
+
+  listEvents: (
+    params: {
+      study_id?: string;
+      actor_user_id?: string;
+      action?: string;
+      entity_type?: string;
+      event_type?: string;
+      page?: number;
+      page_size?: number;
+    },
+    token: string
+  ) =>
+    apiClient.get<PaginatedResponse<GraphEvent>>("/graph/events", {
+      params: params as Record<string, string | number | boolean | undefined>,
+      token,
+    }),
+
+  getStudySummary: (studyId: string, token: string) =>
+    apiClient.get<{
+      study_id: string;
+      node_count: number;
+      edge_count: number;
+      event_count: number;
+      nodes_by_type: Record<string, number>;
+      recent_events: GraphEvent[];
+    }>("/graph/study-summary", {
+      params: { study_id: studyId },
+      token,
+    }),
+
+  getEntityRelationships: (
+    externalType: string,
+    externalId: string,
+    token: string
+  ) =>
+    apiClient.get<{
+      external_type: string;
+      external_id: string;
+      node: GraphNode | null;
+      outgoing: GraphEdge[];
+      incoming: GraphEdge[];
+    }>("/graph/by-entity", {
+      params: { external_type: externalType, external_id: externalId },
+      token,
+    }),
+
+  getImpact: (nodeId: string, token: string, maxDepth = 5) =>
+    apiClient.get<{
+      node_id: string;
+      affected_downstream_count: number;
+      affected_nodes: GraphNode[];
+      affected_edges: GraphEdge[];
+    }>(`/graph/${nodeId}/impact`, {
+      params: { max_depth: maxDepth },
+      token,
+    }),
+
+  getNodeContext: (nodeId: string, token: string) =>
+    apiClient.get<GraphNodeContext>(`/graph/${nodeId}/context`, { token }),
 };
+
+export interface GraphAIDecisionSummary {
+  id: string;
+  agent_name: string;
+  decision_type: string;
+  reasoning: string | null;
+  confidence: number | null;
+  status: string;
+  link_source: string;
+  edge_type: string | null;
+  edge_id: string | null;
+}
+
+export interface GraphNodeContext {
+  node: GraphNode;
+  outgoing: GraphEdge[];
+  incoming: GraphEdge[];
+  ai_decisions: GraphAIDecisionSummary[];
+}

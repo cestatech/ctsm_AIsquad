@@ -285,9 +285,18 @@ export interface AuthSession {
 
 // ─── Error ───────────────────────────────────────────────────────────────────
 
+export interface ApiErrorDetailObject {
+  code?: string;
+  message?: string;
+  issues?: string[];
+  field?: string;
+}
+
+export type ApiErrorDetail = string | ApiErrorDetailObject;
+
 export interface ApiError {
-  detail: string;
-  code: string;
+  detail: ApiErrorDetail;
+  code?: string;
   field?: string;
 }
 
@@ -427,6 +436,21 @@ export interface GraphEdge {
   created_at: string;
 }
 
+export interface GraphEvent {
+  id: string;
+  organization_id: string;
+  study_id: string | null;
+  event_type: string;
+  node_id: string | null;
+  edge_id: string | null;
+  actor_user_id: string | null;
+  actor_agent_id: string | null;
+  ai_decision_id: string | null;
+  idempotency_key: string | null;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
 // ─── Sponsor Intake types ─────────────────────────────────────────────────────
 
 export type IntakeStatus = "IN_PROGRESS" | "READY_TO_COMPILE" | "COMPILED";
@@ -560,4 +584,98 @@ export interface MappingValidationResult {
   unmapped_fields: number;
   coverage_pct: number;
   issues: string[];
+}
+
+export interface FieldMappingSuggestion {
+  field_id: string;
+  column_name: string;
+  mapped_ecrf_field_id: string | null;
+  mapped_sdtm_variable_id: string | null;
+  confidence: number;
+  reasoning: string;
+}
+
+export interface SuggestMappingsResponse {
+  ai_decision_id: string;
+  dataset_id: string;
+  suggestions: FieldMappingSuggestion[];
+  model_id: string;
+}
+
+export interface StudySDTMReadinessResponse {
+  study_id: string;
+  dataset_count: number;
+  total_fields: number;
+  approved_fields: number;
+  ready: boolean;
+  issues: string[];
+  datasets: Array<{
+    dataset_id: string;
+    dataset_name: string;
+    total_fields: number;
+    approved_fields: number;
+    ready: boolean;
+  }>;
+}
+
+export interface StudyADAMReadinessResponse {
+  study_id: string;
+  sdtm_artifact_count: number;
+  ready: boolean;
+  issues: string[];
+  sdtm_artifacts: Array<{
+    artifact_id: string;
+    artifact_name: string;
+    domain_count: number;
+    domains: string[];
+    observation_count: number;
+    ready: boolean;
+  }>;
+}
+
+export interface ADAMGenerationResponse {
+  artifact_id: string;
+  artifact_version_id: string;
+  ai_decision_id: string;
+  validation_run_id: string;
+  dataset_count: number;
+  study_id: string;
+  source_sdtm_artifact_ids: string[];
+}
+
+export interface StudyCSRReadinessResponse {
+  study_id: string;
+  tlf_artifact_count: number;
+  protocol_artifact_count: number;
+  sap_artifact_count: number;
+  ready: boolean;
+  issues: string[];
+  tlf_artifacts: Array<{
+    artifact_id: string;
+    artifact_name: string;
+    table_count: number;
+    tables: string[];
+    ready: boolean;
+  }>;
+}
+
+export interface CSRGenerationResponse {
+  artifact_id: string;
+  artifact_version_id: string;
+  ai_decision_id: string;
+  validation_run_id: string;
+  section_count: number;
+  study_id: string;
+  source_tlf_artifact_ids: string[];
+  source_study_artifact_ids: string[];
+}
+
+export interface SDTMGenerationResponse {
+  artifact_id: string;
+  artifact_version_id: string;
+  ai_decision_id: string;
+  validation_run_id: string;
+  domain_count: number;
+  study_id: string;
+  source_dataset_ids: string[];
 }

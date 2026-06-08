@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import json
 import uuid
 from pathlib import Path
 from uuid import UUID
@@ -20,8 +21,10 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.phi_masking import mask_sample_values
 from app.models.audit import AuditAction
 from app.models.graph import GraphEdgeType, GraphNodeType
+from app.models.intelligence import DataLineageType
 from app.models.upload import UploadedFile
 from app.models.user import User
 from app.repositories.raw_data_repository import RawDatasetRepository, RawFieldRepository
@@ -29,6 +32,7 @@ from app.repositories.study_repository import StudyRepository
 from app.repositories.upload_repository import UploadRepository
 from app.services.audit_service import AuditService
 from app.services.context_graph_service import ContextGraphService
+from app.services.intelligence_service import DataLineageService
 
 _ALLOWED_MIME_TYPES = {
     "text/csv",
@@ -57,6 +61,7 @@ class UploadService:
         self._ds_repo = RawDatasetRepository(db)
         self._field_repo = RawFieldRepository(db)
         self._graph = ContextGraphService(db)
+        self._lineage = DataLineageService(db)
         self._settings = get_settings()
 
     async def upload_file(
@@ -195,6 +200,25 @@ class UploadService:
                 actor=actor,
             )
 
+            uploader_node, _ = await self._graph.register_domain_record(
+                organization_id=actor.organization_id,
+                node_type=GraphNodeType.USER,
+                external_id=actor.id,
+                external_type="user",
+                label=actor.email,
+                study_id=study_id,
+                actor=actor,
+            )
+            await self._graph.create_relationship(
+                organization_id=actor.organization_id,
+                source_node_id=file_node.id,
+                target_node_id=uploader_node.id,
+                edge_type=GraphEdgeType.CREATED_BY,
+                study_id=study_id,
+                actor=actor,
+            )
+
+            total_fields = 0
             for sheet in sheets:
                 ds = await self._ds_repo.create(
                     organization_id=actor.organization_id,
@@ -258,6 +282,38 @@ class UploadService:
                         study_id=study_id,
                         actor=actor,
                     )
+
+                    await self._lineage.record_field_lineage(
+                        organization_id=actor.organization_id,
+                        lineage_type=DataLineageType.DERIVED,
+                        source_type="uploaded_file",
+                        source_id=record.id,
+                        source_domain=sheet["name"],
+                        target_type="raw_field",
+                        target_id=field.id,
+                        target_field=col["name"],
+                        transformation_logic="CSV/XLSX column extraction and profiling",
+                        study_id=study_id,
+                        created_by=actor,
+                        source_graph_node_id=file_node.id,
+                        target_graph_node_id=field_node.id,
+                    )
+                    total_fields += 1
+
+            await self._audit.log(
+                action=AuditAction.DATA_FILE_PARSED,
+                resource_type="uploaded_file",
+                organization_id=actor.organization_id,
+                actor_user_id=actor.id,
+                resource_id=record.id,
+                after_state={
+                    "study_id": str(study_id),
+                    "filename": record.original_filename,
+                    "upload_status": record.upload_status,
+                    "dataset_count": len(sheets),
+                    "field_count": total_fields,
+                },
+            )
 
         except Exception as exc:
             record.upload_status = "FAILED"
@@ -325,11 +381,22 @@ class UploadService:
             col_vals = []
             for row in data_rows:
                 col_vals.append(row[col_idx] if col_idx < len(row) else None)
+            col_name = header or f"col_{col_idx}"
             columns.append(
-                {"name": header or f"col_{col_idx}", "index": col_idx,
-                 **UploadService._profile_column(col_vals)}
+                {"name": col_name, "index": col_idx,
+                 **UploadService._profile_column(col_name, col_vals)}
             )
         return [{"name": filename, "row_count": len(data_rows), "columns": columns}]
+
+    @staticmethod
+    def _sanitize_sheet_name(name: str) -> str:
+        """Normalize Excel sheet names for stable dataset identifiers."""
+        cleaned = "".join(
+            ch if ch.isalnum() or ch in " _-" else "_"
+            for ch in name.strip()
+        )
+        cleaned = cleaned.strip(" _") or "Sheet"
+        return cleaned[:100]
 
     @staticmethod
     def _parse_xlsx(content: bytes) -> list[dict]:
@@ -338,6 +405,7 @@ class UploadService:
         sheets = []
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
+            safe_name = UploadService._sanitize_sheet_name(sheet_name)
             rows = list(ws.values)
             if not rows:
                 continue
@@ -354,19 +422,188 @@ class UploadService:
                 ]
                 columns.append(
                     {"name": header, "index": col_idx,
-                     **UploadService._profile_column(col_vals)}
+                     **UploadService._profile_column(header, col_vals)}
                 )
             sheets.append(
-                {"name": sheet_name, "row_count": len(data_rows), "columns": columns}
+                {
+                    "name": safe_name,
+                    "source_sheet_name": sheet_name,
+                    "row_count": len(data_rows),
+                    "columns": columns,
+                }
             )
         wb.close()
         return sheets
 
     @staticmethod
-    def _profile_column(values: list[str | None]) -> dict:
+    def resolve_storage_path(file_path: str, storage_root: str) -> Path:
+        """Resolve an absolute or storage-relative upload path."""
+        path = Path(file_path)
+        if path.is_absolute():
+            return path
+        return Path(storage_root) / file_path
+
+    @staticmethod
+    def reconstruct_rows_from_fields(
+        fields: list,
+        row_count: int,
+        *,
+        max_rows: int = 500,
+    ) -> list[dict]:
+        """Rebuild row dicts from profiled column sample values when the file is missing."""
+        if not fields:
+            return []
+
+        max_samples = max((len(getattr(f, "sample_values", []) or []) for f in fields), default=0)
+        effective_rows = min(max(row_count, max_samples), max_rows)
+        if effective_rows <= 0:
+            return []
+
+        ordered = sorted(fields, key=lambda f: getattr(f, "column_index", 0))
+        rows_out: list[dict] = []
+        for row_idx in range(effective_rows):
+            record: dict[str, str | None] = {}
+            for field in ordered:
+                samples = getattr(field, "sample_values", []) or []
+                if not samples:
+                    continue
+                record[field.column_name] = str(samples[row_idx % len(samples)])
+            if record:
+                rows_out.append(record)
+        return rows_out
+
+    @staticmethod
+    def read_json_edc_rows(
+        content: bytes,
+        dataset_name: str,
+        *,
+        max_rows: int = 500,
+    ) -> list[dict]:
+        """Read rows from a synthetic RAW_CLINICAL_DATA JSON export."""
+        try:
+            payload = json.loads(content.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return []
+
+        datasets = payload.get("datasets", {})
+        if not isinstance(datasets, dict):
+            return []
+
+        form_id = dataset_name.split(" — ", 1)[0].strip()
+        sheet = None
+        for candidate in datasets.values():
+            if not isinstance(candidate, dict):
+                continue
+            if candidate.get("form_id") == form_id or candidate.get("form_name") == dataset_name:
+                sheet = candidate
+                break
+        if sheet is None and datasets:
+            sheet = next(iter(datasets.values()))
+
+        if not isinstance(sheet, dict):
+            return []
+
+        columns = sheet.get("columns", [])
+        sample_rows = sheet.get("sample_rows", [])
+        if not isinstance(columns, list) or not isinstance(sample_rows, list):
+            return []
+
+        rows_out: list[dict] = []
+        for row in sample_rows[:max_rows]:
+            if not isinstance(row, dict):
+                continue
+            record = {col: row.get(col) for col in columns if col in row}
+            if record:
+                rows_out.append(record)
+        return rows_out
+
+    @staticmethod
+    def read_tabular_rows(
+        *,
+        file_path: str,
+        mime_type: str,
+        filename: str,
+        dataset_name: str,
+        max_rows: int = 500,
+        storage_root: str | None = None,
+    ) -> list[dict]:
+        """Read raw row dicts from a stored CSV/XLSX/JSON file for SDTM derivation."""
+        path = Path(file_path)
+        if storage_root and not path.is_absolute():
+            path = UploadService.resolve_storage_path(file_path, storage_root)
+        if not path.exists():
+            return []
+        content = path.read_bytes()
+        if mime_type == "application/json" or filename.lower().endswith(".json"):
+            return UploadService.read_json_edc_rows(
+                content, dataset_name, max_rows=max_rows
+            )
+        sheets = UploadService._parse_file(content, mime_type, filename)
+        target = next(
+            (s for s in sheets if s["name"] == dataset_name),
+            sheets[0] if sheets else None,
+        )
+        if target is None:
+            return []
+
+        if mime_type == "text/csv" or filename.lower().endswith(".csv"):
+            text = content.decode("utf-8", errors="replace")
+            reader = csv.reader(io.StringIO(text))
+            all_rows = list(reader)
+            if not all_rows:
+                return []
+            headers = all_rows[0]
+            data_rows = all_rows[1 : max_rows + 1]
+            rows_out = []
+            for row in data_rows:
+                record = {}
+                for idx, header in enumerate(headers):
+                    key = header or f"col_{idx}"
+                    record[key] = row[idx] if idx < len(row) else None
+                rows_out.append(record)
+            return rows_out
+
+        import openpyxl
+
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+        sheet_names = wb.sheetnames
+        if dataset_name in sheet_names:
+            ws = wb[dataset_name]
+        else:
+            sanitized = UploadService._sanitize_sheet_name(dataset_name)
+            form_prefix = dataset_name.split(" — ", 1)[0].strip()
+            matched = next(
+                (
+                    name
+                    for name in sheet_names
+                    if name == sanitized
+                    or name == form_prefix
+                    or name.startswith(f"{form_prefix} ")
+                ),
+                None,
+            )
+            ws = wb[matched or sheet_names[0]]
+        values = list(ws.values)
+        wb.close()
+        if not values:
+            return []
+        headers = [
+            str(h) if h is not None else f"col_{i}" for i, h in enumerate(values[0])
+        ]
+        rows_out = []
+        for row in values[1 : max_rows + 1]:
+            record = {}
+            for idx, header in enumerate(headers):
+                val = row[idx] if idx < len(row) else None
+                record[header] = str(val) if val is not None else None
+            rows_out.append(record)
+        return rows_out
+
+    @staticmethod
+    def _profile_column(column_name: str, values: list[str | None]) -> dict:
         """Compute profiling stats for a single column's raw string values."""
         non_null = [v for v in values if v is not None and v != ""]
-        sample = non_null[:5]
+        sample = mask_sample_values(column_name, non_null[:5])
         missing = sum(1 for v in values if v is None or v == "")
         distinct = len(set(non_null))
 

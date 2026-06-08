@@ -42,6 +42,20 @@ class RawDatasetRepository:
         )
         return list(result.scalars().all())
 
+    async def list_for_study(
+        self, study_id: UUID, organization_id: UUID
+    ) -> list[RawDataset]:
+        """All parsed datasets across every upload in a study."""
+        result = await self._db.execute(
+            select(RawDataset)
+            .where(
+                RawDataset.study_id == study_id,
+                RawDataset.organization_id == organization_id,
+            )
+            .order_by(RawDataset.created_at.asc())
+        )
+        return list(result.scalars().all())
+
     async def update(self, dataset: RawDataset) -> RawDataset:
         await self._db.flush()
         await self._db.refresh(dataset)

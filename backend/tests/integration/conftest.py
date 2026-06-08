@@ -21,6 +21,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import get_db
+from app.core.permissions import Role
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models.artifact import Artifact, ArtifactStatus, ArtifactType, ArtifactVersion
@@ -117,6 +118,24 @@ async def i_contributor(idb: AsyncSession, i_org: Organization) -> User:
 
 
 @pytest_asyncio.fixture(scope="session")
+async def i_reviewer(idb: AsyncSession, i_org: Organization) -> User:
+    user = User(
+        id=uuid4(),
+        organization_id=i_org.id,
+        email=f"reviewer-{uuid4().hex[:6]}@int.test",
+        full_name="Int Reviewer",
+        hashed_password=hash_password("TestPass123!"),
+        is_active=True,
+        is_system_admin=False,
+        org_role=Role.REVIEWER,
+    )
+    idb.add(user)
+    await idb.commit()
+    await idb.refresh(user)
+    return user
+
+
+@pytest_asyncio.fixture(scope="session")
 async def i_study(idb: AsyncSession, i_org: Organization, i_admin: User) -> Study:
     study = Study(
         id=uuid4(),
@@ -196,6 +215,11 @@ def admin_tok(i_admin: User) -> str:
 @pytest.fixture(scope="session")
 def contributor_tok(i_contributor: User) -> str:
     return make_token(i_contributor)
+
+
+@pytest.fixture(scope="session")
+def reviewer_tok(i_reviewer: User) -> str:
+    return make_token(i_reviewer)
 
 
 @pytest_asyncio.fixture(scope="session")

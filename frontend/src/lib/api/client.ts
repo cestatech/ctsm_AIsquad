@@ -1,4 +1,5 @@
 import type { ApiError } from "@/types";
+import { formatApiError } from "./errors";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
@@ -112,7 +113,7 @@ export class ApiClientError extends Error {
     public readonly status: number,
     public readonly error: ApiError
   ) {
-    super(error.detail);
+    super(formatApiError(error));
     this.name = "ApiClientError";
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
@@ -8,6 +9,12 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { studiesApi } from "@/lib/api/studies";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { uploadsApi } from "@/lib/api/uploads";
+import { getApiErrorMessage } from "@/lib/api/errors";
+import { rawDataApi } from "@/lib/api/rawData";
+import { adamApi } from "@/lib/api/adam";
+import { csrApi } from "@/lib/api/csr";
+import { graphApi } from "@/lib/api/graph";
+import { intakeApi } from "@/lib/api/intake";
 import type { UploadedFile } from "@/types";
 
 const ARTIFACT_STATUS_COLORS: Record<string, string> = {
@@ -58,6 +65,7 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
   const { token, role } = useAuthStore();
   const perms = usePermissions(role);
   const queryClient = useQueryClient();
+  const router = useRouter();
   const studyId = params.id;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -71,6 +79,18 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
   const { data: artifactsData } = useQuery({
     queryKey: ["artifacts", studyId, token],
     queryFn: () => artifactsApi.list({ study_id: studyId, page_size: 50 }, token!),
+    enabled: !!token,
+  });
+
+  const { data: graphSummary } = useQuery({
+    queryKey: ["study-graph-summary", studyId, token],
+    queryFn: () => graphApi.getStudySummary(studyId, token!),
+    enabled: !!token && !!studyId,
+  });
+
+  const { data: intakeSessions } = useQuery({
+    queryKey: ["intakes", studyId, token],
+    queryFn: () => intakeApi.list(studyId, token!),
     enabled: !!token,
   });
 
@@ -91,8 +111,67 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
     onSuccess: () => {
       setUploadError(null);
       queryClient.invalidateQueries({ queryKey: ["uploads", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["sdtm-readiness", studyId] });
     },
-    onError: (err) => setUploadError(err instanceof Error ? err.message : "Upload failed."),
+    onError: (err) => setUploadError(getApiErrorMessage(err, "Upload failed.")),
+  });
+
+  const { data: sdtmReadiness } = useQuery({
+    queryKey: ["sdtm-readiness", studyId, token],
+    queryFn: () => rawDataApi.getStudySdtmReadiness(studyId, token!),
+    enabled: !!token && (uploadsData?.total ?? 0) > 0,
+  });
+
+  const hasSdtmArtifacts = (artifactsData?.items ?? []).some(
+    (a) => a.artifact_type === "SDTM_DATASET"
+  );
+  const hasTlfArtifacts = (artifactsData?.items ?? []).some(
+    (a) => a.artifact_type === "TLF"
+  );
+
+  const latestIntake = intakeSessions?.[0] ?? null;
+  const intakeCompiled = latestIntake?.status === "COMPILED";
+  const intakeDomains = latestIntake?.domains_completed.length ?? 0;
+  const hasProtocol = (artifactsData?.items ?? []).some((a) => a.artifact_type === "PROTOCOL");
+  const hasIcf = (artifactsData?.items ?? []).some((a) => a.artifact_type === "ICF");
+
+  const { data: adamReadiness } = useQuery({
+    queryKey: ["adam-readiness", studyId, token],
+    queryFn: () => adamApi.getStudyReadiness(studyId, token!),
+    enabled: !!token && hasSdtmArtifacts,
+  });
+
+  const generateStudyAdamMutation = useMutation({
+    mutationFn: () => adamApi.generateFromStudy(studyId, token!),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["adam-readiness", studyId] });
+      router.push(`/studies/${studyId}/artifacts/${result.artifact_id}`);
+    },
+  });
+
+  const { data: csrReadiness } = useQuery({
+    queryKey: ["csr-readiness", studyId, token],
+    queryFn: () => csrApi.getStudyReadiness(studyId, token!),
+    enabled: !!token && hasTlfArtifacts,
+  });
+
+  const generateStudyCsrMutation = useMutation({
+    mutationFn: () => csrApi.generateFromStudy(studyId, token!),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["csr-readiness", studyId] });
+      router.push(`/studies/${studyId}/artifacts/${result.artifact_id}`);
+    },
+  });
+
+  const generateStudySdtmMutation = useMutation({
+    mutationFn: () => rawDataApi.generateStudySdtm(studyId, token!),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["sdtm-readiness", studyId] });
+      router.push(`/studies/${studyId}/artifacts/${result.artifact_id}`);
+    },
   });
 
   if (studyLoading) {
@@ -156,6 +235,18 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
               Generation
             </Link>
             <Link
+              href={`/studies/${study.id}/edc`}
+              className="border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium px-4 py-2 transition-colors"
+            >
+              EDC Screens
+            </Link>
+            <Link
+              href={`/studies/${study.id}/generated-data`}
+              className="border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium px-4 py-2 transition-colors"
+            >
+              Generated Data
+            </Link>
+            <Link
               href={`/studies/${study.id}/artifacts`}
               className="bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold font-display px-4 py-2 transition-colors"
             >
@@ -165,7 +256,34 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
         </div>
       </div>
 
-      <div className="px-8 py-6 grid grid-cols-3 gap-6">
+      <div className="px-8 py-6 space-y-6">
+        {(!hasProtocol || !hasIcf) && (
+          <div className="bg-amber-50 border border-amber-200 px-5 py-4 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-amber-900">
+                {!intakeCompiled
+                  ? `Sponsor intake incomplete (${intakeDomains}/9 domains)`
+                  : "Study Brief compiled — generate Protocol & ICF"}
+              </p>
+              <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                {!intakeCompiled
+                  ? "Protocol and ICF are not created automatically. Finish all nine intake domains, compile the Study Brief, then generate each document from the brief."
+                  : "Open intake to generate Protocol and ICF from the compiled Study Brief. Completed jobs appear under Artifacts and Generation."}
+              </p>
+              <p className="text-[11px] text-amber-700 mt-2">
+                Protocol: {hasProtocol ? "generated" : "not yet"} · ICF: {hasIcf ? "generated" : "not yet"}
+              </p>
+            </div>
+            <Link
+              href={`/studies/${studyId}/intake`}
+              className="shrink-0 text-xs bg-amber-600 hover:bg-amber-500 text-white font-semibold px-4 py-2 transition-colors"
+            >
+              {intakeCompiled ? "Generate documents" : "Continue intake"}
+            </Link>
+          </div>
+        )}
+
+      <div className="grid grid-cols-3 gap-6">
         {/* Left column: Details + Artifact summary */}
         <div className="col-span-2 space-y-6">
           {/* Artifact status overview */}
@@ -252,6 +370,170 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
               ))}
             </div>
           )}
+          {/* CSR pipeline */}
+          {hasTlfArtifacts && (
+            <div className="bg-white border border-slate-200">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h2 className="font-display font-semibold text-slate-900 text-sm">
+                  CSR Assembly
+                </h2>
+                {csrReadiness?.ready && (
+                  <span className="text-[11px] px-2 py-0.5 bg-orange-100 text-orange-700 font-medium">
+                    Ready
+                  </span>
+                )}
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                {csrReadiness ? (
+                  <>
+                    <p className="text-xs text-slate-600">
+                      {csrReadiness.tlf_artifact_count} TLF package(s) available for
+                      ICH E3 CSR assembly.
+                      {csrReadiness.protocol_artifact_count > 0 &&
+                        ` Protocol context included.`}
+                    </p>
+                    {!csrReadiness.ready && csrReadiness.issues.length > 0 && (
+                      <ul className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-3 py-2 space-y-0.5 list-disc list-inside">
+                        {csrReadiness.issues.slice(0, 5).map((issue) => (
+                          <li key={issue}>{issue}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {perms.canCreateArtifact && (
+                      <button
+                        onClick={() => generateStudyCsrMutation.mutate()}
+                        disabled={!csrReadiness.ready || generateStudyCsrMutation.isPending}
+                        className="text-xs bg-orange-700 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 transition-colors"
+                      >
+                        {generateStudyCsrMutation.isPending
+                          ? "Assembling CSR…"
+                          : "Generate Clinical Study Report"}
+                      </button>
+                    )}
+                    {generateStudyCsrMutation.isError && (
+                      <p className="text-[11px] text-red-600">
+                        {getApiErrorMessage(
+                          generateStudyCsrMutation.error,
+                          "CSR generation failed."
+                        )}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-400">Checking CSR readiness…</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ADaM pipeline */}
+          {hasSdtmArtifacts && (
+            <div className="bg-white border border-slate-200">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h2 className="font-display font-semibold text-slate-900 text-sm">
+                  ADaM Generation
+                </h2>
+                {adamReadiness?.ready && (
+                  <span className="text-[11px] px-2 py-0.5 bg-teal-100 text-teal-700 font-medium">
+                    Ready
+                  </span>
+                )}
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                {adamReadiness ? (
+                  <>
+                    <p className="text-xs text-slate-600">
+                      {adamReadiness.sdtm_artifact_count} SDTM artifact(s) available
+                      for ADaM IG 1.3 derivation.
+                    </p>
+                    {!adamReadiness.ready && adamReadiness.issues.length > 0 && (
+                      <ul className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-3 py-2 space-y-0.5 list-disc list-inside">
+                        {adamReadiness.issues.slice(0, 5).map((issue) => (
+                          <li key={issue}>{issue}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {perms.canCreateArtifact && (
+                      <button
+                        onClick={() => generateStudyAdamMutation.mutate()}
+                        disabled={!adamReadiness.ready || generateStudyAdamMutation.isPending}
+                        className="text-xs bg-teal-700 hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 transition-colors"
+                      >
+                        {generateStudyAdamMutation.isPending
+                          ? "Generating ADaM…"
+                          : "Generate ADaM analysis package"}
+                      </button>
+                    )}
+                    {generateStudyAdamMutation.isError && (
+                      <p className="text-[11px] text-red-600">
+                        {getApiErrorMessage(
+                          generateStudyAdamMutation.error,
+                          "ADaM generation failed."
+                        )}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-400">Checking ADaM readiness…</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SDTM pipeline */}
+          {(uploadsData?.total ?? 0) > 0 && (
+            <div className="bg-white border border-slate-200">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h2 className="font-display font-semibold text-slate-900 text-sm">
+                  SDTM Generation
+                </h2>
+                {sdtmReadiness?.ready && (
+                  <span className="text-[11px] px-2 py-0.5 bg-emerald-100 text-emerald-700 font-medium">
+                    Ready
+                  </span>
+                )}
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                {sdtmReadiness ? (
+                  <>
+                    <p className="text-xs text-slate-600">
+                      {sdtmReadiness.approved_fields}/{sdtmReadiness.total_fields} fields approved
+                      across {sdtmReadiness.dataset_count} dataset(s).
+                    </p>
+                    {!sdtmReadiness.ready && sdtmReadiness.issues.length > 0 && (
+                      <ul className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-3 py-2 space-y-0.5 list-disc list-inside">
+                        {sdtmReadiness.issues.slice(0, 5).map((issue) => (
+                          <li key={issue}>{issue}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {perms.canCreateArtifact && (
+                      <button
+                        onClick={() => generateStudySdtmMutation.mutate()}
+                        disabled={!sdtmReadiness.ready || generateStudySdtmMutation.isPending}
+                        className="text-xs bg-brand-600 hover:bg-brand-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 transition-colors"
+                      >
+                        {generateStudySdtmMutation.isPending
+                          ? "Generating full-study SDTM…"
+                          : "Generate full-study SDTM package"}
+                      </button>
+                    )}
+                    {generateStudySdtmMutation.isError && (
+                      <p className="text-[11px] text-red-600">
+                        {getApiErrorMessage(
+                          generateStudySdtmMutation.error,
+                          "SDTM generation failed."
+                        )}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-400">Checking mapping readiness…</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* File Uploads */}
           <div className="bg-white border border-slate-200">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -355,6 +637,72 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
             </dl>
           </div>
 
+          {/* Context Graph Summary */}
+          <div className="bg-white border border-slate-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display font-semibold text-slate-900 text-sm">
+                Context Graph
+              </h3>
+              <Link
+                href={`/intelligence/graph?study=${studyId}`}
+                className="text-[11px] text-brand-600 hover:text-brand-700 font-medium"
+              >
+                Explorer →
+              </Link>
+            </div>
+            {graphSummary ? (
+              <dl className="space-y-3 text-xs">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "Nodes", value: graphSummary.node_count },
+                    { label: "Edges", value: graphSummary.edge_count },
+                    { label: "Events", value: graphSummary.event_count },
+                  ].map((stat) => (
+                    <div key={stat.label} className="bg-slate-50 px-2 py-2 text-center">
+                      <dt className="text-[10px] text-slate-400 uppercase">{stat.label}</dt>
+                      <dd className="text-sm font-semibold text-slate-800">{stat.value}</dd>
+                    </div>
+                  ))}
+                </div>
+                {Object.keys(graphSummary.nodes_by_type).length > 0 && (
+                  <div>
+                    <dt className="text-slate-400 mb-1">By type</dt>
+                    <dd className="text-slate-600 space-y-0.5">
+                      {Object.entries(graphSummary.nodes_by_type)
+                        .slice(0, 5)
+                        .map(([type, count]) => (
+                          <div key={type} className="flex justify-between font-mono text-[11px]">
+                            <span>{type}</span>
+                            <span className="text-slate-400">{count}</span>
+                          </div>
+                        ))}
+                    </dd>
+                  </div>
+                )}
+                {graphSummary.recent_events.length > 0 && (
+                  <div>
+                    <dt className="text-slate-400 mb-1">Recent events</dt>
+                    <dd className="space-y-1">
+                      {graphSummary.recent_events.slice(0, 3).map((ev) => (
+                        <p key={ev.id} className="text-[11px] text-slate-500 truncate">
+                          {(ev.payload?.action as string) ?? ev.event_type}
+                        </p>
+                      ))}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            ) : (
+              <p className="text-xs text-slate-400">No graph activity yet.</p>
+            )}
+            <Link
+              href="/intelligence/events"
+              className="mt-3 inline-block text-[11px] text-brand-600 hover:text-brand-700 font-medium"
+            >
+              View event log →
+            </Link>
+          </div>
+
           {/* Team Members */}
           <div className="bg-white border border-slate-200 p-5">
             <h3 className="font-display font-semibold text-slate-900 text-sm mb-4">
@@ -380,6 +728,7 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

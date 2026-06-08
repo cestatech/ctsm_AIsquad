@@ -5,7 +5,12 @@ import type {
   RawField,
   FieldMappingVersion,
   MappingValidationResult,
+  SDTMGenerationResponse,
+  StudySDTMReadinessResponse,
+  SuggestMappingsResponse,
 } from "@/types";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
 interface RawDatasetListResponse {
   items: RawDataset[];
@@ -50,6 +55,31 @@ export const rawDataApi = {
       token,
     }),
 
+  bulkApproveMappings: (
+    datasetId: string,
+    body: { notes?: string | null },
+    token: string
+  ) =>
+    apiClient.post<{
+      approved_count: number;
+      skipped_count: number;
+      fields: RawField[];
+    }>(`/raw-data/datasets/${datasetId}/mapping/bulk-approve`, { body, token }),
+
+  downloadMappingExport: async (datasetId: string, token: string): Promise<Blob> => {
+    const response = await fetch(
+      `${API_URL}/raw-data/datasets/${datasetId}/mapping/export`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      }
+    );
+    if (!response.ok) {
+      throw new Error("Failed to export mappings");
+    }
+    return response.blob();
+  },
+
   rejectMapping: (
     fieldId: string,
     body: { notes?: string | null },
@@ -70,5 +100,47 @@ export const rawDataApi = {
     apiClient.get<FieldMappingVersion[]>(
       `/raw-data/fields/${fieldId}/mapping/history`,
       { token }
+    ),
+
+  suggestMappings: (datasetId: string, token: string) =>
+    apiClient.post<SuggestMappingsResponse>(
+      `/raw-data/datasets/${datasetId}/suggest-mappings`,
+      { token }
+    ),
+
+  getStudySdtmReadiness: (studyId: string, token: string) =>
+    apiClient.get<StudySDTMReadinessResponse>(
+      `/raw-data/studies/${studyId}/sdtm-readiness`,
+      { token }
+    ),
+
+  generateStudySdtm: (studyId: string, token: string) =>
+    apiClient.post<SDTMGenerationResponse>(
+      `/raw-data/studies/${studyId}/generate-sdtm`,
+      { token }
+    ),
+
+  generateSdtm: (datasetId: string, token: string) =>
+    apiClient.post<SDTMGenerationResponse>(
+      `/raw-data/datasets/${datasetId}/generate-sdtm`,
+      { token }
+    ),
+
+  applySuggestions: (
+    datasetId: string,
+    body: {
+      ai_decision_id: string;
+      suggestions: Array<{
+        field_id: string;
+        mapped_ecrf_field_id?: string | null;
+        mapped_sdtm_variable_id?: string | null;
+        notes?: string | null;
+      }>;
+    },
+    token: string
+  ) =>
+    apiClient.post<RawField[]>(
+      `/raw-data/datasets/${datasetId}/apply-suggestions`,
+      { body, token }
     ),
 };

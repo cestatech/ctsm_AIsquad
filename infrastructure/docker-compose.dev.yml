@@ -1,4 +1,10 @@
-version: "3.9"
+# Docker-only local development. All services run in containers.
+# Host port 5433 avoids conflict with a local macOS Postgres on 5432.
+#
+# Usage (from repo root):
+#   cp infrastructure/.env.example .env   # once
+#   docker compose -f infrastructure/docker-compose.dev.yml up -d
+#   docker compose -f infrastructure/docker-compose.dev.yml exec backend python -m alembic upgrade head
 
 services:
   postgres:
@@ -10,7 +16,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-celerius_dev}
       POSTGRES_DB: celerius_dev
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../database/schema:/docker-entrypoint-initdb.d:ro
@@ -36,8 +42,8 @@ services:
     image: mailhog/mailhog:latest
     container_name: celerius_mailhog
     ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # Web UI
+      - "1025:1025"
+      - "8025:8025"
 
   backend:
     build:
@@ -45,6 +51,8 @@ services:
       dockerfile: ../infrastructure/docker/backend/Dockerfile.dev
     container_name: celerius_backend
     restart: unless-stopped
+    env_file:
+      - ../.env
     ports:
       - "8000:8000"
     environment:
@@ -53,13 +61,20 @@ services:
       REDIS_URL: redis://redis:6379/0
       APP_SECRET_KEY: ${APP_SECRET_KEY:-dev-secret-key-change-in-prod-32ch}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-prod-32ch}
-      APP_ALLOWED_ORIGINS: '["http://localhost:3000"]'
+      APP_ALLOWED_ORIGINS: http://localhost:3000
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       STORAGE_BACKEND: filesystem
       STORAGE_LOCAL_PATH: /tmp/celerius-storage
+      PINNACLE21_ENABLED: ${PINNACLE21_ENABLED:-false}
+      PINNACLE21_API_BASE_URL: ${PINNACLE21_API_BASE_URL:-https://api.pinnacle21.com}
+      PINNACLE21_API_KEY: ${PINNACLE21_API_KEY:-}
+      PINNACLE21_PROJECT_ID: ${PINNACLE21_PROJECT_ID:-}
+      PINNACLE21_RULE_SET_VERSION: ${PINNACLE21_RULE_SET_VERSION:-CE 3.1}
+      SDTM_IG_VERSION: ${SDTM_IG_VERSION:-3.3}
     volumes:
       - ../backend:/app
+      - ../database:/database:ro
       - /tmp/celerius-storage:/tmp/celerius-storage
     depends_on:
       postgres:

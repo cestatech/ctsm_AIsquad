@@ -24,6 +24,7 @@ const NAV_ITEMS = [
 const INTELLIGENCE_NAV_ITEMS = [
   { label: "Overview", href: "/intelligence", alwaysShow: true },
   { label: "Context Graph", href: "/intelligence/graph", alwaysShow: true },
+  { label: "Graph Events", href: "/intelligence/events", alwaysShow: true },
   { label: "Traceability", href: "/intelligence/traceability", alwaysShow: true },
   { label: "AI Decisions", href: "/intelligence/decisions", alwaysShow: true },
   { label: "Human Overrides", href: "/intelligence/overrides", alwaysShow: true },

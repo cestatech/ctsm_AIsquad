@@ -44,7 +44,7 @@ export default function SyntheticDataPage() {
           <div>
             <h1 className="font-display text-xl font-bold text-slate-900">Synthetic Data Runs</h1>
             <p className="text-slate-500 text-sm mt-0.5">
-              Reproducible synthetic patient data for development and validation. All output is labeled SYNTHETIC.
+              Reproducible synthetic patient data in raw eCRF export format. All output is labeled SYNTHETIC — SDTM is derived later via mapping.
             </p>
           </div>
           <StudyPicker />
@@ -178,9 +178,27 @@ export default function SyntheticDataPage() {
                   <strong>Error:</strong> {activeRun.error_message}
                 </div>
               )}
+
+              {activeRun.output_artifact_id && (
+                <div className="bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
+                  Raw clinical data artifact available.{" "}
+                  <a
+                    href={`/studies/${activeRun.study_id}/artifacts/${activeRun.output_artifact_id}`}
+                    className="font-semibold underline"
+                  >
+                    Open raw export →
+                  </a>
+                </div>
+              )}
             </div>
 
-            <div className="px-6 py-4 border-t border-slate-100">
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+              <a
+                href={`/studies/${activeRun.study_id}/generated-data`}
+                className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+              >
+                View all generated data →
+              </a>
               <button
                 onClick={() => setActiveRun(null)}
                 className="text-slate-500 hover:text-slate-700 text-sm transition-colors"

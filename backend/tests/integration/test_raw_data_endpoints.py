@@ -263,3 +263,93 @@ class TestMappingValidation:
         assert "total_fields" in data
         assert "coverage_pct" in data
         assert isinstance(data["issues"], list)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestMappingSuggestions:
+    async def _upload_dataset_id(
+        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+    ) -> str:
+        upload = await iclient.post(
+            f"/api/v1/studies/{i_study.id}/uploads",
+            files={"file": ("suggest.csv", _CSV, "text/csv")},
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert upload.status_code == 201
+        file_id = upload.json()["id"]
+        datasets = await iclient.get(
+            f"/api/v1/raw-data/files/{file_id}/datasets",
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        items = datasets.json()["items"]
+        if not items:
+            pytest.skip("No datasets parsed")
+        return items[0]["id"]
+
+    async def test_unauthenticated_suggest_returns_403(
+        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+    ):
+        dataset_id = await self._upload_dataset_id(iclient, i_study, admin_tok)
+        resp = await iclient.post(
+            f"/api/v1/raw-data/datasets/{dataset_id}/suggest-mappings"
+        )
+        assert resp.status_code == 403
+
+    async def test_admin_can_get_ai_suggestions(
+        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+    ):
+        dataset_id = await self._upload_dataset_id(iclient, i_study, admin_tok)
+        resp = await iclient.post(
+            f"/api/v1/raw-data/datasets/{dataset_id}/suggest-mappings",
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "ai_decision_id" in data
+        assert "suggestions" in data
+        assert len(data["suggestions"]) >= 1
+        first = data["suggestions"][0]
+        assert "field_id" in first
+        assert "confidence" in first
+        assert first.get("mapped_ecrf_field_id") or first.get("mapped_sdtm_variable_id")
+
+    async def test_apply_suggestions_sets_pending_approval(
+        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+    ):
+        dataset_id = await self._upload_dataset_id(iclient, i_study, admin_tok)
+        suggest = await iclient.post(
+            f"/api/v1/raw-data/datasets/{dataset_id}/suggest-mappings",
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert suggest.status_code == 200
+        payload = suggest.json()
+
+        apply = await iclient.post(
+            f"/api/v1/raw-data/datasets/{dataset_id}/apply-suggestions",
+            json={
+                "ai_decision_id": payload["ai_decision_id"],
+                "suggestions": [
+                    {
+                        "field_id": s["field_id"],
+                        "mapped_ecrf_field_id": s["mapped_ecrf_field_id"],
+                        "mapped_sdtm_variable_id": s["mapped_sdtm_variable_id"],
+                    }
+                    for s in payload["suggestions"]
+                ],
+            },
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert apply.status_code == 200
+        applied = apply.json()
+        assert len(applied) >= 1
+        assert applied[0]["mapping_status"] == "PENDING_APPROVAL"
+
+    async def test_reviewer_cannot_suggest_mappings(
+        self, iclient: AsyncClient, i_study: Study, admin_tok: str, reviewer_tok: str
+    ):
+        dataset_id = await self._upload_dataset_id(iclient, i_study, admin_tok)
+        resp = await iclient.post(
+            f"/api/v1/raw-data/datasets/{dataset_id}/suggest-mappings",
+            headers={"Authorization": f"Bearer {reviewer_tok}"},
+        )
+        assert resp.status_code == 403

@@ -32,10 +32,98 @@ from app.schemas.graph import (
     TraceabilityGapItem,
     TraceabilityGapResponse,
 )
+from app.schemas.graph_event import (
+    GraphEntityRelationshipsResponse,
+    GraphEventListResponse,
+    GraphEventResponse,
+    GraphImpactResponse,
+    GraphNodeContextResponse,
+    GraphStudySummaryResponse,
+)
 from app.services.context_graph_service import ContextGraphService
 from app.services.traceability_service import TraceabilityService
 
 router = APIRouter()
+
+
+@router.get("/events", response_model=GraphEventListResponse, summary="List graph events")
+async def list_graph_events(
+    study_id: UUID | None = Query(None),
+    actor_user_id: UUID | None = Query(None),
+    action: str | None = Query(None, description="Workflow action filter (e.g. mapped)"),
+    entity_type: str | None = Query(None),
+    event_type: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GraphEventListResponse:
+    """Query standardized graph events by study, user, action, or entity type."""
+    svc = ContextGraphService(db)
+    offset = (page - 1) * page_size
+    items, total = await svc.list_events(
+        organization_id=current_user.organization_id,
+        study_id=study_id,
+        actor_user_id=actor_user_id,
+        action=action,
+        entity_type=entity_type,
+        event_type=event_type,
+        limit=page_size,
+        offset=offset,
+    )
+    return GraphEventListResponse(
+        items=[GraphEventResponse.model_validate(e) for e in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get(
+    "/study-summary",
+    response_model=GraphStudySummaryResponse,
+    summary="Study graph relationship summary",
+)
+async def get_study_graph_summary(
+    study_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GraphStudySummaryResponse:
+    """Return node/edge counts and recent graph events for a study workspace."""
+    svc = ContextGraphService(db)
+    summary = await svc.get_study_summary(current_user.organization_id, study_id)
+    return GraphStudySummaryResponse(
+        study_id=summary["study_id"],
+        node_count=summary["node_count"],
+        edge_count=summary["edge_count"],
+        event_count=summary["event_count"],
+        nodes_by_type=summary["nodes_by_type"],
+        recent_events=[
+            GraphEventResponse.model_validate(e)
+            for e in summary["recent_events"]
+        ],
+    )
+
+
+@router.get(
+    "/by-entity",
+    response_model=GraphEntityRelationshipsResponse,
+    summary="Graph relationships for a domain entity",
+)
+async def get_entity_relationships(
+    external_type: str = Query(..., description="e.g. artifact, study, raw_field"),
+    external_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GraphEntityRelationshipsResponse:
+    """Drilldown: show graph node and adjacent edges for any domain record."""
+    svc = ContextGraphService(db)
+    data = await svc.get_entity_relationships(
+        organization_id=current_user.organization_id,
+        external_type=external_type,
+        external_id=external_id,
+    )
+    return GraphEntityRelationshipsResponse.model_validate(data)
 
 
 @router.get("", response_model=GraphNodeListResponse, summary="List graph nodes")
@@ -101,81 +189,6 @@ async def register_node(
         actor=current_user,
     )
     return GraphNodeResponse.model_validate(node)
-
-
-@router.get("/{node_id}", response_model=GraphNodeResponse, summary="Get a graph node")
-async def get_node(
-    node_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> GraphNodeResponse:
-    """Fetch a single graph node by ID, scoped to the authenticated organization."""
-    svc = ContextGraphService(db)
-    node = await svc.get_node(node_id, current_user.organization_id)
-    return GraphNodeResponse.model_validate(node)
-
-
-@router.get(
-    "/{node_id}/neighbors",
-    response_model=GraphNeighborsResponse,
-    summary="Get a node's adjacent edges and neighbors",
-)
-async def get_neighbors(
-    node_id: UUID,
-    direction: str = Query("both", pattern="^(outgoing|incoming|both)$"),
-    edge_type: GraphEdgeType | None = Query(None),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> GraphNeighborsResponse:
-    """
-    Return all edges adjacent to a node.
-
-    direction: "outgoing", "incoming", or "both" (default)
-    Optionally filter by edge_type.
-    """
-    svc = ContextGraphService(db)
-    node = await svc.get_node(node_id, current_user.organization_id)
-    neighbors = await svc.get_neighbors(
-        node_id=node_id,
-        organization_id=current_user.organization_id,
-        direction=direction,
-        edge_type=edge_type,
-    )
-    return GraphNeighborsResponse(
-        node=GraphNodeResponse.model_validate(node),
-        outgoing=[GraphEdgeResponse.model_validate(e) for e in neighbors["outgoing"]],
-        incoming=[GraphEdgeResponse.model_validate(e) for e in neighbors["incoming"]],
-    )
-
-
-@router.get(
-    "/{node_id}/lineage",
-    response_model=GraphLineageResponse,
-    summary="Walk the lineage path from a node",
-)
-async def get_lineage(
-    node_id: UUID,
-    max_depth: int = Query(10, ge=1, le=20),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> GraphLineageResponse:
-    """
-    Walk the lineage path upstream and downstream from a node, up to max_depth hops.
-
-    This traces the Objective → Endpoint → ECR → SDTM → ADaM → TLF → CSR chain
-    (or any sub-path) from the given node in both directions.
-    """
-    svc = ContextGraphService(db)
-    lineage = await svc.get_lineage_path(
-        node_id=node_id,
-        organization_id=current_user.organization_id,
-        max_depth=max_depth,
-    )
-    return GraphLineageResponse(
-        node_id=node_id,
-        upstream=lineage["upstream"],
-        downstream=lineage["downstream"],
-    )
 
 
 @router.get(
@@ -282,3 +295,116 @@ async def create_edge(
         actor=current_user,
     )
     return GraphEdgeResponse.model_validate(edge)
+
+
+@router.get("/{node_id}", response_model=GraphNodeResponse, summary="Get a graph node")
+async def get_node(
+    node_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GraphNodeResponse:
+    """Fetch a single graph node by ID, scoped to the authenticated organization."""
+    svc = ContextGraphService(db)
+    node = await svc.get_node(node_id, current_user.organization_id)
+    return GraphNodeResponse.model_validate(node)
+
+
+@router.get(
+    "/{node_id}/neighbors",
+    response_model=GraphNeighborsResponse,
+    summary="Get a node's adjacent edges and neighbors",
+)
+async def get_neighbors(
+    node_id: UUID,
+    direction: str = Query("both", pattern="^(outgoing|incoming|both)$"),
+    edge_type: GraphEdgeType | None = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GraphNeighborsResponse:
+    """
+    Return all edges adjacent to a node.
+
+    direction: "outgoing", "incoming", or "both" (default)
+    Optionally filter by edge_type.
+    """
+    svc = ContextGraphService(db)
+    node = await svc.get_node(node_id, current_user.organization_id)
+    neighbors = await svc.get_neighbors(
+        node_id=node_id,
+        organization_id=current_user.organization_id,
+        direction=direction,
+        edge_type=edge_type,
+    )
+    return GraphNeighborsResponse(
+        node=GraphNodeResponse.model_validate(node),
+        outgoing=[GraphEdgeResponse.model_validate(e) for e in neighbors["outgoing"]],
+        incoming=[GraphEdgeResponse.model_validate(e) for e in neighbors["incoming"]],
+    )
+
+
+@router.get(
+    "/{node_id}/context",
+    response_model=GraphNodeContextResponse,
+    summary="Node context with neighbors and AI reasoning",
+)
+async def get_node_context(
+    node_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GraphNodeContextResponse:
+    """Return adjacent edges and linked AI decision reasoning for a graph node."""
+    svc = ContextGraphService(db)
+    context = await svc.get_node_context(node_id, current_user.organization_id)
+    return GraphNodeContextResponse.model_validate(context)
+
+
+@router.get(
+    "/{node_id}/impact",
+    response_model=GraphImpactResponse,
+    summary="Downstream impact analysis for a node",
+)
+async def get_node_impact(
+    node_id: UUID,
+    max_depth: int = Query(5, ge=1, le=10),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GraphImpactResponse:
+    """Return downstream nodes and edges that would be affected by changes to this node."""
+    svc = ContextGraphService(db)
+    await svc.get_node(node_id, current_user.organization_id)
+    impact = await svc.get_impact_analysis(
+        node_id=node_id,
+        organization_id=current_user.organization_id,
+        max_depth=max_depth,
+    )
+    return GraphImpactResponse.model_validate(impact)
+
+
+@router.get(
+    "/{node_id}/lineage",
+    response_model=GraphLineageResponse,
+    summary="Walk the lineage path from a node",
+)
+async def get_lineage(
+    node_id: UUID,
+    max_depth: int = Query(10, ge=1, le=20),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GraphLineageResponse:
+    """
+    Walk the lineage path upstream and downstream from a node, up to max_depth hops.
+
+    This traces the Objective → Endpoint → ECR → SDTM → ADaM → TLF → CSR chain
+    (or any sub-path) from the given node in both directions.
+    """
+    svc = ContextGraphService(db)
+    lineage = await svc.get_lineage_path(
+        node_id=node_id,
+        organization_id=current_user.organization_id,
+        max_depth=max_depth,
+    )
+    return GraphLineageResponse(
+        node_id=node_id,
+        upstream=lineage["upstream"],
+        downstream=lineage["downstream"],
+    )

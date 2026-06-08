@@ -32,6 +32,10 @@ export default function LoginPage() {
             ? err.error.detail
             : "Invalid email or password."
         );
+      } else if (err instanceof TypeError) {
+        setError(
+          "Cannot reach the API server. Ensure the backend is running at http://localhost:8000."
+        );
       } else {
         setError("Something went wrong. Please try again.");
       }

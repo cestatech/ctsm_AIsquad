@@ -17,12 +17,60 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.db.session import async_session_factory
-from app.models.artifact import ArtifactVersion
+from app.models.artifact import Artifact, ArtifactType, ArtifactVersion
+from app.models.intelligence import ValidationEvidenceStatus
 from app.models.validation import ValidationRun, ValidationStatus
 from app.services.cdisc_validation_engine import run_cdisc_validation
+from app.services.intelligence_service import ValidationIntelligenceService
 
 log = logging.getLogger(__name__)
+
+
+async def _persist_validation_evidence(
+    *,
+    db,
+    run: ValidationRun,
+    artifact,
+    engine_results: dict,
+    organization_id: UUID,
+) -> None:
+    """Write per-rule ValidationEvidence records for internal engine findings."""
+    vi_svc = ValidationIntelligenceService(db)
+    findings = engine_results.get("findings", [])
+    settings = get_settings()
+    if artifact and artifact.artifact_type == ArtifactType.ADAM_DATASET:
+        cdisc_standard = f"ADaM-IG-{settings.ADAM_IG_VERSION}"
+    else:
+        cdisc_standard = f"SDTM-IG-{settings.SDTM_IG_VERSION}"
+
+    for finding in findings:
+        status_raw = finding.get("status", "FAIL")
+        severity = finding.get("severity", "ERROR")
+        if status_raw == "PASS":
+            ev_status = ValidationEvidenceStatus.PASS
+        elif severity == "WARNING":
+            ev_status = ValidationEvidenceStatus.WARNING
+        else:
+            ev_status = ValidationEvidenceStatus.FAIL
+
+        await vi_svc.record_evidence(
+            organization_id=organization_id,
+            study_id=artifact.study_id if artifact else None,
+            validation_run_id=run.id,
+            subject_type="artifact",
+            subject_id=run.artifact_id,
+            evidence_status=ev_status,
+            rule_id=finding.get("rule_id"),
+            rule_name=finding.get("rule_name"),
+            rule_category="CDISC_INTERNAL",
+            cdisc_standard=cdisc_standard,
+            subject_field=finding.get("variable"),
+            finding_severity=severity,
+            finding_message=finding.get("message"),
+            finding_details=finding,
+        )
 
 
 async def execute_validation_run(run_id: UUID, organization_id: UUID) -> None:
@@ -103,13 +151,37 @@ async def execute_validation_run(run_id: UUID, organization_id: UUID) -> None:
                     ValidationStatus.FAILED if has_errors else ValidationStatus.PASSED
                 )
 
+                await _persist_validation_evidence(
+                    db=db,
+                    run=run,
+                    artifact=artifact,
+                    engine_results=engine_results,
+                    organization_id=organization_id,
+                )
+
             elif run.engine == "pinnacle21":
-                # External integration — stub result
-                run.results = {
-                    "message": "Pinnacle 21 integration is not yet configured.",
-                    "engine": "pinnacle21",
-                    "rule_set": run.rule_set_version or "CE 3.1",
-                }
+                settings = get_settings()
+                if not settings.pinnacle21_configured:
+                    run.results = {
+                        "message": (
+                            "Pinnacle 21 is not configured. Set PINNACLE21_ENABLED=true "
+                            "and PINNACLE21_API_KEY after license purchase."
+                        ),
+                        "engine": "pinnacle21",
+                        "configured": False,
+                        "rule_set": run.rule_set_version
+                        or settings.PINNACLE21_RULE_SET_VERSION,
+                        "sdtm_ig_version": settings.SDTM_IG_VERSION,
+                    }
+                else:
+                    # Phase 4: wire Pinnacle 21 API client here
+                    run.results = {
+                        "message": "Pinnacle 21 API integration pending Phase 4.",
+                        "engine": "pinnacle21",
+                        "configured": True,
+                        "rule_set": run.rule_set_version
+                        or settings.PINNACLE21_RULE_SET_VERSION,
+                    }
                 run.total_checks = 0
                 run.passed_checks = 0
                 run.failed_checks = 0

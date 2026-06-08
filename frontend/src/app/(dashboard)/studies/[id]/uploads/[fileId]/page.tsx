@@ -5,8 +5,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { getApiErrorMessage } from "@/lib/api/errors";
 import { rawDataApi } from "@/lib/api/rawData";
-import type { RawDataset, RawField } from "@/types";
+import type { FieldMappingSuggestion, RawDataset, RawField } from "@/types";
 
 const MAPPING_STATUS_COLORS: Record<string, string> = {
   UNMAPPED: "bg-slate-100 text-slate-500",
@@ -281,6 +282,15 @@ interface DatasetPanelProps {
 }
 
 function DatasetPanel({ dataset, studyId, token, canEdit, canApprove }: DatasetPanelProps) {
+  const queryClient = useQueryClient();
+  const [suggestions, setSuggestions] = useState<FieldMappingSuggestion[] | null>(null);
+  const [aiDecisionId, setAiDecisionId] = useState<string | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [sdtmResult, setSdtmResult] = useState<{
+    artifactId: string;
+    domainCount: number;
+  } | null>(null);
+
   const { data: fields, isLoading } = useQuery({
     queryKey: ["raw-fields", dataset.id, token],
     queryFn: () => rawDataApi.listFields(dataset.id, token),
@@ -293,8 +303,217 @@ function DatasetPanel({ dataset, studyId, token, canEdit, canApprove }: DatasetP
     enabled: !!token,
   });
 
+  const suggestMutation = useMutation({
+    mutationFn: () => rawDataApi.suggestMappings(dataset.id, token),
+    onSuccess: (data) => {
+      setSuggestions(data.suggestions);
+      setAiDecisionId(data.ai_decision_id);
+      setSuggestError(null);
+    },
+    onError: (err) => {
+      setSuggestError(getApiErrorMessage(err, "AI suggestion failed."));
+    },
+  });
+
+  const generateSdtmMutation = useMutation({
+    mutationFn: () => rawDataApi.generateSdtm(dataset.id, token),
+    onSuccess: (data) => {
+      setSdtmResult({
+        artifactId: data.artifact_id,
+        domainCount: data.domain_count,
+      });
+      setSuggestError(null);
+    },
+    onError: (err) => {
+      setSuggestError(getApiErrorMessage(err, "SDTM generation failed."));
+    },
+  });
+
+  const bulkApproveMutation = useMutation({
+    mutationFn: () =>
+      rawDataApi.bulkApproveMappings(dataset.id, { notes: "Bulk approved" }, token),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["raw-fields", dataset.id] });
+      queryClient.invalidateQueries({ queryKey: ["mapping-validation", dataset.id] });
+      queryClient.invalidateQueries({ queryKey: ["sdtm-readiness"] });
+    },
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: () => {
+      if (!aiDecisionId || !suggestions?.length) {
+        throw new Error("No suggestions to apply.");
+      }
+      return rawDataApi.applySuggestions(
+        dataset.id,
+        {
+          ai_decision_id: aiDecisionId,
+          suggestions: suggestions.map((s) => ({
+            field_id: s.field_id,
+            mapped_ecrf_field_id: s.mapped_ecrf_field_id,
+            mapped_sdtm_variable_id: s.mapped_sdtm_variable_id,
+          })),
+        },
+        token
+      );
+    },
+    onSuccess: () => {
+      setSuggestions(null);
+      setAiDecisionId(null);
+      queryClient.invalidateQueries({ queryKey: ["raw-fields", dataset.id] });
+      queryClient.invalidateQueries({ queryKey: ["mapping-validation", dataset.id] });
+    },
+    onError: (err) => {
+      setSuggestError(getApiErrorMessage(err, "Failed to apply suggestions."));
+    },
+  });
+
   return (
     <div>
+      {canEdit && (
+        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
+          <div>
+            <p className="text-xs font-semibold text-slate-700">AI Mapping Assistant</p>
+            <p className="text-[11px] text-slate-400">
+              Propose eCRF/SDTM mappings from column profiling. Review before applying.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => suggestMutation.mutate()}
+              disabled={suggestMutation.isPending || !fields?.length}
+              className="text-xs bg-violet-600 hover:bg-violet-500 text-white font-semibold px-3 py-1.5 transition-colors disabled:opacity-50"
+            >
+              {suggestMutation.isPending ? "Analyzing…" : "Suggest mappings with AI"}
+            </button>
+            {suggestions && suggestions.length > 0 && (
+              <button
+                onClick={() => applyMutation.mutate()}
+                disabled={applyMutation.isPending}
+                className="text-xs bg-brand-600 hover:bg-brand-500 text-white font-semibold px-3 py-1.5 transition-colors disabled:opacity-50"
+              >
+                {applyMutation.isPending ? "Applying…" : `Apply ${suggestions.length} suggestions`}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {suggestError && (
+        <div className="px-5 py-2 bg-red-50 border-b border-red-100 text-[11px] text-red-700">
+          {suggestError}
+        </div>
+      )}
+
+      {suggestions && suggestions.length > 0 && (
+        <div className="px-5 py-3 bg-violet-50 border-b border-violet-100">
+          <p className="text-[11px] font-semibold text-violet-800 mb-2">
+            AI Suggestions ({suggestions.length}) — pending your review
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[11px]">
+              <thead>
+                <tr className="text-violet-600">
+                  <th className="pr-4 py-1">Column</th>
+                  <th className="pr-4 py-1">eCRF</th>
+                  <th className="pr-4 py-1">SDTM</th>
+                  <th className="pr-4 py-1">Conf.</th>
+                  <th className="py-1">Reasoning</th>
+                </tr>
+              </thead>
+              <tbody>
+                {suggestions.map((s) => (
+                  <tr key={s.field_id} className="text-violet-900">
+                    <td className="pr-4 py-0.5 font-mono">{s.column_name}</td>
+                    <td className="pr-4 py-0.5">{s.mapped_ecrf_field_id ?? "—"}</td>
+                    <td className="pr-4 py-0.5">{s.mapped_sdtm_variable_id ?? "—"}</td>
+                    <td className="pr-4 py-0.5">{(s.confidence * 100).toFixed(0)}%</td>
+                    <td className="py-0.5 text-violet-700">{s.reasoning}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-violet-600 mt-2">
+            Applying sets mappings to PENDING_APPROVAL. A Reviewer must still approve them.
+          </p>
+        </div>
+      )}
+
+      {/* SDTM generation */}
+      {canEdit && validation && validation.approved_fields === validation.total_fields && validation.total_fields > 0 && (
+        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-emerald-50">
+          <div>
+            <p className="text-xs font-semibold text-emerald-800">Ready for SDTM</p>
+            <p className="text-[11px] text-emerald-700">
+              All mappings approved — generate SDTM IG 3.3 dataset with AI.
+            </p>
+          </div>
+          <button
+            onClick={() => generateSdtmMutation.mutate()}
+            disabled={generateSdtmMutation.isPending}
+            className="text-xs bg-emerald-700 hover:bg-emerald-600 text-white font-semibold px-3 py-1.5 transition-colors disabled:opacity-50"
+          >
+            {generateSdtmMutation.isPending ? "Generating SDTM…" : "Generate SDTM dataset"}
+          </button>
+        </div>
+      )}
+
+      {sdtmResult && (
+        <div className="px-5 py-2 bg-brand-50 border-b border-brand-100 text-[11px] text-brand-800">
+          SDTM artifact created ({sdtmResult.domainCount} domain
+          {sdtmResult.domainCount !== 1 ? "s" : ""}).{" "}
+          <Link
+            href={`/studies/${studyId}/artifacts/${sdtmResult.artifactId}`}
+            className="font-semibold underline hover:text-brand-900"
+          >
+            View artifact →
+          </Link>
+          {" · "}
+          <Link href="/intelligence/decisions" className="font-semibold underline">
+            Review AI decision
+          </Link>
+        </div>
+      )}
+
+      {/* Mapping actions */}
+      {validation && validation.total_fields > 0 && (
+        <div className="px-5 py-2.5 border-b border-slate-100 flex items-center justify-between bg-white">
+          <p className="text-[11px] text-slate-500">Dataset mapping tools</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  const blob = await rawDataApi.downloadMappingExport(dataset.id, token);
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = `${dataset.dataset_name}_mappings.csv`;
+                  link.click();
+                  URL.revokeObjectURL(url);
+                } catch {
+                  setSuggestError("Mapping export failed.");
+                }
+              }}
+              className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 px-3 py-1.5 transition-colors"
+            >
+              Export mappings CSV
+            </button>
+            {canApprove && validation.pending_fields > 0 && (
+              <button
+                onClick={() => bulkApproveMutation.mutate()}
+                disabled={bulkApproveMutation.isPending}
+                className="text-xs bg-emerald-700 hover:bg-emerald-600 text-white font-semibold px-3 py-1.5 transition-colors disabled:opacity-50"
+              >
+                {bulkApproveMutation.isPending
+                  ? "Approving…"
+                  : `Approve all pending (${validation.pending_fields})`}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Validation summary */}
       {validation && (
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-6 text-xs">

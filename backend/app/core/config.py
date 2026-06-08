@@ -3,7 +3,9 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, PostgresDsn, field_validator
+import json
+
+from pydantic import PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,7 +22,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "TrialGenesis Clinical Trial Platform"
     APP_VERSION: str = "0.1.0"
     APP_SECRET_KEY: str
-    APP_ALLOWED_ORIGINS: list[AnyHttpUrl] = []
+    APP_ALLOWED_ORIGINS: str = "http://localhost:3000"
     APP_DEBUG: bool = False
 
     # Database
@@ -65,16 +67,41 @@ class Settings(BaseSettings):
     AI_MAX_CONCURRENT_JOBS: int = 5
     AI_JOB_TIMEOUT_SECONDS: int = 300
 
+    # Pinnacle 21 CDISC conformance (license purchased separately)
+    PINNACLE21_ENABLED: bool = False
+    PINNACLE21_API_BASE_URL: str = "https://api.pinnacle21.com"
+    PINNACLE21_API_KEY: str = ""
+    PINNACLE21_PROJECT_ID: str = ""
+    PINNACLE21_RULE_SET_VERSION: str = "CE 3.1"
+    SDTM_IG_VERSION: str = "3.3"
+    ADAM_IG_VERSION: str = "1.3"
+
     # Pagination
     DEFAULT_PAGE_SIZE: int = 25
     MAX_PAGE_SIZE: int = 100
 
-    @field_validator("APP_ALLOWED_ORIGINS", mode="before")
-    @classmethod
-    def parse_origins(cls, v: str | list) -> list:
+    @staticmethod
+    def parse_origins(v: str | list) -> list[str]:
+        """Parse CORS origins from env string (comma-separated or JSON array)."""
+        origins: list[str]
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+            stripped = v.strip()
+            if stripped.startswith("["):
+                try:
+                    parsed = json.loads(stripped)
+                    origins = [str(item) for item in parsed]
+                except json.JSONDecodeError:
+                    origins = [part.strip() for part in stripped.split(",") if part.strip()]
+            else:
+                origins = [part.strip() for part in stripped.split(",") if part.strip()]
+        else:
+            origins = [str(item) for item in v]
+        return [origin.rstrip("/") for origin in origins if origin]
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        """Normalized CORS allowlist without trailing slashes."""
+        return self.parse_origins(self.APP_ALLOWED_ORIGINS)
 
     @property
     def is_production(self) -> bool:
@@ -83,6 +110,11 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.APP_ENV == "development"
+
+    @property
+    def pinnacle21_configured(self) -> bool:
+        """True when Pinnacle 21 credentials are set and integration is enabled."""
+        return self.PINNACLE21_ENABLED and bool(self.PINNACLE21_API_KEY.strip())
 
 
 @lru_cache

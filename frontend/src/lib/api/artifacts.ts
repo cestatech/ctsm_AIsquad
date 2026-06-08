@@ -1,6 +1,8 @@
 import { apiClient } from "./client";
 import type { Artifact, ArtifactVersion, PaginatedResponse } from "@/types";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+
 interface ArtifactListParams {
   study_id?: string;
   artifact_type?: string;
@@ -55,4 +57,22 @@ export const artifactsApi = {
 
   getVersion: (id: string, versionId: string, token: string) =>
     apiClient.get<ArtifactVersion>(`/artifacts/${id}/versions/${versionId}`, { token }),
+
+  downloadDefineXml: async (id: string, token: string): Promise<Blob> => {
+    const response = await fetch(`${API_URL}/artifacts/${id}/define-xml`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    });
+    if (!response.ok) {
+      let detail = "Failed to download define.xml";
+      try {
+        const err = await response.json();
+        detail = (err as { detail?: string }).detail ?? detail;
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new Error(detail);
+    }
+    return response.blob();
+  },
 };

@@ -95,13 +95,19 @@ export default function IntakePage() {
     enabled: !!token,
   });
 
-  // Auto-load first non-compiled session if one exists
+  // Resume in-progress session, or load the latest compiled session on return visits
   useEffect(() => {
-    if (!existingIntakes) return;
+    if (!existingIntakes?.length) return;
     if (activeIntake) return;
-    const active = existingIntakes.find((i) => i.status !== "COMPILED");
-    if (active) setActiveIntake(active);
+    const inProgress = existingIntakes.find((i) => i.status !== "COMPILED");
+    setActiveIntake(inProgress ?? existingIntakes[0]);
   }, [existingIntakes, activeIntake]);
+
+  // Load compiled brief when revisiting a completed intake
+  useEffect(() => {
+    if (!activeIntake || activeIntake.status !== "COMPILED" || brief || !token) return;
+    intakeApi.getBrief(activeIntake.id, token).then(setBrief).catch(() => null);
+  }, [activeIntake, brief, token]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -114,9 +120,19 @@ export default function IntakePage() {
       setStartError(null);
       queryClient.invalidateQueries({ queryKey: ["intakes", studyId] });
     },
-    onError: (err) => {
+    onError: async (err) => {
       if (err instanceof ApiClientError && err.error.code === "INTAKE_EXISTS") {
-        setStartError("An active session already exists. It has been loaded below.");
+        const sessions = await intakeApi.list(studyId, token!);
+        const active = sessions.find((i) => i.status !== "COMPILED");
+        if (active) setActiveIntake(active);
+        setStartError(null);
+      } else if (err instanceof ApiClientError) {
+        const detail = err.error.detail;
+        setStartError(
+          typeof detail === "string"
+            ? detail
+            : "Failed to start intake session. Please try again."
+        );
       } else {
         setStartError("Failed to start intake session. Please try again.");
       }
@@ -133,9 +149,11 @@ export default function IntakePage() {
 
   const compileMutation = useMutation({
     mutationFn: () => intakeApi.compileBrief(activeIntake!.id, token!),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setBrief(data);
       setBriefOpen(true);
+      const refreshed = await intakeApi.get(activeIntake!.id, token!);
+      setActiveIntake(refreshed);
       queryClient.invalidateQueries({ queryKey: ["intakes", studyId] });
     },
   });
@@ -233,7 +251,7 @@ export default function IntakePage() {
         )}
 
         {isCompiled && (
-          <div className="px-4 py-4 border-t border-slate-100">
+          <div className="px-4 py-4 border-t border-slate-100 space-y-2">
             <button
               onClick={() => {
                 if (brief) {
@@ -246,6 +264,34 @@ export default function IntakePage() {
             >
               View Study Brief
             </button>
+            {brief && (
+              <>
+                <button
+                  onClick={() => generateMutation.mutate("PROTOCOL")}
+                  disabled={generateMutation.isPending}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold py-2 px-4 rounded-sm transition-colors"
+                >
+                  {generateMutation.isPending && generateMutation.variables === "PROTOCOL"
+                    ? "Starting…"
+                    : "Generate Protocol"}
+                </button>
+                <button
+                  onClick={() => generateMutation.mutate("ICF")}
+                  disabled={generateMutation.isPending}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold py-2 px-4 rounded-sm transition-colors"
+                >
+                  {generateMutation.isPending && generateMutation.variables === "ICF"
+                    ? "Starting…"
+                    : "Generate ICF"}
+                </button>
+                <Link
+                  href={`/studies/${studyId}/generation`}
+                  className="block text-center text-[10px] text-brand-600 hover:text-brand-700 font-medium"
+                >
+                  View generation jobs →
+                </Link>
+              </>
+            )}
           </div>
         )}
       </div>

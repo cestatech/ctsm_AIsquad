@@ -54,9 +54,17 @@ const INTELLIGENCE_SCREENS = [
   {
     href: "/intelligence/synthetic",
     title: "Synthetic Data",
-    description: "Reproducible synthetic patient data runs. Every distributional assumption documented with source citation.",
+    description: "Reproducible synthetic patient data in raw eCRF format. Every distributional assumption documented with source citation.",
     badge: null,
     alwaysShow: true,
+  },
+  {
+    href: "/generated-data",
+    title: "Generated Data",
+    description: "Download synthesized SDTM, ADaM, TLF, and CSR pipeline outputs for the active study.",
+    badge: null,
+    alwaysShow: true,
+    studyScoped: true,
   },
 ];
 
@@ -107,10 +115,14 @@ export default function IntelligencePage() {
         <div className="grid grid-cols-2 gap-4">
           {visibleScreens.map((screen) => {
             const count = screen.badge ? badgeCounts[screen.badge] : 0;
+            const href =
+              "studyScoped" in screen && screen.studyScoped && studyId
+                ? `/studies/${studyId}/generated-data`
+                : screen.href;
             return (
               <Link
                 key={screen.href}
-                href={screen.href}
+                href={href}
                 className="bg-white border border-slate-200 px-5 py-4 hover:border-brand-400 hover:shadow-sm transition-all group"
               >
                 <div className="flex items-start justify-between gap-3 mb-2">

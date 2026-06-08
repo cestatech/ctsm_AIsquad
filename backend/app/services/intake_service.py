@@ -149,6 +149,57 @@ Output ONLY valid JSON with this exact structure (fill in all fields from the co
   }
 }"""
 
+_DOMAIN_ORDER = [
+    "STUDY_OVERVIEW",
+    "STUDY_DESIGN",
+    "POPULATION",
+    "ENDPOINTS",
+    "DRUG_TREATMENT",
+    "SAFETY",
+    "REGULATORY",
+    "STATISTICAL",
+    "SITES",
+]
+
+_DOMAIN_QUESTIONS: dict[str, str] = {
+    "STUDY_OVERVIEW": (
+        "Let's begin with the study overview. Please share the study title, "
+        "therapeutic area, indication, phase, sponsor name, and compound/drug code."
+    ),
+    "STUDY_DESIGN": (
+        "Thank you. Now describe the study design: parallel/crossover/factorial, "
+        "randomization method, blinding, comparator, treatment duration, and periods."
+    ),
+    "POPULATION": (
+        "Next, describe the target population: inclusion and exclusion criteria, "
+        "age range, estimated sample size, and key demographics."
+    ),
+    "ENDPOINTS": (
+        "What are the primary and key secondary endpoints, including timepoints "
+        "and instruments? Include safety endpoints as well."
+    ),
+    "DRUG_TREATMENT": (
+        "Please provide drug/treatment details: INN name, dose(s), route, "
+        "formulation, and dosing regimen."
+    ),
+    "SAFETY": (
+        "Describe safety considerations: key concerns, monitoring approach, "
+        "stopping rules, SAE definitions, and any REMS requirements."
+    ),
+    "REGULATORY": (
+        "What are the regulatory plans: submission regions, IND/CTA status, "
+        "intended submission type, GCP standard, and special designations?"
+    ),
+    "STATISTICAL": (
+        "Outline the statistical framework: frequentist/Bayesian approach, "
+        "primary analysis method, alpha level, multiplicity, and key subgroups."
+    ),
+    "SITES": (
+        "Finally, share site plans: number of sites, countries/regions, "
+        "estimated enrollment rate per month, and site selection criteria."
+    ),
+}
+
 
 class IntakeService:
     """Business logic for sponsor intake sessions with full CIP traceability."""
@@ -156,7 +207,11 @@ class IntakeService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         settings = get_settings()
-        self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        self._client = (
+            anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+            if settings.ANTHROPIC_API_KEY
+            else None
+        )
         self._study_repo = StudyRepository(db)
         self._ai_decision_svc = AIDecisionService(db)
         self._graph_svc = ContextGraphService(db)
@@ -266,9 +321,11 @@ class IntakeService:
             actor=actor,
         )
 
-        # Call Claude
+        # Call Claude (or deterministic fallback when no API key)
         raw_response = await self._call_claude_conversation(
-            messages=[{"role": "user", "content": trigger.content}]
+            messages=[{"role": "user", "content": trigger.content}],
+            study_name=study.name,
+            is_start=True,
         )
         parsed = self._parse_ai_response(raw_response)
 
@@ -324,6 +381,7 @@ class IntakeService:
         domains are now complete, and why Claude chose the next question.
         """
         intake = await self._get_active(intake_id, organization_id)
+        visible_messages = [m for m in intake.messages if not m.is_hidden]
 
         user_msg = IntakeMessage(
             intake_id=intake_id,
@@ -336,8 +394,8 @@ class IntakeService:
         await self._db.flush()
 
         # Build history for decision input context
-        current_domain = intake.messages[-1].domain if intake.messages else None
-        msg_count = len(intake.messages) + 1  # +1 for the message just added
+        current_domain = visible_messages[-1].domain if visible_messages else None
+        msg_count = len(visible_messages) + 1  # +1 for the message just added
 
         # CIP: log the decision before calling Claude
         decision = await self._ai_decision_svc.begin_decision(
@@ -379,7 +437,13 @@ class IntakeService:
         all_messages = list(history_result.scalars().all())
         claude_messages = [{"role": m.role, "content": m.content} for m in all_messages]
 
-        raw_response = await self._call_claude_conversation(claude_messages)
+        study = await self._study_repo.get(intake.study_id, organization_id)
+        raw_response = await self._call_claude_conversation(
+            claude_messages,
+            study_name=study.name,
+            current_domain=current_domain,
+            domains_completed=list(intake.domains_completed),
+        )
         parsed = self._parse_ai_response(raw_response)
 
         ai_msg = IntakeMessage(
@@ -501,24 +565,29 @@ class IntakeService:
             },
         )
 
-        compile_response = await self._client.messages.create(
-            model=_COMPILE_MODEL,
-            max_tokens=4096,
-            system=_COMPILE_SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        "Here is the complete intake conversation transcript. "
-                        "Extract and structure all information into the Study Brief JSON:\n\n"
-                        + transcript
-                    ),
-                }
-            ],
-        )
-        first_block = compile_response.content[0]
-        raw = first_block.text if isinstance(first_block, TextBlock) else ""
-        brief_content = self._extract_json(raw)
+        study = await self._study_repo.get(intake.study_id, organization_id)
+        if self._client:
+            compile_response = await self._client.messages.create(
+                model=_COMPILE_MODEL,
+                max_tokens=4096,
+                system=_COMPILE_SYSTEM_PROMPT,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "Here is the complete intake conversation transcript. "
+                            "Extract and structure all information into the Study Brief JSON:\n\n"
+                            + transcript
+                        ),
+                    }
+                ],
+            )
+            first_block = compile_response.content[0]
+            raw = first_block.text if isinstance(first_block, TextBlock) else ""
+            brief_content = self._extract_json(raw)
+        else:
+            domain_answers = self._extract_domain_answers(visible_messages)
+            brief_content = self._fallback_brief_content(study, domain_answers)
 
         brief = StudyBrief(
             intake_id=intake_id,
@@ -646,10 +715,7 @@ class IntakeService:
             .options(selectinload(SponsorIntake.messages))
             .order_by(SponsorIntake.created_at.desc())
         )
-        sessions = list(result.scalars().all())
-        for s in sessions:
-            s.messages = [m for m in s.messages if not m.is_hidden]
-        return sessions
+        return list(result.scalars().all())
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -680,8 +746,6 @@ class IntakeService:
                     "message": "This intake session has already been compiled into a Study Brief.",
                 },
             )
-        # Filter hidden messages out of the in-memory list
-        intake.messages = [m for m in intake.messages if not m.is_hidden]
         return intake
 
     async def _load_session(
@@ -704,10 +768,26 @@ class IntakeService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"code": "NOT_FOUND", "message": "Intake session not found."},
             )
-        intake.messages = [m for m in intake.messages if not m.is_hidden]
         return intake
 
-    async def _call_claude_conversation(self, messages: list[dict]) -> str:
+    async def _call_claude_conversation(
+        self,
+        messages: list[dict],
+        *,
+        study_name: str = "",
+        current_domain: str | None = None,
+        domains_completed: list[str] | None = None,
+        is_start: bool = False,
+    ) -> str:
+        if self._client is None:
+            parsed = self._fallback_conversation_response(
+                study_name=study_name,
+                current_domain=current_domain,
+                domains_completed=domains_completed or [],
+                is_start=is_start,
+            )
+            return json.dumps(parsed)
+
         from typing import cast
         from anthropic.types import MessageParam
 
@@ -719,6 +799,152 @@ class IntakeService:
         )
         block = response.content[0]
         return block.text if isinstance(block, TextBlock) else ""
+
+    @staticmethod
+    def _fallback_conversation_response(
+        *,
+        study_name: str,
+        current_domain: str | None,
+        domains_completed: list[str],
+        is_start: bool,
+    ) -> dict:
+        """Deterministic intake flow when Anthropic API key is not configured."""
+        if is_start:
+            return {
+                "message": (
+                    f"Hello! I'm your TrialGenesis intake specialist. I'll guide you "
+                    f"through nine clinical domains for \"{study_name}\". "
+                    f"{_DOMAIN_QUESTIONS['STUDY_OVERVIEW']}"
+                ),
+                "domain": "STUDY_OVERVIEW",
+                "domains_completed": [],
+                "ready_to_compile": False,
+                "reasoning": (
+                    "Opened intake session with study overview "
+                    "(deterministic fallback — no API key configured)."
+                ),
+            }
+
+        completed = list(domains_completed)
+        if current_domain and current_domain not in completed:
+            completed.append(current_domain)
+
+        remaining = [d for d in _DOMAIN_ORDER if d not in completed]
+        if not remaining:
+            return {
+                "message": (
+                    "Thank you — all nine intake domains are covered. "
+                    "You can now compile the Study Brief."
+                ),
+                "domain": "SITES",
+                "domains_completed": completed,
+                "ready_to_compile": True,
+                "reasoning": (
+                    "All domains complete (deterministic fallback — no API key configured)."
+                ),
+            }
+
+        next_domain = remaining[0]
+        return {
+            "message": (
+                f"Thank you for that information. {_DOMAIN_QUESTIONS[next_domain]}"
+            ),
+            "domain": next_domain,
+            "domains_completed": completed,
+            "ready_to_compile": False,
+            "reasoning": (
+                f"Recorded {current_domain} and advanced to {next_domain} "
+                "(deterministic fallback — no API key configured)."
+            ),
+        }
+
+    @staticmethod
+    def _extract_domain_answers(messages: list[IntakeMessage]) -> dict[str, str]:
+        """Map each intake domain to the user's answer that followed it."""
+        answers: dict[str, str] = {}
+        pending_domain: str | None = None
+        for msg in messages:
+            if msg.role == "assistant" and msg.domain:
+                pending_domain = msg.domain
+            elif msg.role == "user" and pending_domain:
+                answers[pending_domain] = msg.content.strip()
+                pending_domain = None
+        return answers
+
+    @staticmethod
+    def _fallback_brief_content(study, domain_answers: dict[str, str]) -> dict:
+        """Build a structured Study Brief from domain answers without AI."""
+        overview = domain_answers.get("STUDY_OVERVIEW", "")
+        return {
+            "study_overview": {
+                "title": study.name,
+                "therapeutic_area": overview[:120] or "TBD",
+                "indication": overview[120:240] or "TBD",
+                "phase": study.phase.value if study.phase else "TBD",
+                "sponsor": "TBD",
+                "compound_code": study.protocol_number,
+            },
+            "study_design": {
+                "design_type": domain_answers.get("STUDY_DESIGN", "TBD"),
+                "randomization": "TBD",
+                "blinding": "TBD",
+                "comparator": None,
+                "treatment_duration": "TBD",
+                "number_of_periods": 1,
+            },
+            "population": {
+                "description": domain_answers.get("POPULATION", "TBD"),
+                "inclusion_criteria": [],
+                "exclusion_criteria": [],
+                "age_range": {"min": 18, "max": None},
+                "estimated_sample_size": None,
+            },
+            "endpoints": {
+                "primary": [{
+                    "name": domain_answers.get("ENDPOINTS", "TBD"),
+                    "timepoint": "TBD",
+                    "instrument": None,
+                }],
+                "secondary": [],
+                "safety": [],
+            },
+            "drug_treatment": {
+                "inn_name": domain_answers.get("DRUG_TREATMENT", "TBD"),
+                "doses": [],
+                "route": "TBD",
+                "formulation": None,
+                "regimen": "TBD",
+            },
+            "safety": {
+                "key_concerns": [domain_answers.get("SAFETY", "TBD")],
+                "monitoring_approach": "TBD",
+                "stopping_rules": [],
+                "sae_definitions": None,
+                "rems_required": False,
+            },
+            "regulatory": {
+                "regions": [],
+                "ind_cta_status": domain_answers.get("REGULATORY", "TBD"),
+                "submission_type": None,
+                "gcp_standard": "ICH E6(R2)",
+                "special_designations": [],
+            },
+            "statistical": {
+                "framework": "FREQUENTIST",
+                "primary_analysis_method": domain_answers.get("STATISTICAL", "TBD"),
+                "alpha_level": 0.05,
+                "multiple_testing_approach": None,
+                "key_subgroups": [],
+            },
+            "sites": {
+                "planned_sites": None,
+                "countries": [],
+                "estimated_enrollment_rate_per_month": None,
+                "site_selection_criteria": [
+                    domain_answers.get("SITES", "TBD"),
+                ],
+            },
+        }
 
     def _parse_ai_response(self, text: str) -> dict:
         """Parse the JSON envelope from Claude's intake response."""

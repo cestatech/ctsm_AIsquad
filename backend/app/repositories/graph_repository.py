@@ -10,7 +10,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.graph import (
@@ -323,6 +323,7 @@ class GraphRepository:
         actor_user_id: UUID | None = None,
         actor_agent_id: str | None = None,
         ai_decision_id: UUID | None = None,
+        idempotency_key: str | None = None,
     ) -> GraphEvent:
         """Append an immutable event to the graph event log."""
         event = GraphEvent(
@@ -334,26 +335,58 @@ class GraphRepository:
             actor_user_id=actor_user_id,
             actor_agent_id=actor_agent_id,
             ai_decision_id=ai_decision_id,
+            idempotency_key=idempotency_key,
             payload=payload,
         )
         self._db.add(event)
         await self._db.flush()
         return event
 
+    async def find_event_by_idempotency_key(
+        self,
+        organization_id: UUID,
+        idempotency_key: str,
+    ) -> GraphEvent | None:
+        """Return an existing event for a given idempotency key, if any."""
+        result = await self._db.execute(
+            select(GraphEvent).where(
+                GraphEvent.organization_id == organization_id,
+                GraphEvent.idempotency_key == idempotency_key,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def list_events(
         self,
         organization_id: UUID,
         study_id: UUID | None = None,
         node_id: UUID | None = None,
+        actor_user_id: UUID | None = None,
+        action: str | None = None,
+        entity_type: str | None = None,
+        event_type: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[GraphEvent]:
-        """List graph events, optionally filtered by study or node."""
+    ) -> tuple[list[GraphEvent], int]:
+        """List graph events with optional filters. Returns (items, total)."""
         filters = [GraphEvent.organization_id == organization_id]
         if study_id is not None:
             filters.append(GraphEvent.study_id == study_id)
         if node_id is not None:
             filters.append(GraphEvent.node_id == node_id)
+        if actor_user_id is not None:
+            filters.append(GraphEvent.actor_user_id == actor_user_id)
+        if event_type is not None:
+            filters.append(GraphEvent.event_type == event_type)
+        if action is not None:
+            filters.append(GraphEvent.payload["action"].astext == action)
+        if entity_type is not None:
+            filters.append(GraphEvent.payload["entity_type"].astext == entity_type)
+
+        count_result = await self._db.execute(
+            select(func.count()).select_from(GraphEvent).where(and_(*filters))
+        )
+        total = count_result.scalar_one()
 
         result = await self._db.execute(
             select(GraphEvent)
@@ -362,4 +395,49 @@ class GraphRepository:
             .limit(limit)
             .offset(offset)
         )
-        return list(result.scalars().all())
+        return list(result.scalars().all()), total
+
+    async def count_nodes_for_study(
+        self, organization_id: UUID, study_id: UUID
+    ) -> int:
+        result = await self._db.execute(
+            select(func.count())
+            .select_from(GraphNode)
+            .where(
+                GraphNode.organization_id == organization_id,
+                GraphNode.study_id == study_id,
+                GraphNode.is_active.is_(True),
+            )
+        )
+        return result.scalar_one()
+
+    async def count_edges_for_study(
+        self, organization_id: UUID, study_id: UUID
+    ) -> int:
+        result = await self._db.execute(
+            select(func.count())
+            .select_from(GraphEdge)
+            .where(
+                GraphEdge.organization_id == organization_id,
+                GraphEdge.study_id == study_id,
+                GraphEdge.is_active.is_(True),
+            )
+        )
+        return result.scalar_one()
+
+    async def count_nodes_by_type(
+        self, organization_id: UUID, study_id: UUID
+    ) -> dict[str, int]:
+        result = await self._db.execute(
+            select(GraphNode.node_type, func.count())
+            .where(
+                GraphNode.organization_id == organization_id,
+                GraphNode.study_id == study_id,
+                GraphNode.is_active.is_(True),
+            )
+            .group_by(GraphNode.node_type)
+        )
+        return {
+            (row[0].value if hasattr(row[0], "value") else str(row[0])): row[1]
+            for row in result.all()
+        }

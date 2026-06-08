@@ -52,6 +52,7 @@ class ICFGenerator(BaseGenerator):
         self, job: GenerationJob, study: Study, model_id: str
     ) -> dict:
         ctx = job.input_context or {}
+        brief_block = self._format_brief_for_prompt(job)
         user_prompt = f"""Generate an Informed Consent Form for the following clinical trial.
 
 Study details:
@@ -64,7 +65,8 @@ Study details:
 - Known Risks: {ctx.get("risks", "To be determined based on investigational product profile")}
 - Study Duration: {ctx.get("duration", "To be specified")}
 - Compensation: {ctx.get("compensation", "No financial compensation for participation")}
-
+{brief_block}
+When a Study Brief is provided above, derive all ICF sections from it.
 Write in plain language at an 8th-grade reading level. Return only valid JSON."""
 
         text = await self._call_claude(

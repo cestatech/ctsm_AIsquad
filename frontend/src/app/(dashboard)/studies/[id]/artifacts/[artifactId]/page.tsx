@@ -1,15 +1,20 @@
 "use client";
 
-"use client";
-
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { getApiErrorMessage } from "@/lib/api/errors";
 import { artifactsApi } from "@/lib/api/artifacts";
+import { adamApi } from "@/lib/api/adam";
 import { approvalsApi } from "@/lib/api/approvals";
 import { commentsApi } from "@/lib/api/comments";
+import { GraphRelationshipsPanel } from "@/components/intelligence/GraphRelationshipsPanel";
+import { StatisticalQCPanel } from "@/components/intelligence/StatisticalQCPanel";
+import { tlfApi } from "@/lib/api/tlf";
+import { csrApi } from "@/lib/api/csr";
 import type { Artifact, ArtifactVersion, Comment } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -220,6 +225,7 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
   const { token, role } = useAuthStore();
   const perms = usePermissions(role);
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { id: studyId, artifactId } = params;
 
   const [approvalModal, setApprovalModal] = useState<"approve" | "reject" | null>(null);
@@ -258,7 +264,7 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
       setEditorSummary("");
       setEditorError(null);
     },
-    onError: (err) => setEditorError(err instanceof Error ? err.message : "Save failed."),
+    onError: (err) => setEditorError(getApiErrorMessage(err, "Save failed.")),
   });
 
   const { data: commentsData, refetch: refetchComments } = useQuery({
@@ -278,7 +284,7 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
       queryClient.setQueryData(["artifact", artifactId, token], updated);
       queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
     },
-    onError: (err) => setActionError(err instanceof Error ? err.message : "Action failed."),
+    onError: (err) => setActionError(getApiErrorMessage(err, "Action failed.")),
   });
 
   const lockMutation = useMutation({
@@ -286,7 +292,7 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
     onSuccess: (updated) => {
       queryClient.setQueryData(["artifact", artifactId, token], updated);
     },
-    onError: (err) => setActionError(err instanceof Error ? err.message : "Action failed."),
+    onError: (err) => setActionError(getApiErrorMessage(err, "Action failed.")),
   });
 
   const amendMutation = useMutation({
@@ -294,7 +300,39 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
     onSuccess: (updated) => {
       queryClient.setQueryData(["artifact", artifactId, token], updated);
     },
-    onError: (err) => setActionError(err instanceof Error ? err.message : "Action failed."),
+    onError: (err) => setActionError(getApiErrorMessage(err, "Action failed.")),
+  });
+
+  const generateTlfMutation = useMutation({
+    mutationFn: () => tlfApi.generateFromAdam(artifactId, token!),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      router.push(`/studies/${studyId}/artifacts/${result.artifact_id}`);
+    },
+    onError: (err) =>
+      setActionError(getApiErrorMessage(err, "TLF generation failed.")),
+  });
+
+  const generateAdamMutation = useMutation({
+    mutationFn: () => adamApi.generateFromSdtm(artifactId, token!),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["adam-readiness", studyId] });
+      router.push(`/studies/${studyId}/artifacts/${result.artifact_id}`);
+    },
+    onError: (err) =>
+      setActionError(getApiErrorMessage(err, "ADaM generation failed.")),
+  });
+
+  const generateCsrMutation = useMutation({
+    mutationFn: () => csrApi.generateFromTlf(artifactId, token!),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["csr-readiness", studyId] });
+      router.push(`/studies/${studyId}/artifacts/${result.artifact_id}`);
+    },
+    onError: (err) =>
+      setActionError(getApiErrorMessage(err, "CSR generation failed.")),
   });
 
   const approvalMutation = useMutation({
@@ -311,7 +349,7 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
       setApprovalModal(null);
       setApprovalComment("");
     },
-    onError: (err) => setActionError(err instanceof Error ? err.message : "Action failed."),
+    onError: (err) => setActionError(getApiErrorMessage(err, "Action failed.")),
   });
 
   if (isLoading) {
@@ -379,6 +417,72 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
           key="amend" label="Amend"
           onClick={() => { setActionError(null); amendMutation.mutate(); }}
           disabled={amendMutation.isPending}
+        />
+      );
+    }
+    if (a.artifact_type === "ADAM_DATASET" && perms.canCreateArtifact) {
+      actions.push(
+        <ActionButton
+          key="generate-tlf"
+          label={generateTlfMutation.isPending ? "Generating TLF…" : "Generate TLF"}
+          variant="primary"
+          onClick={() => {
+            setActionError(null);
+            generateTlfMutation.mutate();
+          }}
+          disabled={generateTlfMutation.isPending}
+        />
+      );
+    }
+    if (a.artifact_type === "TLF" && perms.canCreateArtifact) {
+      actions.push(
+        <ActionButton
+          key="generate-csr"
+          label={generateCsrMutation.isPending ? "Assembling CSR…" : "Generate CSR"}
+          variant="primary"
+          onClick={() => {
+            setActionError(null);
+            generateCsrMutation.mutate();
+          }}
+          disabled={generateCsrMutation.isPending}
+        />
+      );
+    }
+    if (a.artifact_type === "SDTM_DATASET" && perms.canCreateArtifact) {
+      actions.push(
+        <ActionButton
+          key="generate-adam"
+          label={generateAdamMutation.isPending ? "Generating ADaM…" : "Generate ADaM"}
+          variant="primary"
+          onClick={() => {
+            setActionError(null);
+            generateAdamMutation.mutate();
+          }}
+          disabled={generateAdamMutation.isPending}
+        />
+      );
+    }
+    if (a.artifact_type === "SDTM_DATASET") {
+      actions.push(
+        <ActionButton
+          key="define-xml"
+          label="Download define.xml"
+          onClick={async () => {
+            setActionError(null);
+            try {
+              const blob = await artifactsApi.downloadDefineXml(a.id, token!);
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = `${a.name.replace(/\s+/g, "_")}_define.xml`;
+              link.click();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              setActionError(
+                err instanceof Error ? err.message : "define.xml download failed."
+              );
+            }
+          }}
         />
       );
     }
@@ -549,6 +653,20 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
             >
               View full history →
             </Link>
+          </div>
+
+          {/* Context graph relationships */}
+          <div className="bg-white border border-slate-200 p-5">
+            <GraphRelationshipsPanel
+              externalType="artifact"
+              externalId={artifactId}
+              studyId={studyId}
+              token={token!}
+            />
+          </div>
+
+          <div className="bg-white border border-slate-200 p-5">
+            <StatisticalQCPanel outputArtifactId={artifactId} token={token!} />
           </div>
 
           {/* Workflow guide */}

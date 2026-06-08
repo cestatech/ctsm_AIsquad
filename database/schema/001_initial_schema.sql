@@ -89,8 +89,11 @@ CREATE TYPE audit_action AS ENUM (
     'validation.run_started', 'validation.run_completed', 'validation.run_failed',
     -- AI
     'ai.generation_started', 'ai.generation_completed', 'ai.generation_failed',
+    'ai.mapping_suggested',
+    'ai.mapping_suggested',
     -- Data
-    'data.file_uploaded', 'data.file_deleted',
+    'data.file_uploaded', 'data.file_parsed', 'data.file_deleted',
+    'data.field_mapped', 'data.mapping_approved',
     -- Submission
     'submission.package_created', 'submission.package_exported'
 );

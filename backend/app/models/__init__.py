@@ -23,6 +23,7 @@ from app.models.user import User, RefreshToken
 from app.models.upload import UploadedFile
 from app.models.raw_data import RawDataset, RawField, FieldMappingVersion
 from app.models.validation import ValidationRun
+from app.models.statistical_qc import StatisticalProgramQCRun
 
 __all__ = [
     "AuditLog",

@@ -73,10 +73,14 @@ class AuditAction(str, enum.Enum):
     AI_GENERATION_STARTED = "ai.generation_started"
     AI_GENERATION_COMPLETED = "ai.generation_completed"
     AI_GENERATION_FAILED = "ai.generation_failed"
+    AI_MAPPING_SUGGESTED = "ai.mapping_suggested"
 
     # Data
     DATA_FILE_UPLOADED = "data.file_uploaded"
+    DATA_FILE_PARSED = "data.file_parsed"
     DATA_FILE_DELETED = "data.file_deleted"
+    DATA_FIELD_MAPPED = "data.field_mapped"
+    DATA_MAPPING_APPROVED = "data.mapping_approved"
 
     # Submission
     SUBMISSION_PACKAGE_CREATED = "submission.package_created"

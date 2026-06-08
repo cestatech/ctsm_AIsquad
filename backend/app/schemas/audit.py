@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from ipaddress import IPv4Address, IPv6Address
+
+from pydantic import BaseModel, field_validator
 
 from app.models.audit import AuditAction
 
@@ -26,6 +28,15 @@ class AuditLogResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("ip_address", mode="before")
+    @classmethod
+    def coerce_ip_address(cls, value: object) -> str | None:
+        if value is None or isinstance(value, str):
+            return value
+        if isinstance(value, (IPv4Address, IPv6Address)):
+            return str(value)
+        return str(value)
 
 
 class AuditLogListResponse(BaseModel):
