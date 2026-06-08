@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}{{ subject }}{% endblock %}
+
+{% block content %}
+  <h1 style="margin:0 0 16px;font-size:24px;line-height:32px;color:#111827;">You have been invited to {{ org_name }}</h1>
+  <p style="margin:0 0 16px;font-size:16px;line-height:24px;">Hello {{ recipient_name }},</p>
+  <p style="margin:0 0 16px;font-size:16px;line-height:24px;">
+    {{ inviter_name }} invited you to collaborate in Celerius for {{ org_name }}.
+  </p>
+  <p style="margin:0 0 24px;font-size:16px;line-height:24px;">
+    Use the temporary password below to sign in and complete your setup.
+  </p>
+  <div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:16px;margin:0 0 24px;font-family:Consolas,Monaco,monospace;font-size:16px;">
+    {{ temporary_password }}
+  </div>
+  <p style="margin:0 0 24px;">
+    <a href="{{ app_url }}/login" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;padding:12px 18px;font-weight:700;">Accept invitation</a>
+  </p>
+  <p style="margin:0;color:#64748b;font-size:14px;line-height:20px;">
+    If you were not expecting this invitation, contact your organization administrator.
+  </p>
+{% endblock %}

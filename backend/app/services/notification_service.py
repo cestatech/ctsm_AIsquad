@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.models.notification import Notification, NotificationType
 
 
@@ -16,6 +19,13 @@ class NotificationService:
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+        template_dir = Path(__file__).resolve().parents[1] / "templates" / "email"
+        self._templates = Environment(
+            loader=FileSystemLoader(template_dir),
+            autoescape=select_autoescape(["html", "xml"]),
+            undefined=StrictUndefined,
+        )
+        self._settings = get_settings()
 
     async def create(
         self,
@@ -125,3 +135,20 @@ class NotificationService:
             )
         )
         return result.scalar_one()
+
+    def _render_template(self, template_name: str, context: dict) -> str:
+        """Render a branded HTML email template."""
+        template = self._templates.get_template(template_name)
+        full_context = {
+            "app_url": self._default_app_url(),
+            "org_name": "Celerius",
+            **context,
+        }
+        return template.render(**full_context)
+
+    def _default_app_url(self) -> str:
+        app_url = getattr(self._settings, "APP_URL", "")
+        if app_url:
+            return app_url.rstrip("/")
+        origins = self._settings.allowed_origins
+        return origins[0] if origins else ""

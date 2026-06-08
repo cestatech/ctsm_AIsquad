@@ -54,6 +54,7 @@ class AuditAction(str, enum.Enum):
     ARTIFACT_AMENDED = "artifact.amended"
     ARTIFACT_SUPERSEDED = "artifact.superseded"
     ARTIFACT_DELETED = "artifact.deleted"
+    ARTIFACT_EXPORTED = "artifact.exported"
 
     # Versions
     ARTIFACT_VERSION_CREATED = "artifact_version.created"
