@@ -19,7 +19,13 @@ from app.models.audit import AuditAction
 from app.models.user import Role, User
 from app.models.notification import NotificationType
 from app.repositories.artifact_repository import ArtifactRepository
+from app.repositories.study_repository import StudyRepository
 from app.services.audit_service import AuditService
+from app.services.context_graph_service import ContextGraphService
+from app.services.export.artifact_export_service import (
+    ArtifactExportService,
+    ExportResult,
+)
 from app.services.notification_service import NotificationService
 
 
@@ -29,7 +35,9 @@ class ArtifactService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._repo = ArtifactRepository(db)
+        self._study_repo = StudyRepository(db)
         self._audit = AuditService(db)
+        self._graph = ContextGraphService(db)
         self._notify = NotificationService(db)
 
     async def create_artifact(
@@ -239,6 +247,23 @@ class ArtifactService:
         )
         return artifact
 
+    async def revise(
+        self,
+        artifact_id: UUID,
+        organization_id: UUID,
+        user: User,
+    ) -> Artifact:
+        """Transition artifact from REJECTED to DRAFT for revision."""
+        check_permission(user, Permission.ARTIFACT_EDIT)
+        return await self._transition(
+            artifact_id,
+            organization_id,
+            user,
+            ArtifactStatus.DRAFT,
+            AuditAction.ARTIFACT_UPDATED,
+            metadata={"action": "revise"},
+        )
+
     async def amend(
         self,
         artifact_id: UUID,
@@ -350,6 +375,81 @@ class ArtifactService:
                     "message": str(exc),
                 },
             ) from exc
+
+    async def export_artifact_file(
+        self,
+        artifact_id: UUID,
+        organization_id: UUID,
+        user: User,
+        export_format: str,
+        *,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> ExportResult:
+        """Generate a formatted artifact download and record audit trail."""
+        artifact, content = await self.get_artifact_export(artifact_id, organization_id)
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "NO_CONTENT",
+                    "message": "Artifact has no version content to export.",
+                },
+            )
+
+        study = await self._study_repo.get(artifact.study_id, organization_id)
+        study_slug = study.short_name or study.protocol_number or study.name
+        study_name = study.name
+
+        try:
+            result = ArtifactExportService.export_artifact(
+                artifact,
+                content,
+                study_name=study_name,
+                study_slug=study_slug,
+                export_format=export_format,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "EXPORT_NOT_AVAILABLE",
+                    "message": str(exc),
+                },
+            ) from exc
+
+        version_id = artifact.current_version_id
+        await self._audit.log(
+            action=AuditAction.ARTIFACT_EXPORTED,
+            resource_type="artifact",
+            organization_id=organization_id,
+            actor_user_id=user.id,
+            resource_id=artifact.id,
+            after_state={
+                "artifact_id": str(artifact.id),
+                "artifact_version_id": str(version_id) if version_id else None,
+                "artifact_type": artifact.artifact_type.value,
+                "format": export_format,
+                "filename": result.filename,
+            },
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        await self._graph.emit_event(
+            organization_id=organization_id,
+            study_id=artifact.study_id,
+            event_type="ARTIFACT_EXPORTED",
+            payload={
+                "entity_type": "artifact",
+                "entity_id": str(artifact.id),
+                "artifact_type": artifact.artifact_type.value,
+                "format": export_format,
+                "filename": result.filename,
+                "artifact_version_id": str(version_id) if version_id else None,
+            },
+            actor_user_id=user.id,
+        )
+        return result
 
     async def _transition(
         self,

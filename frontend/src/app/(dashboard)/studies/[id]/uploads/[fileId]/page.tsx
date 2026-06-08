@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { usePermissions } from "@/hooks/usePermissions";
+import { useStudyPermissions } from "@/hooks/useStudyPermissions";
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { rawDataApi } from "@/lib/api/rawData";
 import type { FieldMappingSuggestion, RawDataset, RawField } from "@/types";
@@ -606,9 +606,9 @@ export default function UploadDetailPage({
 }: {
   params: { id: string; fileId: string };
 }) {
-  const { token, role } = useAuthStore();
-  const perms = usePermissions(role);
+  const { token } = useAuthStore();
   const studyId = params.id;
+  const perms = useStudyPermissions(studyId);
   const fileId = params.fileId;
   const [activeDataset, setActiveDataset] = useState<string | null>(null);
 

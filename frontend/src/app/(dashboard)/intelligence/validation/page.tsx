@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { usePermissions } from "@/hooks/usePermissions";
+import { useIntelligencePermissions } from "@/hooks/useIntelligencePermissions";
 import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
 import { intelligenceApi } from "@/lib/api/intelligence";
 import { StudyPicker } from "@/components/intelligence/StudyPicker";
@@ -23,8 +23,8 @@ const SEVERITY_STYLES: Record<string, string> = {
 };
 
 export default function ValidationEvidencePage() {
-  const { token, role } = useAuthStore();
-  const perms = usePermissions(role);
+  const { token } = useAuthStore();
+  const perms = useIntelligencePermissions();
   const queryClient = useQueryClient();
   const { studyId } = useIntelligenceStudy();
 

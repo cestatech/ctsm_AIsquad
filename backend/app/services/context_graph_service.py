@@ -416,6 +416,7 @@ class ContextGraphService:
             "MEMBER_ADDED": GraphWorkflowAction.LINKED,
             "MEMBER_REMOVED": GraphWorkflowAction.UPDATED,
             "USER_LOGIN": GraphWorkflowAction.REVIEWED,
+            "ARTIFACT_EXPORTED": GraphWorkflowAction.REVIEWED,
         }
         return mapping.get(event_type, GraphWorkflowAction.UPDATED)
 

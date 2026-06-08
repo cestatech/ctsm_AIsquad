@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { usePermissions } from "@/hooks/usePermissions";
+import { useStudyPermissions } from "@/hooks/useStudyPermissions";
 import { studiesApi } from "@/lib/api/studies";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { uploadsApi } from "@/lib/api/uploads";
@@ -64,11 +64,11 @@ function formatBytes(bytes: number) {
 }
 
 export default function StudyWorkspacePage({ params }: { params: { id: string } }) {
-  const { token, role } = useAuthStore();
-  const perms = usePermissions(role);
+  const studyId = params.id;
+  const { token } = useAuthStore();
+  const perms = useStudyPermissions(studyId);
   const queryClient = useQueryClient();
   const router = useRouter();
-  const studyId = params.id;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 

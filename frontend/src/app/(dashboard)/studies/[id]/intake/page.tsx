@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
+import { useStudyPermissions } from "@/hooks/useStudyPermissions";
 import { intakeApi } from "@/lib/api/intake";
 import { studiesApi } from "@/lib/api/studies";
 import { generationApi } from "@/lib/api/generation";
@@ -79,6 +80,7 @@ export default function IntakePage() {
   const studyId = params.id;
   const router = useRouter();
   const { token } = useAuthStore();
+  const perms = useStudyPermissions(studyId);
   const queryClient = useQueryClient();
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -302,7 +304,7 @@ export default function IntakePage() {
             >
               View Study Brief
             </button>
-            {brief && (
+            {brief && perms.canTriggerGeneration && (
               <>
                 <button
                   onClick={() => generateMutation.mutate("PROTOCOL")}
@@ -510,6 +512,7 @@ export default function IntakePage() {
                 <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-3 py-2">{genSuccess}</div>
               )}
               <div className="flex items-center justify-between gap-3">
+                {perms.canTriggerGeneration && (
                 <div className="flex gap-2">
                   <button
                     onClick={() => generateMutation.mutate("PROTOCOL")}
@@ -533,6 +536,7 @@ export default function IntakePage() {
                     {generateMutation.isPending && generateMutation.variables === "SAP" ? "Starting…" : "Generate SAP"}
                   </button>
                 </div>
+                )}
                 <div className="flex gap-2">
                   <button
                     onClick={() => {

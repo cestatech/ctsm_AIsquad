@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { canRemoveArtifact, usePermissions } from "@/hooks/usePermissions";
+import { canRemoveArtifact } from "@/hooks/usePermissions";
+import { useStudyPermissions } from "@/hooks/useStudyPermissions";
+import { useArtifactDownload } from "@/hooks/useArtifactDownload";
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { adamApi } from "@/lib/api/adam";
@@ -221,37 +223,10 @@ function CommentThread({ comment, token, artifactId, onRefetch }: {
   );
 }
 
-async function downloadArtifactFile(id: string, name: string, token: string) {
-  const blob = await artifactsApi.downloadContent(id, token);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${name.replace(/\s+/g, "_")}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function isSyntheticArtifact(artifact: Artifact): boolean {
-  return (
-    artifact.artifact_type === "OTHER" &&
-    (artifact.name.includes("Synthetic") ||
-      (artifact.description?.includes("SYNTHETIC") ?? false))
-  );
-}
-
-async function downloadArtifactCsv(id: string, token: string) {
-  const { blob, filename } = await artifactsApi.downloadCsv(id, token);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 export default function ArtifactDetailPage({ params }: { params: { id: string; artifactId: string } }) {
-  const { token, role, user } = useAuthStore();
-  const perms = usePermissions(role);
+  const { token, user } = useAuthStore();
+  const perms = useStudyPermissions(params.id);
+  const { downloadArtifact, isDownloading, getDownloadOptions } = useArtifactDownload(token);
   const queryClient = useQueryClient();
   const router = useRouter();
   const { id: studyId, artifactId } = params;
@@ -332,6 +307,15 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
     onError: (err) => setActionError(getApiErrorMessage(err, "Action failed.")),
   });
 
+  const reviseMutation = useMutation({
+    mutationFn: () => artifactsApi.revise(artifactId, token!),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["artifact", artifactId, token], updated);
+      queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+    },
+    onError: (err) => setActionError(getApiErrorMessage(err, "Revise failed.")),
+  });
+
   const generateTlfMutation = useMutation({
     mutationFn: () => tlfApi.generateFromAdam(artifactId, token!),
     onSuccess: (result) => {
@@ -381,8 +365,9 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
         token!
       );
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["artifact", artifactId] });
+    onSuccess: async () => {
+      const refreshed = await artifactsApi.get(artifactId, token!);
+      queryClient.setQueryData(["artifact", artifactId, token], refreshed);
       queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
       setApprovalModal(null);
       setApprovalComment("");
@@ -400,37 +385,28 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
 
   function renderActions(a: Artifact) {
     const actions: React.ReactNode[] = [];
-    if (isSyntheticArtifact(a)) {
-      actions.push(
-        <ActionButton
-          key="download-csv"
-          label="Download CSV"
-          variant="primary"
-          onClick={async () => {
-            setActionError(null);
-            try {
-              await downloadArtifactCsv(a.id, token!);
-            } catch (err) {
-              setActionError(err instanceof Error ? err.message : "CSV download failed.");
+    if (a.current_version_id) {
+      for (const option of getDownloadOptions(a)) {
+        actions.push(
+          <ActionButton
+            key={`download-${option.format}`}
+            label={
+              isDownloading(a.id) ? "Downloading…" : option.label
             }
-          }}
-        />
-      );
+            variant={option.primary ? "primary" : "default"}
+            onClick={async () => {
+              setActionError(null);
+              try {
+                await downloadArtifact(a, option.format);
+              } catch (err) {
+                setActionError(err instanceof Error ? err.message : "Download failed.");
+              }
+            }}
+            disabled={isDownloading(a.id)}
+          />
+        );
+      }
     }
-    actions.push(
-      <ActionButton
-        key="download"
-        label={isSyntheticArtifact(a) ? "Download JSON" : "Download"}
-        onClick={async () => {
-          setActionError(null);
-          try {
-            await downloadArtifactFile(a.id, a.name, token!);
-          } catch (err) {
-            setActionError(err instanceof Error ? err.message : "Download failed.");
-          }
-        }}
-      />
-    );
     if (canRemoveArtifact(a, user?.id, perms)) {
       actions.push(
         <ActionButton
@@ -463,10 +439,23 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
         />
       );
     }
+    if (a.status === "REJECTED" && perms.canEditArtifact) {
+      actions.push(
+        <ActionButton
+          key="revise"
+          label={reviseMutation.isPending ? "Revising…" : "Revise"}
+          variant="primary"
+          onClick={() => { setActionError(null); reviseMutation.mutate(); }}
+          disabled={reviseMutation.isPending}
+        />
+      );
+    }
     if (a.status === "DRAFT" && perms.canSubmitArtifact) {
       actions.push(
         <ActionButton
-          key="submit" label="Submit for Review" variant="primary"
+          key="submit"
+          label={submitMutation.isPending ? "Submitting…" : "Submit for Review"}
+          variant="primary"
           onClick={() => { setActionError(null); submitMutation.mutate(); }}
           disabled={submitMutation.isPending}
         />
@@ -475,19 +464,27 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
     if (a.status === "IN_REVIEW" && perms.canApproveArtifact) {
       actions.push(
         <ActionButton
-          key="approve" label="Approve" variant="primary"
+          key="approve"
+          label="Approve"
+          variant="primary"
           onClick={() => { setApprovalModal("approve"); setActionError(null); }}
+          disabled={approvalMutation.isPending}
         />,
         <ActionButton
-          key="reject" label="Reject" variant="danger"
+          key="reject"
+          label="Reject"
+          variant="danger"
           onClick={() => { setApprovalModal("reject"); setActionError(null); }}
+          disabled={approvalMutation.isPending}
         />
       );
     }
     if (a.status === "APPROVED" && perms.canLockArtifact) {
       actions.push(
         <ActionButton
-          key="lock" label="Lock" variant="primary"
+          key="lock"
+          label={lockMutation.isPending ? "Locking…" : "Lock"}
+          variant="primary"
           onClick={() => { setActionError(null); lockMutation.mutate(); }}
           disabled={lockMutation.isPending}
         />
@@ -496,7 +493,8 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
     if (a.status === "LOCKED" && perms.canAmendArtifact) {
       actions.push(
         <ActionButton
-          key="amend" label="Amend"
+          key="amend"
+          label={amendMutation.isPending ? "Amending…" : "Amend"}
           onClick={() => { setActionError(null); amendMutation.mutate(); }}
           disabled={amendMutation.isPending}
         />
@@ -541,30 +539,6 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
             generateAdamMutation.mutate();
           }}
           disabled={generateAdamMutation.isPending}
-        />
-      );
-    }
-    if (a.artifact_type === "SDTM_DATASET") {
-      actions.push(
-        <ActionButton
-          key="define-xml"
-          label="Download define.xml"
-          onClick={async () => {
-            setActionError(null);
-            try {
-              const blob = await artifactsApi.downloadDefineXml(a.id, token!);
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement("a");
-              link.href = url;
-              link.download = `${a.name.replace(/\s+/g, "_")}_define.xml`;
-              link.click();
-              URL.revokeObjectURL(url);
-            } catch (err) {
-              setActionError(
-                err instanceof Error ? err.message : "define.xml download failed."
-              );
-            }
-          }}
         />
       );
     }

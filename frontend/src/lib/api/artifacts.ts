@@ -49,6 +49,9 @@ export const artifactsApi = {
   amend: (id: string, token: string) =>
     apiClient.post<Artifact>(`/artifacts/${id}/amend`, { token }),
 
+  revise: (id: string, token: string) =>
+    apiClient.post<Artifact>(`/artifacts/${id}/revise`, { token }),
+
   delete: (id: string, token: string) =>
     apiClient.delete<void>(`/artifacts/${id}`, { token }),
 
@@ -57,6 +60,39 @@ export const artifactsApi = {
 
   getVersion: (id: string, versionId: string, token: string) =>
     apiClient.get<ArtifactVersion>(`/artifacts/${id}/versions/${versionId}`, { token }),
+
+  exportArtifact: async (
+    id: string,
+    format: "docx" | "pdf" | "csv" | "zip" | "xml",
+    token: string
+  ): Promise<{ blob: Blob; filename: string }> => {
+    const response = await fetch(
+      `${API_URL}/artifacts/${id}/export?format=${format}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      }
+    );
+    if (!response.ok) {
+      let detail = "Failed to download artifact";
+      try {
+        const err = await response.json();
+        const raw = (err as { detail?: string | { message?: string } }).detail;
+        detail =
+          typeof raw === "string"
+            ? raw
+            : (raw as { message?: string })?.message ?? detail;
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new Error(detail);
+    }
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match?.[1] ?? `artifact.${format}`;
+    const blob = await response.blob();
+    return { blob, filename };
+  },
 
   downloadCsv: async (id: string, token: string): Promise<{ blob: Blob; filename: string }> => {
     const response = await fetch(`${API_URL}/artifacts/${id}/download-csv`, {

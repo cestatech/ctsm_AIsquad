@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { usePermissions } from "@/hooks/usePermissions";
+import { useIntelligencePermissions } from "@/hooks/useIntelligencePermissions";
 import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
 import { intelligenceApi } from "@/lib/api/intelligence";
 
@@ -69,8 +69,8 @@ const INTELLIGENCE_SCREENS = [
 ];
 
 export default function IntelligencePage() {
-  const { token, role } = useAuthStore();
-  const perms = usePermissions(role);
+  const { token } = useAuthStore();
+  const perms = useIntelligencePermissions();
   const { studyId } = useIntelligenceStudy();
 
   const { data: pendingDecisions = [] } = useQuery({

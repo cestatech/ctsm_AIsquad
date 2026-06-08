@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
+import { useIntelligencePermissions } from "@/hooks/useIntelligencePermissions";
 import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
+import { useArtifactDownload } from "@/hooks/useArtifactDownload";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { intelligenceApi, type SyntheticDataRunDetail } from "@/lib/api/intelligence";
 import { getApiErrorMessage } from "@/lib/api/errors";
@@ -27,6 +29,8 @@ function rel(iso: string) {
 export default function SyntheticDataPage() {
   const { token } = useAuthStore();
   const { studyId } = useIntelligenceStudy();
+  const perms = useIntelligencePermissions();
+  const { downloadArtifact, isDownloading } = useArtifactDownload(token);
   const queryClient = useQueryClient();
   const [activeRun, setActiveRun] = useState<SyntheticDataRunDetail | null>(null);
   const [targetN, setTargetN] = useState(50);
@@ -107,7 +111,7 @@ export default function SyntheticDataPage() {
           </div>
         )}
 
-        {studyId && hasSap && (
+        {studyId && hasSap && perms.canTriggerGeneration && (
           <div className="bg-white border border-slate-200 px-5 py-4">
             <h2 className="text-sm font-semibold text-slate-900 mb-3">Start new synthetic run</h2>
             <p className="text-xs text-slate-500 mb-3">
@@ -270,23 +274,23 @@ export default function SyntheticDataPage() {
                     type="button"
                     onClick={async () => {
                       try {
-                        const { blob, filename } = await artifactsApi.downloadCsv(
-                          activeRun.output_artifact_id!,
-                          token!
-                        );
-                        const url = URL.createObjectURL(blob);
-                        const link = document.createElement("a");
-                        link.href = url;
-                        link.download = filename;
-                        link.click();
-                        URL.revokeObjectURL(url);
+                        await downloadArtifact({
+                          id: activeRun.output_artifact_id!,
+                          artifact_type: "OTHER",
+                          name: "Synthetic Data",
+                          description: "SYNTHETIC",
+                          current_version_id: activeRun.output_artifact_id!,
+                        });
                       } catch (err) {
                         setCreateError(getApiErrorMessage(err, "CSV download failed."));
                       }
                     }}
-                    className="text-xs text-brand-600 hover:text-brand-700 font-semibold"
+                    disabled={isDownloading(activeRun.output_artifact_id!)}
+                    className="text-xs text-brand-600 hover:text-brand-700 font-semibold disabled:opacity-50"
                   >
-                    Download CSV →
+                    {isDownloading(activeRun.output_artifact_id!)
+                      ? "Downloading…"
+                      : "Download CSV →"}
                   </button>
                   <a
                     href={`/studies/${activeRun.study_id}/artifacts/${activeRun.output_artifact_id}`}

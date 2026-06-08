@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { usePermissions } from "@/hooks/usePermissions";
+import { useStudyPermissions } from "@/hooks/useStudyPermissions";
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { generationApi } from "@/lib/api/generation";
 import { studiesApi } from "@/lib/api/studies";
@@ -108,8 +108,8 @@ function JobRow({
 export default function StudyGenerationPage() {
   const params = useParams<{ id: string }>();
   const studyId = params.id;
-  const { token, role } = useAuthStore();
-  const perms = usePermissions(role);
+  const { token } = useAuthStore();
+  const perms = useStudyPermissions(params.id);
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
   const [stoppingJobId, setStoppingJobId] = useState<string | null>(null);

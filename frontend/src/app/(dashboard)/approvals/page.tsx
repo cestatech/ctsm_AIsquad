@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { usePermissions } from "@/hooks/usePermissions";
+import { useStudyPermissions } from "@/hooks/useStudyPermissions";
 import { approvalsApi } from "@/lib/api/approvals";
 import type { ApprovalQueueItem } from "@/types";
 
@@ -22,20 +22,72 @@ function rel(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function ApprovalQueueRow({
+  item,
+  onReview,
+}: {
+  item: ApprovalQueueItem;
+  onReview: (item: ApprovalQueueItem) => void;
+}) {
+  const perms = useStudyPermissions(item.study_id);
+
+  return (
+    <tr className="hover:bg-slate-50 transition-colors">
+      <td className="px-4 py-3">
+        <Link
+          href={`/studies/${item.study_id}/artifacts/${item.artifact_id}`}
+          className="font-medium text-slate-900 text-xs leading-snug hover:text-brand-700"
+        >
+          {item.artifact_name}
+        </Link>
+      </td>
+      <td className="px-4 py-3">
+        <Link
+          href={`/studies/${item.study_id}`}
+          className="text-slate-600 hover:text-brand-700 transition-colors"
+        >
+          {item.study_name}
+        </Link>
+        <p className="text-[11px] text-slate-400 font-mono mt-0.5">{item.protocol_number}</p>
+      </td>
+      <td className="px-4 py-3">
+        <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 font-medium">
+          {TYPE_LABELS[item.artifact_type] ?? item.artifact_type}
+        </span>
+      </td>
+      <td className="px-4 py-3 text-xs font-mono text-slate-500">v{item.version_number}</td>
+      <td className="px-4 py-3 text-xs text-slate-600">{item.submitted_by.full_name}</td>
+      <td className="px-4 py-3 text-xs text-slate-400">{rel(item.submitted_at)}</td>
+      <td className="px-4 py-3">
+        {perms.canApproveArtifact ? (
+          <button
+            onClick={() => onReview(item)}
+            className="text-xs bg-brand-600 hover:bg-brand-500 text-white font-semibold px-3 py-1.5 transition-colors"
+          >
+            Review
+          </button>
+        ) : (
+          <span className="text-[11px] text-slate-400">No study reviewer role</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 export default function ApprovalsPage() {
-  const { token, role } = useAuthStore();
-  const perms = usePermissions(role);
+  const { token } = useAuthStore();
   const queryClient = useQueryClient();
 
   const [activeItem, setActiveItem] = useState<ApprovalQueueItem | null>(null);
   const [decision, setDecision] = useState<"APPROVED" | "REJECTED" | null>(null);
   const [comment, setComment] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const activePerms = useStudyPermissions(activeItem?.study_id);
 
   const { data, isLoading } = useQuery({
     queryKey: ["approvals-queue", token],
     queryFn: () => approvalsApi.queue({ page_size: 50 }, token!),
-    enabled: !!token && perms.canApproveArtifact,
+    enabled: !!token,
     staleTime: 30_000,
   });
 
@@ -67,14 +119,6 @@ export default function ApprovalsPage() {
       setActionError(err instanceof Error ? err.message : "Action failed.");
     },
   });
-
-  if (!perms.canApproveArtifact) {
-    return (
-      <div className="px-8 py-16 text-center text-slate-500 text-sm">
-        You don&apos;t have permission to view the approval queue.
-      </div>
-    );
-  }
 
   const pendingItems = data?.items ?? [];
 
@@ -117,46 +161,16 @@ export default function ApprovalsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {pendingItems.map((item) => (
-                  <tr key={item.artifact_id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/studies/${item.study_id}/artifacts/${item.artifact_id}`}
-                        className="font-medium text-slate-900 hover:text-brand-700 transition-colors"
-                      >
-                        {item.artifact_name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/studies/${item.study_id}`}
-                        className="text-slate-600 hover:text-brand-700 transition-colors"
-                      >
-                        {item.study_name}
-                      </Link>
-                      <p className="text-[11px] text-slate-400 font-mono mt-0.5">{item.protocol_number}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 font-medium">
-                        {TYPE_LABELS[item.artifact_type] ?? item.artifact_type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs font-mono text-slate-500">v{item.version_number}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600">{item.submitted_by.full_name}</td>
-                    <td className="px-4 py-3 text-xs text-slate-400">{rel(item.submitted_at)}</td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => {
-                          setActiveItem(item);
-                          setDecision(null);
-                          setComment("");
-                          setActionError(null);
-                        }}
-                        className="text-xs bg-brand-600 hover:bg-brand-500 text-white font-semibold px-3 py-1.5 transition-colors"
-                      >
-                        Review
-                      </button>
-                    </td>
-                  </tr>
+                  <ApprovalQueueRow
+                    key={item.artifact_id}
+                    item={item}
+                    onReview={(selected) => {
+                      setActiveItem(selected);
+                      setDecision(null);
+                      setComment("");
+                      setActionError(null);
+                    }}
+                  />
                 ))}
               </tbody>
             </table>
@@ -253,6 +267,7 @@ export default function ApprovalsPage() {
                 }}
                 disabled={
                   !decision ||
+                  !activePerms.canApproveArtifact ||
                   reviewMutation.isPending ||
                   (decision === "REJECTED" && !comment.trim())
                 }

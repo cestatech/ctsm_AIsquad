@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { canRemoveArtifact, usePermissions } from "@/hooks/usePermissions";
+import { canRemoveArtifact } from "@/hooks/usePermissions";
+import { useStudyPermissions } from "@/hooks/useStudyPermissions";
+import { useArtifactDownload } from "@/hooks/useArtifactDownload";
 import { studiesApi } from "@/lib/api/studies";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { getApiErrorMessage } from "@/lib/api/errors";
@@ -40,16 +43,24 @@ const TYPE_LABELS: Record<string, string> = Object.fromEntries(
 );
 
 export default function ArtifactListPage({ params }: { params: { id: string } }) {
-  const { token, role, user } = useAuthStore();
-  const perms = usePermissions(role);
+  const { token, user } = useAuthStore();
+  const perms = useStudyPermissions(params.id);
+  const { downloadArtifact, isDownloading, getDownloadOptions } = useArtifactDownload(token);
   const queryClient = useQueryClient();
   const studyId = params.id;
+  const searchParams = useSearchParams();
 
   const [showNewModal, setShowNewModal] = useState(false);
   const [newForm, setNewForm] = useState({ name: "", artifact_type: "" as ArtifactType | "", description: "" });
   const [formError, setFormError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Artifact | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get("new") === "1" && perms.canCreateArtifact) {
+      setShowNewModal(true);
+    }
+  }, [searchParams, perms.canCreateArtifact]);
 
   const { data: study } = useQuery({
     queryKey: ["study", studyId, token],
@@ -200,28 +211,27 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
                     <td className="px-4 py-3 text-xs text-slate-400">{rel(a.updated_at)}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setActionError(null);
-                            try {
-                              const blob = await artifactsApi.downloadContent(a.id, token!);
-                              const url = URL.createObjectURL(blob);
-                              const link = document.createElement("a");
-                              link.href = url;
-                              link.download = `${a.name.replace(/\s+/g, "_")}.json`;
-                              link.click();
-                              URL.revokeObjectURL(url);
-                            } catch (err) {
-                              setActionError(
-                                err instanceof Error ? err.message : "Download failed."
-                              );
-                            }
-                          }}
-                          className="text-[11px] text-brand-600 hover:text-brand-700 font-medium"
-                        >
-                          Download
-                        </button>
+                        {a.current_version_id &&
+                          getDownloadOptions(a).map((option) => (
+                            <button
+                              key={`${a.id}-${option.format}`}
+                              type="button"
+                              onClick={async () => {
+                                setActionError(null);
+                                try {
+                                  await downloadArtifact(a, option.format);
+                                } catch (err) {
+                                  setActionError(
+                                    err instanceof Error ? err.message : "Download failed."
+                                  );
+                                }
+                              }}
+                              disabled={isDownloading(a.id)}
+                              className="text-[11px] text-brand-600 hover:text-brand-700 font-medium disabled:opacity-50"
+                            >
+                              {isDownloading(a.id) ? "Downloading…" : option.label}
+                            </button>
+                          ))}
                         {canRemoveArtifact(a, user?.id, perms) && (
                           <button
                             type="button"

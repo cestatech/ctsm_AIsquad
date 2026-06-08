@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { usePermissions } from "@/hooks/usePermissions";
+import { useStudyPermissions } from "@/hooks/useStudyPermissions";
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { generationApi } from "@/lib/api/generation";
 import type { ArtifactType, GenerationJob } from "@/types";
@@ -96,8 +96,7 @@ function JobRow({
 }
 
 export default function GenerationPage() {
-  const { token, role } = useAuthStore();
-  const perms = usePermissions(role);
+  const { token } = useAuthStore();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
@@ -108,6 +107,7 @@ export default function GenerationPage() {
     artifact_type: "PROTOCOL" as ArtifactType,
     model_id: "claude-sonnet-4-6",
   });
+  const perms = useStudyPermissions(form.study_id || undefined);
 
   const { data, isLoading } = useQuery({
     queryKey: ["generation-jobs", token, page],

@@ -30,7 +30,7 @@ from app.schemas.artifact import (
     ArtifactVersionResponse,
 )
 from app.services.artifact_service import ArtifactService
-from app.services.sdtm_define_service import build_define_xml
+from app.services.export.artifact_export_service import ArtifactExportService
 
 router = APIRouter()
 
@@ -159,24 +159,71 @@ async def download_artifact(
 
 
 @router.get(
+    "/{artifact_id}/export",
+    summary="Download artifact in user-facing format",
+    response_class=Response,
+)
+async def export_artifact(
+    artifact_id: UUID,
+    request: Request,
+    format: str = Query(
+        ...,
+        description="Export format: docx, pdf, csv, zip, or xml",
+        pattern="^(docx|pdf|csv|zip|xml)$",
+    ),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Export artifact content as DOCX, PDF, CSV, ZIP, or XML with audit logging."""
+    svc = ArtifactService(db)
+    result = await svc.export_artifact_file(
+        artifact_id,
+        current_user.organization_id,
+        current_user,
+        format,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return Response(
+        content=result.content,
+        media_type=result.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
+    )
+
+
+@router.get(
     "/{artifact_id}/download-csv",
-    summary="Download synthetic artifact as CSV",
+    summary="Download tabular artifact as CSV",
     response_class=Response,
 )
 async def download_artifact_csv(
     artifact_id: UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    """Export synthetic patient-level data as a CSV file."""
+    """Legacy CSV route — synthetic uses CSV; SDTM/ADaM resolve to ZIP."""
+    from app.repositories.artifact_repository import ArtifactRepository
+
+    repo = ArtifactRepository(db)
+    artifact = await repo.get_by_id(artifact_id, current_user.organization_id)
+    export_format = ArtifactExportService.default_format(artifact.artifact_type) or "csv"
+
     svc = ArtifactService(db)
-    filename, csv_body = await svc.get_artifact_csv_export(
-        artifact_id, current_user.organization_id
+    result = await svc.export_artifact_file(
+        artifact_id,
+        current_user.organization_id,
+        current_user,
+        export_format,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
     )
+    await db.commit()
     return Response(
-        content=csv_body,
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        content=result.content,
+        media_type=result.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
     )
 
 
@@ -210,23 +257,25 @@ async def delete_artifact(
 )
 async def export_define_xml(
     artifact_id: UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    """Build a minimal CDISC define.xml 2.1 document from SDTM artifact content."""
-    repo = ArtifactRepository(db)
-    artifact = await repo.get_by_id(artifact_id, current_user.organization_id)
-    version = await repo.get_version(artifact.current_version_id)
-    xml_content = build_define_xml(version.content or {})
-    safe_name = "".join(
-        c if c.isalnum() or c in "-_" else "_" for c in artifact.name
+    """Legacy define.xml route — delegates to audited export service."""
+    svc = ArtifactService(db)
+    result = await svc.export_artifact_file(
+        artifact_id,
+        current_user.organization_id,
+        current_user,
+        "xml",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
     )
+    await db.commit()
     return Response(
-        content=xml_content,
-        media_type="application/xml",
-        headers={
-            "Content-Disposition": f'attachment; filename="{safe_name}_define.xml"'
-        },
+        content=result.content,
+        media_type=result.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
     )
 
 
@@ -244,6 +293,24 @@ async def list_artifact_versions(
     repo = ArtifactRepository(db)
     versions = await repo.list_versions(artifact_id, current_user.organization_id)
     return [ArtifactVersionResponse.model_validate(v) for v in versions]
+
+
+@router.post(
+    "/{artifact_id}/revise",
+    response_model=ArtifactResponse,
+    summary="Revise rejected artifact",
+)
+async def revise_artifact(
+    artifact_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ArtifactResponse:
+    """Transition artifact from REJECTED → DRAFT for revision."""
+    svc = ArtifactService(db)
+    artifact = await svc.revise(
+        artifact_id, current_user.organization_id, current_user
+    )
+    return ArtifactResponse.model_validate(artifact)
 
 
 @router.post(
