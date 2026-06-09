@@ -39,7 +39,12 @@ class TestDualProgrammerQC:
                 workflow_step=StatisticalQCWorkflow.RAW_TO_SDTM,
                 study_id=uuid4(),
                 actor=actor,
-                input_payload={"domains": [{"domain": "DM", "observations": []}]},
+                input_payload={
+                    "domains": [{
+                        "domain": "DM",
+                        "observations": [{"STUDYID": "S1", "USUBJID": "S1-001"}],
+                    }],
+                },
                 output_artifact_id=uuid4(),
             )
 

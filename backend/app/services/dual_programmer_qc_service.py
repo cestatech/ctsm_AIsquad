@@ -338,11 +338,14 @@ class DualProgrammerQCService:
             )
             return run
 
+        primary_tpl, qc_tpl = _r_templates()[workflow_step]
         comparison = run_dual_program_comparison(
             primary_program=primary_program,
             qc_program=qc_program,
             input_payload=input_payload,
             workflow_step=workflow_step,
+            fallback_primary=primary_tpl,
+            fallback_qc=qc_tpl,
         )
 
         status = _map_comparison_status(comparison)
@@ -423,8 +426,11 @@ Requirements:
 - Use INPUT_DIR and OUTPUT_DIR environment variables (already set)
 - Use only base R (no packages unless essential)
 - Write complete runnable R code only — no markdown fences
-- Read input CSVs from INPUT_DIR
+- Read input CSVs from INPUT_DIR (dm.csv, adsl.csv, etc.) — do NOT hand-parse JSON with regex
 - Write output CSVs to OUTPUT_DIR
+- Never use regex lookahead in strsplit(); if regex is required use perl=TRUE
+- SDTM DM output columns: STUDYID, DOMAIN, USUBJID (+ AGE when present in source)
+- ADaM ADSL output columns: STUDYID, USUBJID, SUBJID, ITTFL, SAFFL (+ AGE when present in DM)
 """
 
         response = await self._client.messages.create(

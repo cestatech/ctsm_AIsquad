@@ -37,7 +37,8 @@ export function useArtifactDownload(token: string | null) {
       const { blob, filename } = await artifactsApi.exportArtifact(
         artifact.id,
         format,
-        token
+        token,
+        artifact
       );
       triggerBlobDownload(blob, filename);
     } catch (err) {

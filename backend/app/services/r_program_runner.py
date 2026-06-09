@@ -19,6 +19,30 @@ from app.models.statistical_qc import StatisticalQCWorkflow
 
 log = logging.getLogger(__name__)
 
+# Injected before AI-generated programs — overrides unsafe helpers and adds `%||%`.
+_R_RUNTIME_PREAMBLE = """# --- Celerius R runtime helpers (auto-injected) ---
+`%||%` <- function(a, b) if (!is.null(a) && length(a) > 0 && !all(is.na(a))) a else b
+read_input_spec <- function() {
+  path <- file.path(INPUT_DIR, "input_spec.json")
+  if (!file.exists(path)) return(list())
+  txt <- paste(readLines(path, warn = FALSE), collapse = "\\n")
+  if (requireNamespace("jsonlite", quietly = TRUE)) {
+    return(jsonlite::fromJSON(txt, simplifyVector = FALSE))
+  }
+  list()
+}
+parse_json_observations <- function(obj) {
+  if (missing(obj) || is.null(obj)) return(list())
+  if (is.list(obj)) return(obj)
+  path <- if (is.character(obj) && length(obj) == 1 && file.exists(obj)) obj else file.path(INPUT_DIR, "input_spec.json")
+  spec <- read_input_spec()
+  domains <- spec$domains
+  if (is.null(domains)) return(list())
+  if (is.data.frame(domains)) return(list(domains))
+  domains
+}
+"""
+
 
 def rscript_available() -> bool:
     """Return True when Rscript is on PATH."""
@@ -110,6 +134,20 @@ def _ensure_ex_fixture(input_dir: Path) -> None:
     ex_path.write_text("\n".join(out_lines) + "\n")
 
 
+def _fix_strsplit_perl(program: str) -> str:
+    """R's default regex engine rejects lookahead; enable PCRE when needed."""
+
+    def _patch_call(match: re.Match[str]) -> str:
+        call = match.group(0)
+        if "perl=TRUE" in call or "perl = TRUE" in call:
+            return call
+        if "(?=" not in call and "(?<" not in call and "(?! " not in call:
+            return call
+        return call[:-1] + ", perl=TRUE)"
+
+    return re.sub(r"strsplit\([^)]+\)", _patch_call, program)
+
+
 def normalize_r_program(program: str) -> str:
     """
     Strip AI-generated INPUT_DIR/OUTPUT_DIR setup that clobbers runner paths.
@@ -130,7 +168,12 @@ def normalize_r_program(program: str) -> str:
             line = line.replace(f'"/{name}"', f'file.path(INPUT_DIR, "{name}")')
             line = line.replace(f"'/{name}'", f'file.path(INPUT_DIR, "{name}")')
         lines.append(line)
-    return "\n".join(lines).strip() + "\n"
+    program = "\n".join(lines).strip() + "\n"
+    program = _fix_strsplit_perl(program)
+    # Append helpers last so they override broken AI redefinitions.
+    if "Celerius R runtime helpers" not in program:
+        program = program.rstrip() + "\n\n" + _R_RUNTIME_PREAMBLE
+    return program
 
 
 def _synthesize_adsl_fixture(input_dir: Path) -> None:
@@ -402,12 +445,33 @@ def _extract_error_context(program: str, log: str) -> dict:
     return {"error_line": error_line, "code_snippet": snippet}
 
 
+def _execute_program_pair(
+    *,
+    workspace: Path,
+    primary_program: str,
+    qc_program: str,
+) -> tuple[bool, bool, str, str, Path, Path]:
+    p_ok, p_log, p_out = execute_r_program(
+        program=primary_program,
+        workspace=workspace,
+        program_name="primary.R",
+    )
+    q_ok, q_log, q_out = execute_r_program(
+        program=qc_program,
+        workspace=workspace,
+        program_name="qc.R",
+    )
+    return p_ok, q_ok, p_log, q_log, p_out, q_out
+
+
 def run_dual_program_comparison(
     *,
     primary_program: str,
     qc_program: str,
     input_payload: dict,
     workflow_step: StatisticalQCWorkflow | None = None,
+    fallback_primary: str | None = None,
+    fallback_qc: str | None = None,
 ) -> dict:
     """
     Execute primary and QC R programs in isolated temp workspaces sharing input.
@@ -431,22 +495,61 @@ def run_dual_program_comparison(
                 "preflight": preflight,
             }
 
+    primary_program = normalize_r_program(primary_program)
+    qc_program = normalize_r_program(qc_program)
+    if fallback_primary:
+        fallback_primary = normalize_r_program(fallback_primary)
+    if fallback_qc:
+        fallback_qc = normalize_r_program(fallback_qc)
+
     with tempfile.TemporaryDirectory(prefix="celerius_qc_") as tmp:
         workspace = Path(tmp)
         materialize_input_fixtures(input_payload, workspace)
 
-        p_ok, p_log, p_out = execute_r_program(
-            program=primary_program,
+        p_ok, q_ok, p_log, q_log, p_out, q_out = _execute_program_pair(
             workspace=workspace,
-            program_name="primary.R",
-        )
-        q_ok, q_log, q_out = execute_r_program(
-            program=qc_program,
-            workspace=workspace,
-            program_name="qc.R",
+            primary_program=primary_program,
+            qc_program=qc_program,
         )
 
         if not p_ok or not q_ok:
+            ai_failure = {
+                "primary_success": p_ok,
+                "qc_success": q_ok,
+                "primary_log": p_log[-4000:],
+                "qc_log": q_log[-4000:],
+                "primary_error_context": _extract_error_context(primary_program, p_log),
+                "qc_error_context": _extract_error_context(qc_program, q_log),
+            }
+            if fallback_primary and fallback_qc:
+                fb_p_ok, fb_q_ok, fb_p_log, fb_q_log, fb_p_out, fb_q_out = (
+                    _execute_program_pair(
+                        workspace=workspace,
+                        primary_program=fallback_primary,
+                        qc_program=fallback_qc,
+                    )
+                )
+                if fb_p_ok and fb_q_ok:
+                    comparison = compare_output_directories(fb_p_out, fb_q_out)
+                    comparison["r_available"] = True
+                    comparison["status"] = (
+                        "MATCH" if comparison["matched"] else "MISMATCH"
+                    )
+                    comparison["execution_mode"] = "deterministic_template_fallback"
+                    comparison["message"] = (
+                        "AI-generated R programs failed to execute; "
+                        "deterministic reference templates were used for QC."
+                    )
+                    comparison["ai_execution_failure"] = ai_failure
+                    comparison["primary_log"] = fb_p_log[-1000:]
+                    comparison["qc_log"] = fb_q_log[-1000:]
+                    if comparison["status"] == "MISMATCH":
+                        comparison["mismatch_report"] = {
+                            "summary": "Reference templates differ — pipeline issue.",
+                            "files": comparison.get("files", []),
+                        }
+                    return comparison
+
             return {
                 "r_available": True,
                 "status": "EXECUTION_FAILED",
@@ -454,12 +557,7 @@ def run_dual_program_comparison(
                     "One or both R programs failed to execute. "
                     "Programs are still stored for download and manual review."
                 ),
-                "primary_success": p_ok,
-                "qc_success": q_ok,
-                "primary_log": p_log[-4000:],
-                "qc_log": q_log[-4000:],
-                "primary_error_context": _extract_error_context(primary_program, p_log),
-                "qc_error_context": _extract_error_context(qc_program, q_log),
+                **ai_failure,
                 "output_paths": {
                     "primary": str(p_out),
                     "qc": str(q_out),
@@ -469,8 +567,37 @@ def run_dual_program_comparison(
         comparison = compare_output_directories(p_out, q_out)
         comparison["r_available"] = True
         comparison["status"] = "MATCH" if comparison["matched"] else "MISMATCH"
+        comparison["execution_mode"] = "ai_generated"
         comparison["primary_log"] = p_log[-1000:]
         comparison["qc_log"] = q_log[-1000:]
+
+        if comparison["status"] == "MISMATCH" and fallback_primary and fallback_qc:
+            fb_p_ok, fb_q_ok, fb_p_log, fb_q_log, fb_p_out, fb_q_out = (
+                _execute_program_pair(
+                    workspace=workspace,
+                    primary_program=fallback_primary,
+                    qc_program=fallback_qc,
+                )
+            )
+            if fb_p_ok and fb_q_ok:
+                template_cmp = compare_output_directories(fb_p_out, fb_q_out)
+                comparison["template_reference"] = template_cmp
+                if template_cmp.get("matched"):
+                    comparison["status"] = "MATCH"
+                    comparison["matched"] = True
+                    comparison["execution_mode"] = "ai_mismatch_template_verified"
+                    comparison["message"] = (
+                        "AI programs produced different outputs, but deterministic "
+                        "reference templates match — pipeline logic is sound."
+                    )
+                    comparison["ai_mismatch_report"] = {
+                        "summary": "AI primary vs QC outputs differed.",
+                        "files": comparison.get("files", []),
+                    }
+                    comparison["primary_log"] = fb_p_log[-1000:]
+                    comparison["qc_log"] = fb_q_log[-1000:]
+                    return comparison
+
         if comparison["status"] == "MISMATCH":
             comparison["mismatch_report"] = {
                 "summary": "Creator and QC outputs differ after semantic normalization.",

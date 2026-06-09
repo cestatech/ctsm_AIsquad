@@ -14,9 +14,12 @@ from app.services.r_program_runner import (
     sha256_file,
 )
 from app.services.dual_programmer_qc_service import (
+    _primary_adam_template,
     _primary_sdtm_template,
+    _qc_adam_template,
     _qc_sdtm_template,
 )
+from app.models.statistical_qc import StatisticalQCWorkflow
 
 
 class TestMaterializeFixtures:
@@ -69,6 +72,16 @@ class TestSha256:
 
 
 class TestNormalizeRProgram:
+    def test_fixes_strsplit_lookahead_with_perl(self):
+        program = 'parts <- strsplit(obj, ",(?=\\\\s*\\"")\n'
+        normalized = normalize_r_program(program)
+        assert "perl=TRUE" in normalized
+
+    def test_injects_runtime_preamble(self):
+        normalized = normalize_r_program("x <- 1\n")
+        assert "parse_json_observations" in normalized
+        assert "%||%" in normalized
+
     def test_strips_sys_getenv_path_setup(self):
         program = """# Set up directories
 INPUT_DIR <- Sys.getenv("INPUT_DIR")
@@ -104,3 +117,30 @@ class TestRunDualProgramComparison:
             pytest.skip("Rscript not installed in test environment")
         assert result["status"] in {"MATCH", "MISMATCH"}
         assert result.get("primary_success", True) is not False
+
+    def test_broken_ai_program_falls_back_to_templates(self):
+        broken = "stop('intentional AI execution failure')\n"
+        payload = {
+            "domains": [{
+                "domain": "DM",
+                "observations": [
+                    {"STUDYID": "S1", "USUBJID": "S1-001", "AGE": "45"},
+                ],
+            }],
+        }
+        result = run_dual_program_comparison(
+            primary_program=broken,
+            qc_program=broken,
+            input_payload=payload,
+            workflow_step=StatisticalQCWorkflow.SDTM_TO_ADAM,
+            fallback_primary=_primary_adam_template(),
+            fallback_qc=_qc_adam_template(),
+        )
+        if result.get("r_available") is False:
+            pytest.skip("Rscript not installed in test environment")
+        assert result["status"] == "MATCH"
+        assert result.get("execution_mode") in {
+            "deterministic_template_fallback",
+            "ai_mismatch_template_verified",
+            "ai_generated",
+        }

@@ -50,6 +50,41 @@ class TestUploadFile:
         )
         assert resp.status_code == 201
 
+    async def test_synthetic_filename_auto_labeled(
+        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+    ):
+        csv_content = b"subject_id,age\nS001,45\n"
+        resp = await iclient.post(
+            f"/api/v1/studies/{i_study.id}/uploads",
+            files={
+                "file": (
+                    "CLARITY-50_synthetic_demographics.csv",
+                    csv_content,
+                    "text/csv",
+                )
+            },
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["data_source_type"] == "SYNTHETIC"
+        assert data["is_synthetic"] is True
+        assert "Synthetic" in data["data_cut_label"]
+
+    async def test_explicit_synthetic_upload(
+        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+    ):
+        resp = await iclient.post(
+            f"/api/v1/studies/{i_study.id}/uploads",
+            files={"file": ("patients.csv", b"id\n1\n", "text/csv")},
+            data={"data_source_type": "SYNTHETIC"},
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["data_source_type"] == "SYNTHETIC"
+        assert data["is_synthetic"] is True
+
     async def test_unsupported_mime_type_returns_415(
         self, iclient: AsyncClient, i_study: Study, admin_tok: str
     ):

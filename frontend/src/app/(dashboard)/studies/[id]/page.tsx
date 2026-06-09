@@ -124,6 +124,8 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
               ? uploadCutLabel || undefined
               : uploadSourceType === "LIVE_FINAL"
               ? uploadCutLabel || "Final Data Cut"
+              : uploadSourceType === "SYNTHETIC"
+              ? uploadCutLabel || undefined
               : undefined,
           data_cut_date: uploadCutDate || undefined,
         },
@@ -802,6 +804,7 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
                 >
                   <option value="LIVE_FINAL">Live Final Data</option>
                   <option value="LIVE_INTERIM">Live Interim Data</option>
+                  <option value="SYNTHETIC">Synthetic Data</option>
                 </select>
               </label>
               <label className="flex flex-col gap-1">
@@ -813,6 +816,8 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
                   placeholder={
                     uploadSourceType === "LIVE_INTERIM"
                       ? "Week 8 Interim Data Cut"
+                      : uploadSourceType === "SYNTHETIC"
+                      ? "Synthetic Data Version 1 (optional)"
                       : "Final Data Cut"
                   }
                   className="border border-slate-200 px-2 py-1"

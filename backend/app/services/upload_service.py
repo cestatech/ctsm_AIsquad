@@ -13,6 +13,7 @@ import csv
 import hashlib
 import io
 import json
+import re
 import uuid
 from pathlib import Path
 from uuid import UUID
@@ -115,14 +116,13 @@ class UploadService:
 
         extracted_metadata = self._extract_legacy_metadata(content, mime_type, file.filename or "")
 
-        if data_source_type == DataSourceType.SYNTHETIC:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={
-                    "code": "INVALID_SOURCE_TYPE",
-                    "message": "Use synthetic data generation for SYNTHETIC uploads.",
-                },
-            )
+        filename = file.filename or ""
+        if (
+            data_source_type == DataSourceType.LIVE_FINAL
+            and self._detect_synthetic_upload(content, mime_type, filename)
+        ):
+            data_source_type = DataSourceType.SYNTHETIC
+
         if data_source_type == DataSourceType.LIVE_INTERIM and not data_cut_label:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -131,14 +131,22 @@ class UploadService:
                     "message": "Interim live uploads require a data cut label.",
                 },
             )
-        default_label = (
-            data_cut_label
-            or (
-                "Final Data Cut"
-                if data_source_type == DataSourceType.LIVE_FINAL
-                else "Interim Data Cut"
+
+        is_synthetic = data_source_type == DataSourceType.SYNTHETIC
+        if is_synthetic:
+            synthetic_version = (
+                await self._count_synthetic_uploads(study_id, actor.organization_id) + 1
             )
-        )
+            default_label = data_cut_label or f"Synthetic Data Version {synthetic_version}"
+        else:
+            default_label = (
+                data_cut_label
+                or (
+                    "Final Data Cut"
+                    if data_source_type == DataSourceType.LIVE_FINAL
+                    else "Interim Data Cut"
+                )
+            )
 
         record = await self._repo.create(
             organization_id=actor.organization_id,
@@ -156,7 +164,7 @@ class UploadService:
             data_source_type=data_source_type,
             data_cut_label=default_label,
             data_cut_date=data_cut_date,
-            is_synthetic=False,
+            is_synthetic=is_synthetic,
         )
         record.data_cut_id = record.id
         await self._repo.update(record)
@@ -175,6 +183,7 @@ class UploadService:
                 "file_hash": file_hash,
                 "data_source_type": data_source_type.value,
                 "data_cut_label": default_label,
+                "is_synthetic": is_synthetic,
             },
             ip_address=ip_address,
             user_agent=user_agent,
@@ -209,16 +218,28 @@ class UploadService:
             record.upload_status = "PARSED"
 
             # Register UploadedFile node in the CIP graph
-            data_cut = DataCutContext.for_live_upload(
-                study_id=study_id,
-                created_by=actor.id,
-                upload_id=record.id,
-                data_source_type=record.data_source_type,
-                data_cut_label=record.data_cut_label or "Data Cut",
-                data_cut_date=record.data_cut_date,
-                notes=description,
-                created_at=record.created_at,
-            )
+            if record.is_synthetic or record.data_source_type == DataSourceType.SYNTHETIC:
+                ver_match = re.search(r"(\d+)$", record.data_cut_label or "")
+                version_number = int(ver_match.group(1)) if ver_match else 1
+                data_cut = DataCutContext.for_synthetic_upload(
+                    study_id=study_id,
+                    created_by=actor.id,
+                    upload_id=record.id,
+                    version_number=version_number,
+                    data_cut_label=record.data_cut_label,
+                    created_at=record.created_at,
+                )
+            else:
+                data_cut = DataCutContext.for_live_upload(
+                    study_id=study_id,
+                    created_by=actor.id,
+                    upload_id=record.id,
+                    data_source_type=record.data_source_type,
+                    data_cut_label=record.data_cut_label or "Data Cut",
+                    data_cut_date=record.data_cut_date,
+                    notes=record.description,
+                    created_at=record.created_at,
+                )
             file_node, _ = await self._graph.register_domain_record(
                 organization_id=actor.organization_id,
                 node_type=GraphNodeType.UPLOADED_FILE,
@@ -281,7 +302,7 @@ class UploadService:
                     data_source_type=record.data_source_type,
                     data_cut_label=record.data_cut_label,
                     data_cut_date=record.data_cut_date,
-                    is_synthetic=False,
+                    is_synthetic=record.is_synthetic,
                     data_cut_id=record.data_cut_id,
                     source_upload_id=record.id,
                 )
@@ -690,6 +711,36 @@ class UploadService:
             "min_value": min_val,
             "max_value": max_val,
         }
+
+    async def _count_synthetic_uploads(self, study_id: UUID, organization_id: UUID) -> int:
+        """Count prior synthetic uploads for version labeling."""
+        items, _ = await self._repo.list_for_study(
+            study_id, organization_id, limit=1000, offset=0
+        )
+        return sum(
+            1
+            for upload in items
+            if upload.data_source_type == DataSourceType.SYNTHETIC or upload.is_synthetic
+        )
+
+    @staticmethod
+    def _detect_synthetic_upload(content: bytes, mime_type: str, filename: str) -> bool:
+        """Infer synthetic provenance from export filename or embedded markers."""
+        if "synthetic" in filename.lower():
+            return True
+        if mime_type in _PARSEABLE_MIME_TYPES or filename.lower().endswith(".csv"):
+            try:
+                sample = content[:8192].decode("utf-8", errors="replace")
+                if "SYNTHETIC" in sample:
+                    return True
+                lowered = sample.lower()
+                if "synthetic" in lowered and (
+                    "label" in lowered or "document_type" in lowered
+                ):
+                    return True
+            except Exception:
+                pass
+        return False
 
     @staticmethod
     def _extract_legacy_metadata(content: bytes, mime_type: str, filename: str) -> dict:

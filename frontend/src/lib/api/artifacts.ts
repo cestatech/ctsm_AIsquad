@@ -1,3 +1,4 @@
+import { buildArtifactFallbackFilename } from "@/lib/artifactDownload";
 import { apiClient } from "./client";
 import type { Artifact, ArtifactVersion, PaginatedResponse } from "@/types";
 
@@ -64,7 +65,8 @@ export const artifactsApi = {
   exportArtifact: async (
     id: string,
     format: "docx" | "pdf" | "csv" | "zip" | "xml",
-    token: string
+    token: string,
+    artifact?: Pick<Artifact, "artifact_type" | "name" | "current_version_number">
   ): Promise<{ blob: Blob; filename: string }> => {
     const response = await fetch(
       `${API_URL}/artifacts/${id}/export?format=${format}`,
@@ -89,7 +91,9 @@ export const artifactsApi = {
     }
     const disposition = response.headers.get("Content-Disposition") ?? "";
     const match = disposition.match(/filename="([^"]+)"/);
-    const filename = match?.[1] ?? `artifact.${format}`;
+    const filename =
+      match?.[1] ??
+      (artifact ? buildArtifactFallbackFilename(artifact, format) : `artifact.${format}`);
     const blob = await response.blob();
     return { blob, filename };
   },

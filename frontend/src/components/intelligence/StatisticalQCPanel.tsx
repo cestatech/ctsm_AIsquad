@@ -130,7 +130,15 @@ function QCRunCard({
                   ? "R not available — programs stored for manual execution and comparison."
                   : run.status === "EXECUTION_FAILED"
                   ? "R execution failed — programs are saved below for manual review. This usually means the generated script could not read input files in the isolated QC workspace."
+                  : typeof comparison.message === "string"
+                  ? comparison.message
                   : `Comparison: ${String(comparison.status ?? "unknown")}`}
+                {comparison.execution_mode === "deterministic_template_fallback" && (
+                  <> Reference templates were used after AI execution failed.</>
+                )}
+                {comparison.execution_mode === "ai_mismatch_template_verified" && (
+                  <> AI programs differed; reference templates matched.</>
+                )}
                 {typeof comparison.file_count === "number" && (
                   <> · {comparison.file_count} output file(s)</>
                 )}

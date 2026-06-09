@@ -112,13 +112,29 @@ class TestArtifactExportService:
         filename = ArtifactExportService.build_filename(
             ArtifactType.SDTM_DATASET, "CLARITY-50", 3, "zip"
         )
-        assert filename == "sdtm_CLARITY-50_v3.zip"
+        assert filename == "sdtm_clarity_50_v3.zip"
 
     def test_build_filename_xml(self):
         filename = ArtifactExportService.build_filename(
             ArtifactType.SDTM_DATASET, "CLARITY-50", 3, "xml"
         )
-        assert filename == "sdtm_CLARITY-50_v3_define.xml"
+        assert filename == "sdtm_clarity_50_v3_define.xml"
+
+    def test_build_filename_synthetic_csv_uses_primary_name(self):
+        filename = ArtifactExportService.build_filename(
+            ArtifactType.OTHER,
+            "CLARITY-50",
+            2,
+            "csv",
+            content={"primary_csv_filename": "CLARITY-50_synthetic_demographics.csv"},
+        )
+        assert filename == "CLARITY-50_synthetic_demographics.csv"
+
+    def test_build_filename_protocol_docx(self):
+        filename = ArtifactExportService.build_filename(
+            ArtifactType.PROTOCOL, "CLARITY-50", 1, "docx"
+        )
+        assert filename == "protocol_clarity_50_v1.docx"
 
     def test_export_protocol_docx(self):
         artifact = _artifact(ArtifactType.PROTOCOL)

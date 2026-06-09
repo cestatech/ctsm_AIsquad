@@ -107,6 +107,34 @@ class DataCutContext:
         )
 
     @classmethod
+    def for_synthetic_upload(
+        cls,
+        *,
+        study_id: UUID,
+        created_by: UUID,
+        upload_id: UUID,
+        version_number: int = 1,
+        data_cut_label: str | None = None,
+        created_at: datetime | None = None,
+        synthetic_data_run_id: UUID | None = None,
+    ) -> DataCutContext:
+        """Label a re-uploaded synthetic CSV/XLSX export for downstream pipeline use."""
+        now = created_at or datetime.now().astimezone()
+        label = data_cut_label or f"Synthetic Data Version {version_number}"
+        return cls(
+            data_source_type=DataSourceType.SYNTHETIC,
+            data_cut_label=label,
+            data_cut_date=now.date(),
+            is_synthetic=True,
+            study_id=study_id,
+            created_by=created_by,
+            created_at=now,
+            source_upload_id=upload_id,
+            synthetic_data_run_id=synthetic_data_run_id,
+            data_cut_id=upload_id,
+        )
+
+    @classmethod
     def for_synthetic_run(
         cls,
         *,

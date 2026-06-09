@@ -1,4 +1,4 @@
-import type { ArtifactType } from "@/types";
+import type { Artifact, ArtifactType } from "@/types";
 
 export type ArtifactExportFormat = "docx" | "pdf" | "csv" | "zip" | "xml";
 
@@ -57,6 +57,38 @@ export function getArtifactDownloadConfig(
   artifact?: { name?: string; description?: string | null }
 ): ArtifactDownloadOption | null {
   return getArtifactDownloadOptions(artifactType, artifact).find((o) => o.primary) ?? null;
+}
+
+const TYPE_FILENAME_PREFIX: Partial<Record<ArtifactType, string>> = {
+  PROTOCOL: "protocol",
+  SAP: "sap",
+  CSR: "csr",
+  ICF: "icf",
+  TLF: "tlf",
+  EDC_CRF: "edc_ecrf",
+  SDTM_DATASET: "sdtm",
+  ADAM_DATASET: "adam",
+  OTHER: "synthetic_raw",
+  VALIDATION_REPORT: "validation_report",
+  TRACEABILITY_MATRIX: "traceability_matrix",
+  SUBMISSION_PACKAGE: "submission_package",
+};
+
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "study";
+}
+
+export function buildArtifactFallbackFilename(
+  artifact: Pick<Artifact, "artifact_type" | "name" | "current_version_number">,
+  format: ArtifactExportFormat
+): string {
+  const prefix = TYPE_FILENAME_PREFIX[artifact.artifact_type] ?? slugify(artifact.artifact_type);
+  const slug = slugify(artifact.name);
+  const version = artifact.current_version_number ?? 1;
+  if (format === "xml") {
+    return `${prefix}_${slug}_v${version}_define.xml`;
+  }
+  return `${prefix}_${slug}_v${version}.${format}`;
 }
 
 export function triggerBlobDownload(blob: Blob, filename: string) {
