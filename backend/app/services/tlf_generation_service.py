@@ -12,6 +12,8 @@ from app.core.config import get_settings
 from app.core.permissions import Permission, check_permission
 from app.models.artifact import Artifact, ArtifactType
 from app.models.audit import AuditAction
+from app.models.graph import GraphEdgeType, GraphNodeType
+from app.models.intelligence import DataLineageType
 from app.models.statistical_qc import StatisticalQCWorkflow
 from app.models.user import User
 from app.models.validation import ValidationRun
@@ -20,9 +22,10 @@ from app.repositories.study_repository import StudyRepository
 from app.schemas.validation import ValidationRunCreate
 from app.services.artifact_service import ArtifactService
 from app.services.audit_service import AuditService
+from app.services.context_graph_service import ContextGraphService
 from app.services.data_cut_service import extract_data_cut, prepare_pipeline_artifact
 from app.services.dual_programmer_qc_service import DualProgrammerQCService
-from app.services.intelligence_service import AIDecisionService
+from app.services.intelligence_service import AIDecisionService, DataLineageService
 from app.services.validation_service import ValidationService
 
 _AGENT_NAME = "tlf-generation-agent"
@@ -49,6 +52,8 @@ class TLFGenerationService:
         self._ai_decision = AIDecisionService(db)
         self._validation = ValidationService(db)
         self._audit = AuditService(db)
+        self._graph = ContextGraphService(db)
+        self._lineage = DataLineageService(db)
         self._settings = get_settings()
 
     async def generate_from_adam_artifact(
@@ -172,6 +177,21 @@ class TLFGenerationService:
             user_agent=user_agent,
         )
 
+        await self._register_cip_links(
+            adam_artifact=adam_artifact,
+            tlf_artifact=artifact,
+            tlf_content=content,
+            adam_content=adam_content,
+            actor=actor,
+            ai_decision_id=decision.id,
+        )
+        await self._link_study_traceability(
+            study_id=study.id,
+            artifact=artifact,
+            actor=actor,
+            ai_decision_id=decision.id,
+        )
+
         return TLFGenerationResult(
             artifact=artifact,
             ai_decision_id=decision.id,
@@ -257,3 +277,166 @@ class TLFGenerationService:
             "output_formats": ["CSV", "RTF"],
             "regulatory_references": ["ICH E3", "CDISC TLF Standards"],
         }
+
+    async def _resolve_graph_node(
+        self,
+        *,
+        external_id: UUID,
+        external_type: str,
+        node_type: GraphNodeType,
+        label: str,
+        study_id: UUID,
+        actor: User,
+        properties: dict | None = None,
+    ):
+        """Return an existing graph node or register one for an artifact."""
+        existing = await self._graph.find_node_for_domain_record(
+            external_id, external_type, actor.organization_id
+        )
+        if existing is not None:
+            return existing
+        node, _ = await self._graph.register_domain_record(
+            organization_id=actor.organization_id,
+            node_type=node_type,
+            external_id=external_id,
+            external_type=external_type,
+            label=label,
+            study_id=study_id,
+            properties=properties,
+            actor=actor,
+        )
+        return node
+
+    async def _register_cip_links(
+        self,
+        *,
+        adam_artifact: Artifact,
+        tlf_artifact: Artifact,
+        tlf_content: dict,
+        adam_content: dict,
+        actor: User,
+        ai_decision_id: UUID,
+    ) -> None:
+        """Register TLF in the context graph and link ADaM → TLF (and SDTM chain)."""
+        tlf_node, _ = await self._graph.register_domain_record(
+            organization_id=actor.organization_id,
+            node_type=GraphNodeType.TLF,
+            external_id=tlf_artifact.id,
+            external_type="tlf_artifact",
+            label=tlf_artifact.name,
+            study_id=tlf_artifact.study_id,
+            properties={"artifact_id": str(tlf_artifact.id)},
+            actor=actor,
+        )
+        adam_node = await self._resolve_graph_node(
+            external_id=adam_artifact.id,
+            external_type="adam_artifact",
+            node_type=GraphNodeType.ADAM_DATASET,
+            label=adam_artifact.name,
+            study_id=adam_artifact.study_id,
+            actor=actor,
+            properties={"artifact_id": str(adam_artifact.id)},
+        )
+        await self._graph.link_adam_to_tlf(
+            org_id=actor.organization_id,
+            study_id=tlf_artifact.study_id,
+            adam_node_id=adam_node.id,
+            tlf_node_id=tlf_node.id,
+            is_ai_generated=True,
+            ai_decision_id=ai_decision_id,
+            actor=actor,
+        )
+
+        for src_id in adam_content.get("source_sdtm_artifact_ids", []):
+            try:
+                sdtm_uuid = UUID(str(src_id))
+            except ValueError:
+                continue
+            try:
+                sdtm_art = await self._artifact_repo.get_by_id(
+                    sdtm_uuid, actor.organization_id
+                )
+            except HTTPException:
+                continue
+            sdtm_node = await self._resolve_graph_node(
+                external_id=sdtm_art.id,
+                external_type="sdtm_artifact",
+                node_type=GraphNodeType.SDTM_DOMAIN,
+                label=sdtm_art.name,
+                study_id=sdtm_art.study_id,
+                actor=actor,
+                properties={"artifact_id": str(sdtm_art.id)},
+            )
+            await self._graph.link_sdtm_to_adam(
+                org_id=actor.organization_id,
+                study_id=tlf_artifact.study_id,
+                sdtm_node_id=sdtm_node.id,
+                adam_node_id=adam_node.id,
+                is_ai_generated=True,
+                ai_decision_id=ai_decision_id,
+                actor=actor,
+            )
+
+        for table in tlf_content.get("tables", []):
+            table_id = table.get("id", "")
+            source_dataset = table.get("source_dataset", "")
+            await self._lineage.record_field_lineage(
+                organization_id=actor.organization_id,
+                lineage_type=DataLineageType.DERIVED,
+                source_type="adam_dataset",
+                source_id=adam_artifact.id,
+                source_field=source_dataset,
+                target_type="tlf_table",
+                target_id=tlf_artifact.id,
+                target_field=table_id,
+                target_domain=table.get("title", ""),
+                transformation_logic=(
+                    f"TLF table {table_id} derived from ADaM dataset {source_dataset}"
+                ),
+                is_ai_generated=True,
+                ai_decision_id=ai_decision_id,
+                study_id=tlf_artifact.study_id,
+                created_by=actor,
+                source_graph_node_id=adam_node.id,
+                target_graph_node_id=tlf_node.id,
+            )
+
+    async def _link_study_traceability(
+        self,
+        *,
+        study_id: UUID,
+        artifact: Artifact,
+        actor: User,
+        ai_decision_id: UUID,
+    ) -> None:
+        """Attach TLF package to the study milestone chain."""
+        study = await self._study_repo.get(study_id, actor.organization_id)
+        study_node, _ = await self._graph.register_domain_record(
+            organization_id=actor.organization_id,
+            node_type=GraphNodeType.STUDY,
+            external_id=study_id,
+            external_type="study",
+            label=study.name,
+            study_id=study_id,
+            actor=actor,
+        )
+        tlf_node, _ = await self._graph.register_domain_record(
+            organization_id=actor.organization_id,
+            node_type=GraphNodeType.TLF,
+            external_id=artifact.id,
+            external_type="tlf_artifact",
+            label=artifact.name,
+            study_id=study_id,
+            properties={"artifact_id": str(artifact.id)},
+            actor=actor,
+        )
+        await self._graph.create_relationship(
+            organization_id=actor.organization_id,
+            source_node_id=tlf_node.id,
+            target_node_id=study_node.id,
+            edge_type=GraphEdgeType.PART_OF,
+            study_id=study_id,
+            is_ai_generated=True,
+            ai_decision_id=ai_decision_id,
+            actor=actor,
+        )

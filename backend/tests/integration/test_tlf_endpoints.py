@@ -131,6 +131,16 @@ class TestTLFEndpoints:
         assert qc.json()["total"] >= 1
         assert qc.json()["items"][0]["workflow_step"] == "ADAM_TO_TLF"
 
+        edges = await iclient.get(
+            "/api/v1/graph/edges",
+            params={"study_id": str(i_study.id)},
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert edges.status_code == 200
+        edge_types = {item["edge_type"] for item in edges.json()["items"]}
+        assert "ADAM_TO_TLF" in edge_types
+        assert "SDTM_TO_ADAM" in edge_types
+
     async def test_rejects_non_adam_source(
         self,
         iclient: AsyncClient,
