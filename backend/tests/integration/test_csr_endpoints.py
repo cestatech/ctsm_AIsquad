@@ -2,10 +2,71 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from datetime import UTC, datetime
+from uuid import uuid4
+
 import pytest
 from httpx import AsyncClient
 
+from app.models.artifact import Artifact, ArtifactStatus, ArtifactType, ArtifactVersion
 from app.models.study import Study
+
+
+async def _ensure_protocol_and_sap(idb, i_study, i_org, i_admin) -> None:
+    """Seed Protocol and SAP artifacts required for CSR gating."""
+    for art_type, name, content in (
+        (
+            ArtifactType.PROTOCOL,
+            "Test Protocol",
+            {
+                "title": "Test Protocol",
+                "objectives": {"primary": [{"description": "Primary objective"}]},
+                "design": {"summary": "Randomized controlled trial"},
+            },
+        ),
+        (
+            ArtifactType.SAP,
+            "Test SAP",
+            {
+                "title": "Test SAP",
+                "primary_endpoint": "Change from baseline",
+                "analysis_populations": ["ITT"],
+            },
+        ),
+    ):
+        artifact = Artifact(
+            id=uuid4(),
+            organization_id=i_org.id,
+            study_id=i_study.id,
+            artifact_type=art_type,
+            name=name,
+            status=ArtifactStatus.DRAFT,
+            created_by_id=i_admin.id,
+        )
+        idb.add(artifact)
+        await idb.flush()
+        content_hash = hashlib.sha256(
+            json.dumps(content, sort_keys=True).encode()
+        ).hexdigest()
+        version = ArtifactVersion(
+            id=uuid4(),
+            artifact_id=artifact.id,
+            organization_id=i_org.id,
+            version_number=1,
+            is_current=True,
+            content=content,
+            content_hash=content_hash,
+            status_at_creation=ArtifactStatus.DRAFT,
+            created_by_id=i_admin.id,
+            created_at=datetime.now(UTC),
+        )
+        idb.add(version)
+        await idb.flush()
+        artifact.current_version_id = version.id
+        artifact.current_version_number = 1
+    await idb.commit()
 
 
 async def _tlf_artifact_id(
@@ -18,6 +79,7 @@ async def _tlf_artifact_id(
 ) -> str:
     from tests.integration.test_tlf_endpoints import _adam_artifact_id
 
+    await _ensure_protocol_and_sap(idb, i_study, i_org, i_admin)
     adam_id = await _adam_artifact_id(
         iclient, idb, i_study, i_org, i_admin, admin_tok
     )
@@ -50,8 +112,11 @@ class TestCSREndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert data["tlf_artifact_count"] >= 1
+        assert data["protocol_artifact_count"] >= 1
+        assert data["sap_artifact_count"] >= 1
         assert data["ready"] is True
         assert any(a["artifact_id"] == tlf_id for a in data["tlf_artifacts"])
+        assert any(r["key"] == "sdtm" and r["met"] for r in data.get("requirements", []))
 
     async def test_generate_csr_from_tlf(
         self,

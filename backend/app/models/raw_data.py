@@ -11,11 +11,14 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from datetime import date
+
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
+from app.models.data_source import DataSourceType
 
 if TYPE_CHECKING:
     from app.models.upload import UploadedFile
@@ -58,6 +61,20 @@ class RawDataset(UUIDMixin, TimestampMixin, Base):
         String(20), nullable=False, default="PENDING"
     )
     parse_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data_source_type: Mapped[DataSourceType] = mapped_column(
+        Enum(DataSourceType, name="data_source_type"),
+        nullable=False,
+        default=DataSourceType.LIVE_FINAL,
+    )
+    data_cut_label: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    data_cut_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    data_cut_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    source_upload_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
 
     uploaded_file: Mapped["UploadedFile"] = relationship(
         "UploadedFile", back_populates="datasets"

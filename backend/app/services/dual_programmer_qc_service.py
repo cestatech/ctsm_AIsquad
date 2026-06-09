@@ -181,7 +181,7 @@ if (file.exists(adsl_path)) {
   n <- nrow(d)
   if ("AGE" %in% names(d)) {
     m <- mean(as.numeric(d$AGE), na.rm = TRUE)
-    row <- data.frame(statistic = "Mean Age (SD)", value = format(round(m, 1), nsmall = 1), n = n)
+    row <- data.frame(statistic = "Mean Age (SD)", value = sprintf("%.1f", m), n = n, stringsAsFactors = FALSE)
   } else {
     row <- data.frame(statistic = "Subjects", value = as.character(n), n = n)
   }
@@ -296,10 +296,53 @@ class DualProgrammerQCService:
             confidence=0.8,
         )
 
+        preflight = None
+        from app.services.r_preflight import preflight_input_validation
+
+        preflight = preflight_input_validation(input_payload, workflow_step)
+        if not preflight["ok"]:
+            run = StatisticalProgramQCRun(
+                organization_id=actor.organization_id,
+                study_id=study_id,
+                workflow_step=workflow_step,
+                status=StatisticalQCStatus.EXECUTION_FAILED,
+                source_artifact_id=source_artifact_id,
+                output_artifact_id=output_artifact_id,
+                primary_ai_decision_id=primary_decision.id,
+                qc_ai_decision_id=qc_decision.id,
+                primary_r_program=primary_program,
+                qc_r_program=qc_program,
+                primary_program_hash=_hash_text(primary_program),
+                qc_program_hash=_hash_text(qc_program),
+                comparison_result={
+                    "status": "PREFLIGHT_FAILED",
+                    "preflight": preflight,
+                    "message": "; ".join(preflight["errors"]),
+                },
+                created_by_id=actor.id,
+            )
+            await self._repo.create(run)
+            await self._audit.log(
+                action=AuditAction.AI_GENERATION_COMPLETED,
+                resource_type="statistical_program_qc",
+                organization_id=actor.organization_id,
+                actor_user_id=actor.id,
+                resource_id=run.id,
+                after_state={
+                    "workflow_step": workflow_step.value,
+                    "status": run.status.value,
+                    "preflight_errors": preflight["errors"],
+                },
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+            return run
+
         comparison = run_dual_program_comparison(
             primary_program=primary_program,
             qc_program=qc_program,
             input_payload=input_payload,
+            workflow_step=workflow_step,
         )
 
         status = _map_comparison_status(comparison)
@@ -415,6 +458,7 @@ def _map_comparison_status(comparison: dict) -> StatisticalQCStatus:
         "MATCH": StatisticalQCStatus.MATCH,
         "MISMATCH": StatisticalQCStatus.MISMATCH,
         "EXECUTION_FAILED": StatisticalQCStatus.EXECUTION_FAILED,
+        "PREFLIGHT_FAILED": StatisticalQCStatus.EXECUTION_FAILED,
         "R_UNAVAILABLE": StatisticalQCStatus.R_UNAVAILABLE,
     }
     return mapping.get(raw, StatisticalQCStatus.PROGRAMS_GENERATED)

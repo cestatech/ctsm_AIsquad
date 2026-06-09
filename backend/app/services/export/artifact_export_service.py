@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.models.artifact import Artifact, ArtifactType
+from app.services.data_cut_service import DataCutContext
 from app.services.export.docx_exporter import export_docx
 from app.services.export.pdf_exporter import export_pdf
 from app.services.export.zip_exporter import export_adam_zip, export_sdtm_zip
@@ -80,15 +81,23 @@ class ArtifactExportService:
         study_slug: str,
         version_number: int,
         export_format: str,
+        content: dict | None = None,
     ) -> str:
         """Build canonical download filename."""
         prefix = TYPE_PREFIX.get(artifact_type, "artifact")
+        if artifact_type == ArtifactType.CSR:
+            cut = DataCutContext.from_mapping((content or {}).get("data_source"))
+            if cut and cut.data_source_type.value == "LIVE_INTERIM":
+                prefix = "interim_csr"
         slug = "".join(
             c if c.isalnum() or c in "-_" else "_" for c in study_slug
         ).strip("_") or "study"
+        cut = DataCutContext.from_mapping((content or {}).get("data_source"))
+        if cut:
+            slug = cut.download_slug(study_slug)
         if export_format == "xml" and artifact_type == ArtifactType.SDTM_DATASET:
-            return f"{prefix}_{slug}_v{version_number}_define.xml"
-        return f"{prefix}_{slug}_v{version_number}.{export_format}"
+            return f"{prefix}_{slug}_define.xml"
+        return f"{prefix}_{slug}.{export_format}"
 
     @classmethod
     def export_artifact(
@@ -165,7 +174,7 @@ class ArtifactExportService:
             raise ValueError(f"Unsupported export format: {export_format}")
 
         filename = cls.build_filename(
-            artifact_type, study_slug, version_number, export_format
+            artifact_type, study_slug, version_number, export_format, content=content
         )
         media_type = FORMAT_MEDIA_TYPES.get(export_format, "application/octet-stream")
         return ExportResult(

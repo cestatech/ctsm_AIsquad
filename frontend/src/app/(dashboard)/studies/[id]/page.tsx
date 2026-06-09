@@ -17,7 +17,8 @@ import { graphApi } from "@/lib/api/graph";
 import { intakeApi } from "@/lib/api/intake";
 import { generationApi } from "@/lib/api/generation";
 import { intelligenceApi } from "@/lib/api/intelligence";
-import type { UploadedFile } from "@/types";
+import { DataSourceBadge } from "@/components/data/DataSourceBadge";
+import type { DataSourceType, UploadedFile } from "@/types";
 
 const ARTIFACT_STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600",
@@ -71,6 +72,9 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSourceType, setUploadSourceType] = useState<DataSourceType>("LIVE_FINAL");
+  const [uploadCutLabel, setUploadCutLabel] = useState("");
+  const [uploadCutDate, setUploadCutDate] = useState("");
 
   const { data: study, isLoading: studyLoading } = useQuery({
     queryKey: ["study", studyId, token],
@@ -109,7 +113,22 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => uploadsApi.upload(studyId, file, undefined, token!),
+    mutationFn: (file: File) =>
+      uploadsApi.upload(
+        studyId,
+        file,
+        {
+          data_source_type: uploadSourceType,
+          data_cut_label:
+            uploadSourceType === "LIVE_INTERIM"
+              ? uploadCutLabel || undefined
+              : uploadSourceType === "LIVE_FINAL"
+              ? uploadCutLabel || "Final Data Cut"
+              : undefined,
+          data_cut_date: uploadCutDate || undefined,
+        },
+        token!
+      ),
     onSuccess: () => {
       setUploadError(null);
       queryClient.invalidateQueries({ queryKey: ["uploads", studyId] });
@@ -171,7 +190,7 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
   const { data: csrReadiness } = useQuery({
     queryKey: ["csr-readiness", studyId, token],
     queryFn: () => csrApi.getStudyReadiness(studyId, token!),
-    enabled: !!token && hasTlfArtifacts,
+    enabled: !!token && (hasTlfArtifacts || hasSap),
   });
 
   const generateStudyCsrMutation = useMutation({
@@ -554,7 +573,7 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
             </div>
           )}
           {/* CSR pipeline */}
-          {hasTlfArtifacts && (
+          {(hasTlfArtifacts || hasSap) && (
             <div className="bg-white border border-slate-200">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                 <h2 className="font-display font-semibold text-slate-900 text-sm">
@@ -569,12 +588,35 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
               <div className="px-5 py-4 space-y-3">
                 {csrReadiness ? (
                   <>
+                    {csrReadiness.data_cut_label && (
+                      <DataSourceBadge
+                        source={{
+                          data_source_type: csrReadiness.data_source_type,
+                          data_cut_label: csrReadiness.data_cut_label,
+                          is_synthetic: csrReadiness.data_source_type === "SYNTHETIC",
+                        }}
+                      />
+                    )}
                     <p className="text-xs text-slate-600">
-                      {csrReadiness.tlf_artifact_count} TLF package(s) available for
-                      ICH E3 CSR assembly.
-                      {csrReadiness.protocol_artifact_count > 0 &&
-                        ` Protocol context included.`}
+                      {csrReadiness.csr_kind === "INTERIM_CSR"
+                        ? "Interim CSR from live interim data cut."
+                        : csrReadiness.csr_kind === "SYNTHETIC_CSR"
+                        ? "Synthetic CSR — not live clinical data."
+                        : "Final CSR requires Protocol, SAP, SDTM, ADaM, and TLF for the same data cut."}
                     </p>
+                    {(csrReadiness.requirements?.length ?? 0) > 0 && (
+                      <ul className="text-[11px] space-y-1">
+                        {csrReadiness.requirements!.map((req) => (
+                          <li
+                            key={req.key}
+                            className={req.met ? "text-emerald-700" : "text-amber-700"}
+                          >
+                            {req.met ? "✓" : "○"} {req.label}
+                            {req.detail ? ` — ${req.detail}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     {!csrReadiness.ready && csrReadiness.issues.length > 0 && (
                       <ul className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-3 py-2 space-y-0.5 list-disc list-inside">
                         {csrReadiness.issues.slice(0, 5).map((issue) => (
@@ -590,6 +632,10 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
                       >
                         {generateStudyCsrMutation.isPending
                           ? "Assembling CSR…"
+                          : csrReadiness.csr_kind === "INTERIM_CSR"
+                          ? "Generate Interim CSR"
+                          : csrReadiness.csr_kind === "SYNTHETIC_CSR"
+                          ? "Generate Synthetic CSR"
                           : "Generate Clinical Study Report"}
                       </button>
                     )}
@@ -725,7 +771,7 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
                   <span className="ml-1.5 text-xs text-slate-400 font-normal">({uploadsData.total})</span>
                 )}
               </h2>
-              <div>
+              <div className="flex items-center gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -746,6 +792,42 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
                 </button>
               </div>
             </div>
+            <div className="px-5 py-3 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+              <label className="flex flex-col gap-1">
+                <span className="text-slate-500">Data source</span>
+                <select
+                  value={uploadSourceType}
+                  onChange={(e) => setUploadSourceType(e.target.value as DataSourceType)}
+                  className="border border-slate-200 px-2 py-1"
+                >
+                  <option value="LIVE_FINAL">Live Final Data</option>
+                  <option value="LIVE_INTERIM">Live Interim Data</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-slate-500">Data cut label</span>
+                <input
+                  type="text"
+                  value={uploadCutLabel}
+                  onChange={(e) => setUploadCutLabel(e.target.value)}
+                  placeholder={
+                    uploadSourceType === "LIVE_INTERIM"
+                      ? "Week 8 Interim Data Cut"
+                      : "Final Data Cut"
+                  }
+                  className="border border-slate-200 px-2 py-1"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-slate-500">Data cut date</span>
+                <input
+                  type="date"
+                  value={uploadCutDate}
+                  onChange={(e) => setUploadCutDate(e.target.value)}
+                  className="border border-slate-200 px-2 py-1"
+                />
+              </label>
+            </div>
             {uploadError && (
               <div className="mx-5 mt-3 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2">{uploadError}</div>
             )}
@@ -765,7 +847,14 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-slate-900 truncate">{f.original_filename}</p>
-                      <p className="text-[11px] text-slate-400">
+                      <DataSourceBadge
+                        source={{
+                          data_source_type: f.data_source_type,
+                          data_cut_label: f.data_cut_label,
+                          is_synthetic: f.is_synthetic,
+                        }}
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">
                         {formatBytes(f.file_size_bytes)} · {f.mime_type}
                         {typeof f.extracted_metadata?.row_count === "number" && (
                           <> · {f.extracted_metadata.row_count} rows</>

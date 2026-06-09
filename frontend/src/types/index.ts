@@ -512,6 +512,19 @@ export interface StudyBrief {
 
 // ─── File Uploads ─────────────────────────────────────────────────────────────
 
+export type DataSourceType = "SYNTHETIC" | "LIVE_INTERIM" | "LIVE_FINAL";
+
+export interface DataCutMetadata {
+  data_source_type: DataSourceType;
+  data_cut_label: string;
+  data_cut_date?: string | null;
+  is_synthetic: boolean;
+  data_cut_id?: string | null;
+  source_upload_id?: string | null;
+  synthetic_data_run_id?: string | null;
+  study_id?: string;
+}
+
 export interface UploadedFile {
   id: string;
   organization_id: string;
@@ -525,6 +538,11 @@ export interface UploadedFile {
   extracted_metadata: Record<string, unknown>;
   file_hash: string | null;
   upload_status: "UPLOADED" | "PARSED" | "FAILED" | "MAPPED";
+  data_source_type: DataSourceType;
+  data_cut_label: string | null;
+  data_cut_date: string | null;
+  is_synthetic: boolean;
+  data_cut_id: string | null;
   created_at: string;
 }
 
@@ -643,6 +661,13 @@ export interface ADAMGenerationResponse {
   source_sdtm_artifact_ids: string[];
 }
 
+export interface CSRRequirement {
+  key: string;
+  label: string;
+  met: boolean;
+  detail?: string;
+}
+
 export interface StudyCSRReadinessResponse {
   study_id: string;
   tlf_artifact_count: number;
@@ -652,11 +677,20 @@ export interface StudyCSRReadinessResponse {
   issues: string[];
   tlf_artifacts: Array<{
     artifact_id: string;
-    artifact_name: string;
-    table_count: number;
-    tables: string[];
-    ready: boolean;
+    artifact_name?: string;
+    table_count?: number;
+    tables?: string[];
+    ready?: boolean;
   }>;
+  data_cut_id?: string | null;
+  data_source_type?: DataSourceType | null;
+  data_cut_label?: string | null;
+  csr_kind?: string | null;
+  requirements?: CSRRequirement[];
+  sdtm_artifact_id?: string | null;
+  adam_artifact_id?: string | null;
+  source_upload_id?: string | null;
+  synthetic_data_run_id?: string | null;
 }
 
 export interface CSRGenerationResponse {

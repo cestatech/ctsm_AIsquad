@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import BigInteger, ForeignKey, String, Text
+from datetime import date
+
+from sqlalchemy import BigInteger, Boolean, Date, Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
+from app.models.data_source import DataSourceType
 
 from typing import TYPE_CHECKING
 
@@ -60,6 +63,17 @@ class UploadedFile(UUIDMixin, TimestampMixin, Base):
     file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     upload_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="UPLOADED"
+    )
+    data_source_type: Mapped[DataSourceType] = mapped_column(
+        Enum(DataSourceType, name="data_source_type"),
+        nullable=False,
+        default=DataSourceType.LIVE_FINAL,
+    )
+    data_cut_label: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    data_cut_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    data_cut_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
     )
 
     study: Mapped["Study"] = relationship("Study")

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, Form, Query, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
+from app.models.data_source import DataSourceType
 from app.schemas.upload import UploadedFileListResponse, UploadedFileResponse
 from app.services.upload_service import UploadService
 
@@ -26,6 +29,10 @@ async def upload_study_file(
     file: UploadFile,
     request: Request,
     description: str | None = Form(default=None),
+    data_source_type: DataSourceType = Form(default=DataSourceType.LIVE_FINAL),
+    data_cut_label: str | None = Form(default=None),
+    data_cut_date: date | None = Form(default=None),
+    notes: str | None = Form(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UploadedFileResponse:
@@ -42,6 +49,10 @@ async def upload_study_file(
         actor=current_user,
         file=file,
         description=description,
+        data_source_type=data_source_type,
+        data_cut_label=data_cut_label,
+        data_cut_date=data_cut_date,
+        notes=notes,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )

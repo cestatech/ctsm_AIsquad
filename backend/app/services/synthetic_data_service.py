@@ -22,7 +22,9 @@ from app.core.permissions import Permission, check_permission
 from app.models.artifact import Artifact, ArtifactType, ArtifactVersion
 from app.models.audit import AuditAction
 from app.models.graph import GraphEdgeType, GraphNodeType
+from app.models.data_source import DataSourceType
 from app.models.intelligence import SimulationAssumption, SyntheticDataRun
+from app.services.data_cut_service import DataCutContext
 from app.models.study import Study
 from app.models.user import User
 from app.repositories.intelligence_repository import SyntheticDataRepository
@@ -87,10 +89,19 @@ class SyntheticDataService:
             },
         )
 
+        existing_runs, _ = await self._repo.list_runs_for_study(
+            study_id=study_id,
+            organization_id=actor.organization_id,
+            limit=1000,
+            offset=0,
+        )
+        version_number = len(existing_runs) + 1
+        data_cut_label = f"Synthetic Data Version {version_number}"
+
         run = SyntheticDataRun(
             organization_id=actor.organization_id,
             study_id=study_id,
-            run_name=run_name or f"Synthetic Run — {study.name}",
+            run_name=run_name or f"Synthetic Run — {data_cut_label}",
             description="MVP synthetic patient-level eCRF export (labeled SYNTHETIC)",
             target_n=target_n,
             random_seed=random_seed,
@@ -98,12 +109,19 @@ class SyntheticDataService:
                 "label": "SYNTHETIC",
                 "format": "CSV",
                 "reproducible": True,
+                "data_cut_label": data_cut_label,
             },
             status="RUNNING",
             started_at=datetime.now(UTC),
             created_by_id=actor.id,
+            data_source_type=DataSourceType.SYNTHETIC,
+            data_cut_label=data_cut_label,
+            data_cut_date=datetime.now(UTC).date(),
+            is_synthetic=True,
         )
         run = await self._repo.create_run(run)
+        run.data_cut_id = run.id
+        await self._db.flush()
 
         try:
             protocol = await self._latest_artifact(
@@ -141,15 +159,26 @@ class SyntheticDataService:
             )
 
             source_ids = [str(a.id) for a in (protocol, sap, edc) if a]
+            data_cut = DataCutContext.for_synthetic_run(
+                study_id=study_id,
+                created_by=actor.id,
+                run_id=run.id,
+                version_number=version_number,
+            )
+            dataset = data_cut.embed_in_content(dataset)
             output_artifact = await self._artifact_svc.create_artifact(
                 organization_id=actor.organization_id,
                 study_id=study_id,
                 user=actor,
                 artifact_type=ArtifactType.OTHER,
-                name=f"{study.name} — Synthetic Raw Clinical Data (SYNTHETIC)",
-                description="Synthetic patient-level CSV — NOT real patient data",
+                name=f"{study.name} — Synthetic Raw Clinical Data — {data_cut_label}",
+                description=(
+                    f"SYNTHETIC patient-level CSV — {data_cut_label}. "
+                    "NOT real patient data."
+                ),
                 content=dataset,
                 change_summary=f"Synthetic data run {run.id} (seed={random_seed}, n={target_n})",
+                metadata={"data_cut": data_cut.to_dict()},
             )
 
             run.status = "COMPLETED"

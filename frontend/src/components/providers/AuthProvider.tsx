@@ -17,9 +17,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (bootstrappedRef.current) return;
       bootstrappedRef.current = true;
       useAuthStore.getState().setHydrated(true);
-      await bootstrapAuth();
-      useAuthStore.getState().setBootstrapped(true);
-      setIsReady(true);
+      try {
+        await bootstrapAuth();
+      } finally {
+        useAuthStore.getState().setBootstrapped(true);
+        setIsReady(true);
+      }
     };
 
     const unsub = useAuthStore.persist.onFinishHydration(() => {

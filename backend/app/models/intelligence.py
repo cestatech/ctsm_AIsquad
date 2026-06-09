@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -28,6 +29,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, UUIDMixin
+from app.models.data_source import DataSourceType
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -766,6 +768,17 @@ class SyntheticDataRun(UUIDMixin, Base):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    data_source_type: Mapped[DataSourceType] = mapped_column(
+        Enum(DataSourceType, name="data_source_type"),
+        nullable=False,
+        default=DataSourceType.SYNTHETIC,
+    )
+    data_cut_label: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    data_cut_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    data_cut_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

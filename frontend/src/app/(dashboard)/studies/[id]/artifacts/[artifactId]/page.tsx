@@ -13,6 +13,7 @@ import { artifactsApi } from "@/lib/api/artifacts";
 import { adamApi } from "@/lib/api/adam";
 import { approvalsApi } from "@/lib/api/approvals";
 import { commentsApi } from "@/lib/api/comments";
+import { DataSourceBadge, dataSourceFromContent } from "@/components/data/DataSourceBadge";
 import { GraphRelationshipsPanel } from "@/components/intelligence/GraphRelationshipsPanel";
 import { StatisticalQCPanel } from "@/components/intelligence/StatisticalQCPanel";
 import { tlfApi } from "@/lib/api/tlf";
@@ -255,7 +256,7 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
   const { data: versions, refetch: refetchVersions } = useQuery<ArtifactVersion[]>({
     queryKey: ["artifact-versions", artifactId, token],
     queryFn: () => artifactsApi.getVersions(artifactId, token!),
-    enabled: false,
+    enabled: !!token,
   });
 
   const updateContentMutation = useMutation({
@@ -571,6 +572,16 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
               )}
             </div>
             <h1 className="font-display text-xl font-bold text-slate-900">{artifact.name}</h1>
+            {versions && (
+              <div className="mt-2">
+                <DataSourceBadge
+                  source={dataSourceFromContent(
+                    (versions.find((v) => v.is_current) ?? versions[versions.length - 1])
+                      ?.content as Record<string, unknown> | undefined
+                  )}
+                />
+              </div>
+            )}
             {artifact.description && (
               <p className="text-slate-500 text-sm mt-1">{artifact.description}</p>
             )}

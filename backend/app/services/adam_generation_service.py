@@ -31,6 +31,11 @@ from app.services.artifact_service import ArtifactService
 from app.services.audit_service import AuditService
 from app.services.context_graph_service import ContextGraphService
 from app.services.intelligence_service import AIDecisionService, DataLineageService
+from app.services.data_cut_service import (
+    assert_compatible_data_cuts,
+    extract_data_cut,
+    prepare_pipeline_artifact,
+)
 from app.services.dual_programmer_qc_service import DualProgrammerQCService
 from app.services.validation_service import ValidationService
 from app.models.statistical_qc import StatisticalQCWorkflow
@@ -285,18 +290,44 @@ class ADAMGenerationService:
             source_sdtm_artifact_ids=source_ids,
         )
 
+        shared_cut = None
+        for art, src_content in zip(source_artifacts, source_contents, strict=True):
+            cut = extract_data_cut(art.extra_data, src_content)
+            if cut is None:
+                continue
+            if shared_cut is None:
+                shared_cut = cut
+            else:
+                assert_compatible_data_cuts(shared_cut, cut, operation="ADaM derivation")
+        if shared_cut is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "NO_DATA_CUT",
+                    "message": "SDTM source artifacts must include data cut metadata.",
+                },
+            )
+        art_name, art_desc, content, metadata = prepare_pipeline_artifact(
+            study_name=study.name,
+            package_label="ADaM Package",
+            data_cut=shared_cut,
+            content=content,
+            base_description=(
+                f"AI-derived ADaM IG {self._settings.ADAM_IG_VERSION} from "
+                f"{len(source_ids)} SDTM artifact(s)"
+            ),
+        )
+
         artifact = await self._artifact_svc.create_artifact(
             organization_id=actor.organization_id,
             study_id=study.id,
             user=actor,
             artifact_type=ArtifactType.ADAM_DATASET,
-            name=f"{study.name} — ADaM Analysis Package",
-            description=(
-                f"AI-derived ADaM IG {self._settings.ADAM_IG_VERSION} from "
-                f"{len(source_ids)} SDTM artifact(s)"
-            ),
+            name=art_name,
+            description=art_desc,
             content=content,
             change_summary=f"ADaM derivation from {len(source_ids)} SDTM artifact(s)",
+            metadata=metadata,
         )
 
         return await self._finalize_generation(

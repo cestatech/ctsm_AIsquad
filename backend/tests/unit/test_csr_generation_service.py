@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
+
+from app.services.data_cut_service import DataCutContext
 from fastapi import HTTPException
 
 from app.services.csr_generation_service import CSRGenerationService
@@ -48,6 +51,20 @@ class TestDeterministicCsr:
         ]
 
         svc = CSRGenerationService(MagicMock())
+        upstream = {
+            "sdtm_content": {
+                "domains": [{
+                    "domain": "DM",
+                    "observations": [{"USUBJID": "S1-001"}, {"USUBJID": "S1-002"}],
+                }],
+            },
+            "adam_content": {"datasets": [{"dataset": "ADSL"}]},
+        }
+        data_cut = DataCutContext.for_synthetic_run(
+            study_id=uuid4(),
+            created_by=uuid4(),
+            run_id=uuid4(),
+        )
         content = svc._deterministic_csr(
             study=study,
             merged_tables=tables,
@@ -57,10 +74,14 @@ class TestDeterministicCsr:
             },
             sap_content={"primary_endpoint": "Change in HbA1c at Week 12"},
             tlf_artifact_ids=[],
+            upstream=upstream,
+            data_cut=data_cut,
         )
 
         assert content["document_type"] == "CSR"
+        assert content.get("shell_only") is False
         assert content["ich_e3_compliant"] is True
+        assert content["data_source"]["is_synthetic"] is True
         section_nums = {s["number"] for s in content["sections"]}
         assert "13" in section_nums
         assert "14" in section_nums

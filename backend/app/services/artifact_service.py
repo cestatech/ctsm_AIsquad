@@ -50,6 +50,7 @@ class ArtifactService:
         description: str | None = None,
         content: dict | None = None,
         change_summary: str | None = None,
+        metadata: dict | None = None,
     ) -> Artifact:
         """Create a new artifact at version 1 in DRAFT status."""
         check_permission(user, Permission.ARTIFACT_CREATE)
@@ -65,6 +66,7 @@ class ArtifactService:
             description=description,
             status=ArtifactStatus.DRAFT,
             created_by_id=user.id,
+            extra_data=metadata or {},
         )
         self._db.add(artifact)
         await self._db.flush()  # get artifact.id

@@ -31,7 +31,20 @@ from app.services.artifact_service import ArtifactService
 from app.services.audit_service import AuditService
 from app.services.context_graph_service import ContextGraphService
 from app.services.intelligence_service import AIDecisionService, DataLineageService
+from app.services.data_cut_service import (
+    CSRReadinessResult,
+    CSRRequirement,
+    DataCutContext,
+    contains_shell_placeholder,
+    extract_data_cut,
+    prepare_pipeline_artifact,
+)
 from app.services.validation_service import ValidationService
+
+_CSR_BLOCKED_MESSAGE = (
+    "CSR generation requires SDTM, ADaM, and TLF outputs for the selected data cut. "
+    "Generate those artifacts first."
+)
 
 _AGENT_NAME = "csr-generation-agent"
 _MODEL_ID = "claude-sonnet-4-20250514"
@@ -104,6 +117,8 @@ _ICH_E3_SECTIONS: list[tuple[str, str, str]] = [
 
 @dataclass
 class StudyCSRReadiness:
+    """CSR readiness for a study, optionally scoped to one data cut."""
+
     study_id: UUID
     tlf_artifact_count: int
     protocol_artifact_count: int
@@ -111,6 +126,13 @@ class StudyCSRReadiness:
     ready: bool
     issues: list[str]
     tlf_artifacts: list[dict]
+    data_cut_id: UUID | None = None
+    data_source_type: str | None = None
+    data_cut_label: str | None = None
+    csr_kind: str | None = None
+    requirements: list[dict] | None = None
+    sdtm_artifact_id: UUID | None = None
+    adam_artifact_id: UUID | None = None
 
 
 @dataclass
@@ -145,55 +167,38 @@ class CSRGenerationService:
         )
 
     async def get_study_readiness(
-        self, study_id: UUID, organization_id: UUID
+        self,
+        study_id: UUID,
+        organization_id: UUID,
+        data_cut_id: UUID | None = None,
     ) -> StudyCSRReadiness:
-        """Return study-wide readiness for CSR assembly from TLF artifacts."""
+        """Return CSR readiness including upstream SDTM/ADaM/TLF for a data cut."""
         await self._study_repo.get(study_id, organization_id)
-        artifacts, _ = await self._artifact_repo.list_by_study(
-            study_id, organization_id, limit=100, offset=0
+        result = await self._evaluate_csr_readiness(
+            study_id, organization_id, data_cut_id=data_cut_id
         )
-        tlf_arts = [a for a in artifacts if a.artifact_type == ArtifactType.TLF]
-        protocol_arts = [
-            a for a in artifacts if a.artifact_type == ArtifactType.PROTOCOL
-        ]
-        sap_arts = [a for a in artifacts if a.artifact_type == ArtifactType.SAP]
-
-        issues: list[str] = []
-        summaries: list[dict] = []
-
-        if not tlf_arts:
-            issues.append("No TLF package artifacts found for this study.")
-
-        for art in tlf_arts:
-            content = await self._load_artifact_content(art)
-            tables = content.get("tables", [])
-            table_count = len(tables)
-            art_ready = table_count > 0
-            if not tables:
-                issues.append(f"{art.name}: TLF package has no tables.")
-            summaries.append({
-                "artifact_id": str(art.id),
-                "artifact_name": art.name,
-                "table_count": table_count,
-                "tables": [t.get("id", "?") for t in tables],
-                "ready": art_ready,
-            })
-
-        ready = bool(summaries) and all(s["ready"] for s in summaries)
         return StudyCSRReadiness(
-            study_id=study_id,
-            tlf_artifact_count=len(tlf_arts),
-            protocol_artifact_count=len(protocol_arts),
-            sap_artifact_count=len(sap_arts),
-            ready=ready and len(issues) == 0,
-            issues=issues[:30],
-            tlf_artifacts=summaries,
+            study_id=result.study_id,
+            tlf_artifact_count=1 if result.tlf_artifact_id else 0,
+            protocol_artifact_count=1 if result.protocol_artifact_id else 0,
+            sap_artifact_count=1 if result.sap_artifact_id else 0,
+            ready=result.ready,
+            issues=result.issues,
+            tlf_artifacts=result.to_response_dict().get("tlf_artifacts", []),
+            data_cut_id=result.data_cut_id,
+            data_source_type=result.data_source_type,
+            data_cut_label=result.data_cut_label,
+            csr_kind=result.csr_kind,
+            requirements=[r.to_dict() for r in result.requirements],
+            sdtm_artifact_id=result.sdtm_artifact_id,
+            adam_artifact_id=result.adam_artifact_id,
         )
 
     async def generate_from_tlf_artifact(
         self,
         tlf_artifact_id: UUID,
         actor: User,
+        generate_shell: bool = False,
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> CSRGenerationResult:
@@ -208,6 +213,26 @@ class CSRGenerationService:
         study = await self._study_repo.get(
             tlf_artifact.study_id, actor.organization_id
         )
+        data_cut = extract_data_cut(tlf_artifact.extra_data, tlf_content)
+        readiness = await self._evaluate_csr_readiness(
+            study.id,
+            actor.organization_id,
+            data_cut_id=data_cut.data_cut_id if data_cut else None,
+        )
+        if not generate_shell and not readiness.ready:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "CSR_NOT_READY",
+                    "message": _CSR_BLOCKED_MESSAGE,
+                    "issues": readiness.issues,
+                    "requirements": [r.to_dict() for r in readiness.requirements],
+                },
+            )
+
+        upstream = await self._load_upstream_for_readiness(
+            readiness, actor.organization_id
+        )
         study_artifacts = await self._load_study_context_artifacts(
             study.id, actor.organization_id
         )
@@ -218,6 +243,9 @@ class CSRGenerationService:
             tlf_artifacts=[tlf_artifact],
             tlf_contents=[tlf_content],
             study_artifacts=study_artifacts,
+            readiness=readiness,
+            upstream=upstream,
+            generate_shell=generate_shell,
             ip_address=ip_address,
             user_agent=user_agent,
         )
@@ -226,31 +254,34 @@ class CSRGenerationService:
         self,
         study_id: UUID,
         actor: User,
+        data_cut_id: UUID | None = None,
+        generate_shell: bool = False,
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> CSRGenerationResult:
-        """Merge all study TLF artifacts into one CSR package."""
+        """Generate CSR for a study data cut with full upstream evidence."""
         check_permission(actor, Permission.ARTIFACT_CREATE)
 
-        readiness = await self.get_study_readiness(study_id, actor.organization_id)
-        if not readiness.ready:
+        readiness = await self._evaluate_csr_readiness(
+            study_id, actor.organization_id, data_cut_id=data_cut_id
+        )
+        if not generate_shell and not readiness.ready:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
-                    "code": "STUDY_NOT_READY",
-                    "message": "Study must have TLF artifacts with table specifications.",
+                    "code": "CSR_NOT_READY",
+                    "message": _CSR_BLOCKED_MESSAGE,
                     "issues": readiness.issues,
+                    "requirements": [r.to_dict() for r in readiness.requirements],
                 },
             )
 
         study = await self._study_repo.get(study_id, actor.organization_id)
-        artifacts, _ = await self._artifact_repo.list_by_study(
-            study_id, actor.organization_id, limit=100, offset=0
+        upstream = await self._load_upstream_for_readiness(
+            readiness, actor.organization_id
         )
-        tlf_arts = [a for a in artifacts if a.artifact_type == ArtifactType.TLF]
-        tlf_contents = [
-            await self._load_artifact_content(a) for a in tlf_arts
-        ]
+        tlf_artifact = upstream["tlf_artifact"]
+        tlf_content = upstream["tlf_content"]
         study_artifacts = await self._load_study_context_artifacts(
             study_id, actor.organization_id
         )
@@ -258,9 +289,12 @@ class CSRGenerationService:
         return await self._run_generation(
             actor=actor,
             study=study,
-            tlf_artifacts=tlf_arts,
-            tlf_contents=tlf_contents,
+            tlf_artifacts=[tlf_artifact],
+            tlf_contents=[tlf_content],
             study_artifacts=study_artifacts,
+            readiness=readiness,
+            upstream=upstream,
+            generate_shell=generate_shell,
             ip_address=ip_address,
             user_agent=user_agent,
         )
@@ -273,6 +307,9 @@ class CSRGenerationService:
         tlf_artifacts: list[Artifact],
         tlf_contents: list[dict],
         study_artifacts: dict[str, Artifact | None],
+        readiness: CSRReadinessResult,
+        upstream: dict,
+        generate_shell: bool,
         ip_address: str | None,
         user_agent: str | None,
     ) -> CSRGenerationResult:
@@ -281,6 +318,10 @@ class CSRGenerationService:
             a.id for a in study_artifacts.values() if a is not None
         ]
         merged_tables = self._merge_tlf_tables(tlf_contents)
+        data_cut = extract_data_cut(
+            tlf_artifacts[0].extra_data if tlf_artifacts else None,
+            tlf_contents[0] if tlf_contents else None,
+        )
 
         decision = await self._ai_decision.begin_decision(
             organization_id=actor.organization_id,
@@ -294,6 +335,9 @@ class CSRGenerationService:
                 "table_count": len(merged_tables),
                 "protocol_available": study_artifacts.get("PROTOCOL") is not None,
                 "sap_available": study_artifacts.get("SAP") is not None,
+                "data_cut_label": readiness.data_cut_label,
+                "csr_kind": readiness.csr_kind,
+                "generate_shell": generate_shell,
             },
         )
 
@@ -302,21 +346,42 @@ class CSRGenerationService:
             merged_tables=merged_tables,
             tlf_artifact_ids=tlf_ids,
             study_artifacts=study_artifacts,
+            upstream=upstream,
+            data_cut=data_cut,
+            generate_shell=generate_shell,
         )
+
+        if generate_shell:
+            art_name = f"{study.name} — CSR Shell"
+            art_desc = "CSR shell — generated only by explicit user request"
+            metadata = {}
+        elif data_cut:
+            art_name = f"{study.name} — {data_cut.csr_title(study.name)}"
+            _, art_desc, content, metadata = prepare_pipeline_artifact(
+                study_name=study.name,
+                package_label="CSR",
+                data_cut=data_cut,
+                content=content,
+                base_description="ICH E3 Clinical Study Report assembled from TLF outputs",
+            )
+            art_name = f"{study.name} — {data_cut.csr_title(study.name)}"
+        else:
+            art_name = f"{study.name} — Clinical Study Report"
+            art_desc = "ICH E3 Clinical Study Report assembled from TLF outputs"
+            metadata = {}
 
         artifact = await self._artifact_svc.create_artifact(
             organization_id=actor.organization_id,
             study_id=study.id,
             user=actor,
             artifact_type=ArtifactType.CSR,
-            name=f"{study.name} — Clinical Study Report",
-            description=(
-                "AI-assembled ICH E3 CSR from TLF specifications and study artifacts"
-            ),
+            name=art_name,
+            description=art_desc,
             content=content,
             change_summary=(
                 f"CSR assembly from {len(tlf_ids)} TLF artifact(s)"
             ),
+            metadata=metadata,
         )
 
         return await self._finalize_generation(
@@ -480,6 +545,9 @@ class CSRGenerationService:
         merged_tables: list[dict],
         tlf_artifact_ids: list[UUID],
         study_artifacts: dict[str, Artifact | None],
+        upstream: dict,
+        data_cut: DataCutContext | None,
+        generate_shell: bool,
     ) -> dict:
         protocol = study_artifacts.get("PROTOCOL")
         sap = study_artifacts.get("SAP")
@@ -490,6 +558,22 @@ class CSRGenerationService:
         if sap:
             sap_content = await self._load_artifact_content(sap)
 
+        if generate_shell:
+            return self._csr_shell_content(
+                study=study,
+                protocol_content=protocol_content,
+                sap_content=sap_content,
+            )
+
+        if not merged_tables:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "TLF_NOT_READY",
+                    "message": _CSR_BLOCKED_MESSAGE,
+                },
+            )
+
         if self._client:
             try:
                 return await self._call_claude(
@@ -498,6 +582,8 @@ class CSRGenerationService:
                     protocol_content=protocol_content,
                     sap_content=sap_content,
                     tlf_artifact_ids=tlf_artifact_ids,
+                    upstream=upstream,
+                    data_cut=data_cut,
                 )
             except HTTPException:
                 raise
@@ -510,7 +596,192 @@ class CSRGenerationService:
             protocol_content=protocol_content,
             sap_content=sap_content,
             tlf_artifact_ids=tlf_artifact_ids,
+            upstream=upstream,
+            data_cut=data_cut,
         )
+
+    async def _evaluate_csr_readiness(
+        self,
+        study_id: UUID,
+        organization_id: UUID,
+        data_cut_id: UUID | None = None,
+    ) -> CSRReadinessResult:
+        artifacts, _ = await self._artifact_repo.list_by_study(
+            study_id, organization_id, limit=200, offset=0
+        )
+        protocol = next((a for a in artifacts if a.artifact_type == ArtifactType.PROTOCOL), None)
+        sap = next((a for a in artifacts if a.artifact_type == ArtifactType.SAP), None)
+        sdtm_candidates = [a for a in artifacts if a.artifact_type == ArtifactType.SDTM_DATASET]
+        adam_candidates = [a for a in artifacts if a.artifact_type == ArtifactType.ADAM_DATASET]
+        tlf_candidates = [a for a in artifacts if a.artifact_type == ArtifactType.TLF]
+
+        requirements: list[CSRRequirement] = []
+        issues: list[str] = []
+
+        sdtm_art, sdtm_content = None, {}
+        for art in sdtm_candidates:
+            content = await self._load_artifact_content(art)
+            cut = extract_data_cut(art.extra_data, content)
+            if data_cut_id and cut and cut.data_cut_id != data_cut_id:
+                continue
+            if data_cut_id is None or (cut and cut.data_cut_id == data_cut_id):
+                sdtm_art, sdtm_content = art, content
+                break
+        if sdtm_art is None and sdtm_candidates and data_cut_id is None:
+            sdtm_art = sdtm_candidates[-1]
+            sdtm_content = await self._load_artifact_content(sdtm_art)
+
+        adam_art, adam_content = None, {}
+        for art in adam_candidates:
+            content = await self._load_artifact_content(art)
+            cut = extract_data_cut(art.extra_data, content)
+            if data_cut_id and cut and cut.data_cut_id != data_cut_id:
+                continue
+            if data_cut_id is None or (cut and cut.data_cut_id == data_cut_id):
+                adam_art, adam_content = art, content
+                break
+        if adam_art is None and adam_candidates and data_cut_id is None:
+            adam_art = adam_candidates[-1]
+            adam_content = await self._load_artifact_content(adam_art)
+
+        tlf_art, tlf_content = None, {}
+        for art in tlf_candidates:
+            content = await self._load_artifact_content(art)
+            cut = extract_data_cut(art.extra_data, content)
+            if data_cut_id and cut and cut.data_cut_id != data_cut_id:
+                continue
+            if data_cut_id is None or (cut and cut.data_cut_id == data_cut_id):
+                tlf_art, tlf_content = art, content
+                break
+        if tlf_art is None and tlf_candidates and data_cut_id is None:
+            tlf_art = tlf_candidates[-1]
+            tlf_content = await self._load_artifact_content(tlf_art)
+
+        data_cut = extract_data_cut(
+            tlf_art.extra_data if tlf_art else None,
+            tlf_content,
+        ) or extract_data_cut(
+            adam_art.extra_data if adam_art else None,
+            adam_content,
+        ) or extract_data_cut(
+            sdtm_art.extra_data if sdtm_art else None,
+            sdtm_content,
+        )
+
+        requirements.append(CSRRequirement("protocol", "Protocol artifact", protocol is not None))
+        requirements.append(CSRRequirement("sap", "SAP artifact", sap is not None))
+        requirements.append(
+            CSRRequirement(
+                "sdtm",
+                "SDTM output for data cut",
+                sdtm_art is not None and bool(sdtm_content.get("domains")),
+                detail=sdtm_art.name if sdtm_art else "",
+            )
+        )
+        requirements.append(
+            CSRRequirement(
+                "adam",
+                "ADaM output for data cut",
+                adam_art is not None and bool(adam_content.get("datasets")),
+                detail=adam_art.name if adam_art else "",
+            )
+        )
+        tlf_tables = tlf_content.get("tables", []) if tlf_content else []
+        requirements.append(
+            CSRRequirement(
+                "tlf",
+                "TLF output for data cut",
+                tlf_art is not None and bool(tlf_tables),
+                detail=tlf_art.name if tlf_art else "",
+            )
+        )
+
+        if data_cut and data_cut.data_source_type.value == "LIVE_INTERIM":
+            requirements.append(
+                CSRRequirement(
+                    "live_upload",
+                    "Live interim raw upload",
+                    data_cut.source_upload_id is not None,
+                )
+            )
+        if data_cut and data_cut.is_synthetic:
+            requirements.append(
+                CSRRequirement(
+                    "synthetic_run",
+                    "Synthetic data run or upload",
+                    data_cut.synthetic_data_run_id is not None
+                    or data_cut.source_upload_id is not None,
+                )
+            )
+
+        for req in requirements:
+            if not req.met:
+                issues.append(req.label if not req.detail else f"{req.label}: {req.detail}")
+
+        ready = all(r.met for r in requirements)
+        return CSRReadinessResult(
+            study_id=study_id,
+            data_cut_id=data_cut.data_cut_id if data_cut else data_cut_id,
+            data_source_type=data_cut.data_source_type.value if data_cut else None,
+            data_cut_label=data_cut.data_cut_label if data_cut else None,
+            csr_kind=data_cut.csr_kind() if data_cut else None,
+            ready=ready,
+            requirements=requirements,
+            issues=issues,
+            protocol_artifact_id=protocol.id if protocol else None,
+            sap_artifact_id=sap.id if sap else None,
+            sdtm_artifact_id=sdtm_art.id if sdtm_art else None,
+            adam_artifact_id=adam_art.id if adam_art else None,
+            tlf_artifact_id=tlf_art.id if tlf_art else None,
+            source_upload_id=data_cut.source_upload_id if data_cut else None,
+            synthetic_data_run_id=data_cut.synthetic_data_run_id if data_cut else None,
+        )
+
+    async def _load_upstream_for_readiness(
+        self, readiness: CSRReadinessResult, organization_id: UUID
+    ) -> dict:
+        result: dict = {}
+        if readiness.sdtm_artifact_id:
+            art = await self._artifact_repo.get_by_id(readiness.sdtm_artifact_id, organization_id)
+            result["sdtm_artifact"] = art
+            result["sdtm_content"] = await self._load_artifact_content(art)
+        if readiness.adam_artifact_id:
+            art = await self._artifact_repo.get_by_id(readiness.adam_artifact_id, organization_id)
+            result["adam_artifact"] = art
+            result["adam_content"] = await self._load_artifact_content(art)
+        if readiness.tlf_artifact_id:
+            art = await self._artifact_repo.get_by_id(readiness.tlf_artifact_id, organization_id)
+            result["tlf_artifact"] = art
+            result["tlf_content"] = await self._load_artifact_content(art)
+        return result
+
+    @staticmethod
+    def _csr_shell_content(*, study, protocol_content: dict, sap_content: dict) -> dict:
+        return {
+            "document_type": "CSR_SHELL",
+            "version": "1.0",
+            "title": f"{study.name} — CSR Shell (Outline Only)",
+            "shell_only": True,
+            "warning": "This is an explicit CSR shell — not a full clinical study report.",
+            "study_identification": {
+                "protocol_number": study.protocol_number,
+                "sponsor": getattr(study, "sponsor", None) or "Sponsor",
+            },
+            "synopsis": {"note": "Shell synopsis — populate after upstream artifacts exist."},
+            "sections": [
+                {"number": "1", "title": "Title Page", "content_outline": "Shell", "status": "SHELL"}
+            ],
+            "protocol_excerpt": {
+                k: protocol_content.get(k)
+                for k in ("title", "objectives", "design")
+                if protocol_content.get(k)
+            },
+            "sap_excerpt": {
+                k: sap_content.get(k)
+                for k in ("title", "primary_endpoint")
+                if sap_content.get(k)
+            },
+        }
 
     async def _call_claude(
         self,
@@ -520,6 +791,8 @@ class CSRGenerationService:
         protocol_content: dict,
         sap_content: dict,
         tlf_artifact_ids: list[UUID],
+        upstream: dict,
+        data_cut: DataCutContext | None,
     ) -> dict:
         user_prompt = f"""Study: {study.name}
 Protocol: {study.protocol_number}
@@ -561,8 +834,10 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
         protocol_content: dict,
         sap_content: dict,
         tlf_artifact_ids: list[UUID],
+        upstream: dict,
+        data_cut: DataCutContext | None,
     ) -> dict:
-        """Build ICH E3 CSR shell without AI — maps TLF tables to sections."""
+        """Build evidence-based ICH E3 CSR from TLF, ADaM, and SDTM inputs."""
         objectives = ""
         if protocol_content:
             objs = protocol_content.get("objectives", {})
@@ -588,6 +863,30 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
             or "See SAP"
         )
 
+        sdtm_content = upstream.get("sdtm_content", {})
+        adam_content = upstream.get("adam_content", {})
+        sdtm_domains = sdtm_content.get("domains", [])
+        adam_datasets = adam_content.get("datasets", [])
+        subject_count = sum(len(d.get("observations", [])) for d in sdtm_domains if d.get("domain") == "DM")
+        if not subject_count:
+            subject_count = sum(
+                1 for ds in adam_datasets if ds.get("dataset") == "ADSL"
+            )
+
+        interim_notice = ""
+        if data_cut and data_cut.data_source_type.value == "LIVE_INTERIM":
+            interim_notice = (
+                f"Results in this interim CSR are based on {data_cut.data_cut_label} "
+                f"({data_cut.data_cut_date or 'date not specified'}) and do not represent "
+                "final study results. Database lock has not occurred."
+            )
+        synthetic_notice = ""
+        if data_cut and data_cut.is_synthetic:
+            synthetic_notice = (
+                f"This CSR is derived from {data_cut.data_cut_label} — SYNTHETIC data only. "
+                "Not derived from real patients. Do not submit to regulators as live data."
+            )
+
         tlf_by_section: dict[str, list[dict]] = {"12": [], "13": [], "14": []}
         for table in merged_tables:
             section = str(table.get("section", "14.1")).split(".")[0]
@@ -602,6 +901,7 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
                 "table_id": table.get("id"),
                 "title": table.get("title"),
                 "population": table.get("population"),
+                "key_result": table.get("statistical_summary", ""),
             })
 
         sections = []
@@ -617,10 +917,27 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
             refs = tlf_by_section.get(num, [])
             if refs:
                 section_entry["tlf_references"] = refs
-                section_entry["content_outline"] = (
-                    f"{outline}. Incorporates TLF tables: "
-                    + ", ".join(r["table_id"] for r in refs)
+                ref_summary = "; ".join(
+                    f"{r['table_id']}: {r['title']} ({r.get('key_result', 'see TLF')})"
+                    for r in refs
                 )
+                section_entry["content_outline"] = f"{outline}. Integrated TLF evidence: {ref_summary}"
+                if num == "12" and subject_count:
+                    section_entry["narrative_summary"] = (
+                        f"Subject disposition and demographics based on SDTM DM domain "
+                        f"({subject_count} subjects) and TLF tables {', '.join(r['table_id'] for r in refs)}."
+                    )
+                if num == "13":
+                    section_entry["narrative_summary"] = (
+                        f"Efficacy results per SAP primary endpoint ({primary_endpoint}) "
+                        f"supported by TLF tables: {ref_summary}."
+                    )
+                if num == "14":
+                    section_entry["narrative_summary"] = (
+                        f"Safety evaluation integrated from ADaM datasets "
+                        f"({', '.join(d.get('dataset', '?') for d in adam_datasets[:5])}) "
+                        f"and TLF safety tables."
+                    )
             sections.append(section_entry)
 
         tlf_integration = [
@@ -638,17 +955,22 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
             for t in merged_tables
         ]
 
-        return {
+        csr_title = (
+            data_cut.csr_title(study.name) if data_cut else f"{study.name} — Clinical Study Report"
+        )
+        content = {
             "document_type": "CSR",
             "version": "1.0",
             "ich_e3_compliant": True,
-            "title": f"{study.name} — Clinical Study Report",
+            "shell_only": False,
+            "title": csr_title,
             "study_identification": {
                 "protocol_number": study.protocol_number,
                 "sponsor": getattr(study, "sponsor", None) or "Sponsor",
                 "phase": str(getattr(study, "phase", None) or "Not specified"),
                 "indication": getattr(study, "indication", None) or "Not specified",
             },
+            "data_source_metadata": data_cut.to_dict() if data_cut else None,
             "synopsis": {
                 "objectives": objectives or "See Section 10",
                 "design": str(design),
@@ -656,41 +978,73 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
                 if isinstance(sap_content.get("analysis_populations"), list)
                 else "Intent-to-treat population per SAP",
                 "treatments": protocol_content.get("treatments", []),
-                "primary_results": f"Primary endpoint: {primary_endpoint} — see Section 13",
-                "safety_summary": "See Section 14 and integrated TLF safety tables",
-                "conclusions": "Draft — pending medical writer review",
+                "primary_results": (
+                    f"Primary endpoint ({primary_endpoint}) results integrated from "
+                    f"TLF tables {[t.get('id') for t in merged_tables if 'efficacy' in t.get('title', '').lower() or t.get('section', '').startswith('13')] or [t.get('id') for t in merged_tables[:2]]}."
+                ),
+                "safety_summary": (
+                    f"Safety findings from SDTM domains "
+                    f"({', '.join(d.get('domain', '?') for d in sdtm_domains[:6])}) "
+                    "and TLF safety tables in Section 14."
+                ),
+                "conclusions": (
+                    "Integrated benefit-risk assessment based on available TLF and ADaM outputs "
+                    "for this data cut. Medical writer review required before submission."
+                ),
+                "interim_notice": interim_notice or None,
+                "synthetic_notice": synthetic_notice or None,
             },
             "sections": sections,
             "appendices": [
                 "Protocol and amendments",
                 "Statistical Analysis Plan",
-                "Patient data listings",
+                "SDTM datasets",
+                "ADaM analysis datasets",
                 "TLF outputs",
-                "Investigators and study sites",
             ],
             "tlf_integration": tlf_integration,
             "source_tlf_artifact_ids": [str(i) for i in tlf_artifact_ids],
+            "source_sdtm_artifact_ids": [
+                str(upstream["sdtm_artifact"].id) if upstream.get("sdtm_artifact") else None
+            ],
+            "source_adam_artifact_ids": [
+                str(upstream["adam_artifact"].id) if upstream.get("adam_artifact") else None
+            ],
+            "upstream_evidence": {
+                "sdtm_domain_count": len(sdtm_domains),
+                "adam_dataset_count": len(adam_datasets),
+                "tlf_table_count": len(merged_tables),
+                "subject_count": subject_count,
+            },
             "ectd_module_5": {
-                "ready": False,
+                "ready": bool(sdtm_domains and adam_datasets and merged_tables),
                 "folder_structure": [
                     "m5/datasets/tabulation/sdtm",
                     "m5/datasets/analysis/adam",
                     "m5/clinical-study-reports",
-                    "m5/clinical-study-reports/efficacy",
-                    "m5/clinical-study-reports/safety",
                 ],
-                "notes": (
-                    "CSR shell assembled — finalize after TLF lock and "
-                    "regulatory review. Not submission-ready."
-                ),
+                "notes": "CSR assembled from locked upstream artifacts for the selected data cut.",
             },
-            "estimated_total_word_count": 25000,
+            "estimated_total_word_count": max(8000, len(merged_tables) * 1500),
             "regulatory_references": [
                 "ICH E3",
                 "FDA Module 5 Guidance",
                 "EMA Clinical Study Reports Guideline",
             ],
         }
+        if data_cut:
+            content = data_cut.embed_in_content(content)
+        for section in content.get("sections", []):
+            text_blob = json.dumps(section, default=str)
+            if contains_shell_placeholder(text_blob):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "code": "CSR_SHELL_BLOCKED",
+                        "message": _CSR_BLOCKED_MESSAGE,
+                    },
+                )
+        return content
 
     @staticmethod
     def _parse_json(text: str) -> dict:

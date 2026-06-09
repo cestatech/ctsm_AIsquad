@@ -20,6 +20,7 @@ from app.models.organization import Organization
 from app.models.study import Study, StudyMember
 from app.models.traceability import TraceabilityLink
 from app.models.user import User, RefreshToken
+from app.models.data_source import DataSourceType
 from app.models.upload import UploadedFile
 from app.models.raw_data import RawDataset, RawField, FieldMappingVersion
 from app.models.validation import ValidationRun
@@ -52,6 +53,7 @@ __all__ = [
     "Study",
     "StudyMember",
     "TraceabilityLink",
+    "DataSourceType",
     "UploadedFile",
     "RawDataset",
     "RawField",

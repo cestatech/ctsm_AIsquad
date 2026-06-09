@@ -25,8 +25,10 @@ from app.core.phi_masking import mask_sample_values
 from app.models.audit import AuditAction
 from app.models.graph import GraphEdgeType, GraphNodeType
 from app.models.intelligence import DataLineageType
+from app.models.data_source import DataSourceType
 from app.models.upload import UploadedFile
 from app.models.user import User
+from app.services.data_cut_service import DataCutContext
 from app.repositories.raw_data_repository import RawDatasetRepository, RawFieldRepository
 from app.repositories.study_repository import StudyRepository
 from app.repositories.upload_repository import UploadRepository
@@ -70,6 +72,10 @@ class UploadService:
         actor: User,
         file: UploadFile,
         description: str | None = None,
+        data_source_type: DataSourceType = DataSourceType.LIVE_FINAL,
+        data_cut_label: str | None = None,
+        data_cut_date=None,
+        notes: str | None = None,
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> UploadedFile:
@@ -109,6 +115,31 @@ class UploadService:
 
         extracted_metadata = self._extract_legacy_metadata(content, mime_type, file.filename or "")
 
+        if data_source_type == DataSourceType.SYNTHETIC:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "INVALID_SOURCE_TYPE",
+                    "message": "Use synthetic data generation for SYNTHETIC uploads.",
+                },
+            )
+        if data_source_type == DataSourceType.LIVE_INTERIM and not data_cut_label:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "DATA_CUT_LABEL_REQUIRED",
+                    "message": "Interim live uploads require a data cut label.",
+                },
+            )
+        default_label = (
+            data_cut_label
+            or (
+                "Final Data Cut"
+                if data_source_type == DataSourceType.LIVE_FINAL
+                else "Interim Data Cut"
+            )
+        )
+
         record = await self._repo.create(
             organization_id=actor.organization_id,
             study_id=study_id,
@@ -118,11 +149,17 @@ class UploadService:
             file_path=str(file_path),
             file_size_bytes=len(content),
             mime_type=mime_type,
-            description=description,
+            description=description or notes,
             extracted_metadata=extracted_metadata,
             file_hash=file_hash,
             upload_status="UPLOADED",
+            data_source_type=data_source_type,
+            data_cut_label=default_label,
+            data_cut_date=data_cut_date,
+            is_synthetic=False,
         )
+        record.data_cut_id = record.id
+        await self._repo.update(record)
 
         await self._audit.log(
             action=AuditAction.DATA_FILE_UPLOADED,
@@ -136,6 +173,8 @@ class UploadService:
                 "mime_type": mime_type,
                 "size_bytes": len(content),
                 "file_hash": file_hash,
+                "data_source_type": data_source_type.value,
+                "data_cut_label": default_label,
             },
             ip_address=ip_address,
             user_agent=user_agent,
@@ -170,13 +209,24 @@ class UploadService:
             record.upload_status = "PARSED"
 
             # Register UploadedFile node in the CIP graph
+            data_cut = DataCutContext.for_live_upload(
+                study_id=study_id,
+                created_by=actor.id,
+                upload_id=record.id,
+                data_source_type=record.data_source_type,
+                data_cut_label=record.data_cut_label or "Data Cut",
+                data_cut_date=record.data_cut_date,
+                notes=description,
+                created_at=record.created_at,
+            )
             file_node, _ = await self._graph.register_domain_record(
                 organization_id=actor.organization_id,
                 node_type=GraphNodeType.UPLOADED_FILE,
                 external_id=record.id,
                 external_type="uploaded_file",
-                label=record.original_filename,
+                label=f"{record.original_filename} — {data_cut.data_cut_label}",
                 study_id=study_id,
+                properties=data_cut.to_dict(),
                 actor=actor,
             )
 
@@ -228,6 +278,12 @@ class UploadService:
                     row_count=sheet["row_count"],
                     column_count=len(sheet["columns"]),
                     parse_status="PARSED",
+                    data_source_type=record.data_source_type,
+                    data_cut_label=record.data_cut_label,
+                    data_cut_date=record.data_cut_date,
+                    is_synthetic=False,
+                    data_cut_id=record.data_cut_id,
+                    source_upload_id=record.id,
                 )
 
                 ds_node, _ = await self._graph.register_domain_record(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import logging
@@ -10,7 +11,11 @@ import re
 import shutil
 import subprocess
 import tempfile
+from io import StringIO
 from pathlib import Path
+
+from app.services.r_preflight import preflight_input_validation
+from app.models.statistical_qc import StatisticalQCWorkflow
 
 log = logging.getLogger(__name__)
 
@@ -208,8 +213,134 @@ def execute_r_program(
     return proc.returncode == 0, combined, out_dir
 
 
+_NUMERIC_TOLERANCE = 1e-6
+
+
+def _normalize_missing(value: str) -> str:
+    v = value.strip()
+    if v.upper() in {"", "NA", "N/A", "NULL", ".", "NAN"}:
+        return ""
+    return v
+
+
+def _normalize_cell(value: str) -> str:
+    v = _normalize_missing(value)
+    if not v:
+        return ""
+    try:
+        num = float(v)
+        return f"{num:.6f}".rstrip("0").rstrip(".")
+    except ValueError:
+        return v.strip()
+
+
+def _read_csv_normalized(path: Path) -> tuple[list[str], list[list[str]]]:
+    text = path.read_text().strip()
+    if not text:
+        return [], []
+    reader = csv.reader(StringIO(text))
+    rows = list(reader)
+    if not rows:
+        return [], []
+    headers = [_normalize_col(h) for h in rows[0]]
+    body = [
+        [_normalize_cell(cell) for cell in row]
+        for row in rows[1:]
+        if any(cell.strip() for cell in row)
+    ]
+    return headers, body
+
+
+def _normalize_col(name: str) -> str:
+    return name.strip().upper().replace(" ", "_")
+
+
+def _sort_rows(headers: list[str], rows: list[list[str]]) -> list[list[str]]:
+    if not rows:
+        return rows
+    key_cols = [i for i, h in enumerate(headers) if h in {"USUBJID", "STUDYID", "SUBJID"}]
+    if not key_cols:
+        key_cols = list(range(min(2, len(headers))))
+    width = len(headers)
+
+    def _key(row: list[str]) -> tuple:
+        padded = row + [""] * (width - len(row))
+        return tuple(padded[i] for i in key_cols)
+
+    return sorted(rows, key=_key)
+
+
+def compare_csv_files_semantic(primary: Path, qc: Path) -> dict:
+    """Semantic CSV comparison with normalization (default, not byte-identical)."""
+    p_headers, p_rows = _read_csv_normalized(primary)
+    q_headers, q_rows = _read_csv_normalized(qc)
+
+    p_header_set = set(p_headers)
+    q_header_set = set(q_headers)
+    header_match = p_header_set == q_header_set
+
+    p_rows = _sort_rows(p_headers, p_rows)
+    q_rows = _sort_rows(q_headers, q_rows)
+
+    col_diff = sorted(p_header_set ^ q_header_set)
+    row_count_match = len(p_rows) == len(q_rows)
+
+    value_diffs: list[dict] = []
+    if header_match and row_count_match:
+        for idx, (p_row, q_row) in enumerate(zip(p_rows, q_rows, strict=False)):
+            p_map = {
+                p_headers[i]: p_row[i] if i < len(p_row) else ""
+                for i in range(len(p_headers))
+            }
+            q_map = {
+                q_headers[i]: q_row[i] if i < len(q_row) else ""
+                for i in range(len(q_headers))
+            }
+            for col in sorted(p_header_set):
+                p_val = p_map.get(col, "")
+                q_val = q_map.get(col, "")
+                if p_val != q_val:
+                    value_diffs.append({
+                        "row": idx + 1,
+                        "column": col,
+                        "primary": p_val,
+                        "qc": q_val,
+                    })
+                    if len(value_diffs) >= 20:
+                        break
+            if len(value_diffs) >= 20:
+                break
+
+    matched = header_match and row_count_match and not value_diffs
+    suggested_cause = None
+    if not matched:
+        if col_diff:
+            suggested_cause = "Column name mismatch — check header casing/spacing."
+        elif not row_count_match:
+            suggested_cause = "Row count differs — check sort keys or filtering logic."
+        elif value_diffs:
+            suggested_cause = "Value differences after normalization — check derivations."
+
+    return {
+        "status": "MATCH" if matched else "MISMATCH",
+        "comparison_mode": "semantic",
+        "numeric_tolerance": _NUMERIC_TOLERANCE,
+        "primary_rows": len(p_rows),
+        "qc_rows": len(q_rows),
+        "row_count_match": row_count_match,
+        "column_match": header_match,
+        "column_differences": col_diff,
+        "value_differences": value_diffs,
+        "value_difference_count": len(value_diffs),
+        "suggested_root_cause": suggested_cause,
+        "primary_hash": sha256_file(primary),
+        "qc_hash": sha256_file(qc),
+        "byte_identical": sha256_file(primary) == sha256_file(qc),
+    }
+
+
 def compare_output_directories(primary_dir: Path, qc_dir: Path) -> dict:
-    """Compare CSV outputs from primary and QC runs."""
+    """Compare CSV outputs from primary and QC runs using semantic equivalence."""
     primary_files = {
         f.name: f for f in primary_dir.glob("*.csv") if f.is_file()
     }
@@ -229,26 +360,20 @@ def compare_output_directories(primary_dir: Path, qc_dir: Path) -> dict:
                 "status": "MISSING",
                 "primary_present": p_file is not None,
                 "qc_present": q_file is not None,
+                "suggested_root_cause": "Output file missing from one program run.",
             })
             continue
 
-        p_hash = sha256_file(p_file)
-        q_hash = sha256_file(q_file)
-        matched = p_hash == q_hash
-        if not matched:
+        result = compare_csv_files_semantic(p_file, q_file)
+        result["file"] = name
+        if result["status"] != "MATCH":
             all_match = False
-        file_results.append({
-            "file": name,
-            "status": "MATCH" if matched else "MISMATCH",
-            "primary_hash": p_hash,
-            "qc_hash": q_hash,
-            "primary_rows": _count_csv_rows(p_file),
-            "qc_rows": _count_csv_rows(q_file),
-        })
+        file_results.append(result)
 
     return {
         "matched": all_match and bool(all_names),
         "file_count": len(all_names),
+        "comparison_mode": "semantic",
         "files": file_results,
     }
 
@@ -260,11 +385,29 @@ def _count_csv_rows(path: Path) -> int:
     return max(0, len(text.splitlines()) - 1)
 
 
+def _extract_error_context(program: str, log: str) -> dict:
+    lines = program.splitlines()
+    error_line = None
+    for line in reversed(log.splitlines()):
+        if "error" in line.lower():
+            error_line = line.strip()
+            break
+    snippet = ""
+    if error_line:
+        for idx, line in enumerate(lines):
+            if error_line.split(":")[0] in line:
+                start = max(0, idx - 2)
+                snippet = "\n".join(lines[start : idx + 3])
+                break
+    return {"error_line": error_line, "code_snippet": snippet}
+
+
 def run_dual_program_comparison(
     *,
     primary_program: str,
     qc_program: str,
     input_payload: dict,
+    workflow_step: StatisticalQCWorkflow | None = None,
 ) -> dict:
     """
     Execute primary and QC R programs in isolated temp workspaces sharing input.
@@ -277,6 +420,16 @@ def run_dual_program_comparison(
             "status": "R_UNAVAILABLE",
             "message": "Rscript not installed — programs stored for manual QC",
         }
+
+    if workflow_step is not None:
+        preflight = preflight_input_validation(input_payload, workflow_step)
+        if not preflight["ok"]:
+            return {
+                "r_available": True,
+                "status": "PREFLIGHT_FAILED",
+                "message": "Input validation failed before R execution.",
+                "preflight": preflight,
+            }
 
     with tempfile.TemporaryDirectory(prefix="celerius_qc_") as tmp:
         workspace = Path(tmp)
@@ -303,8 +456,14 @@ def run_dual_program_comparison(
                 ),
                 "primary_success": p_ok,
                 "qc_success": q_ok,
-                "primary_log": p_log[-2000:],
-                "qc_log": q_log[-2000:],
+                "primary_log": p_log[-4000:],
+                "qc_log": q_log[-4000:],
+                "primary_error_context": _extract_error_context(primary_program, p_log),
+                "qc_error_context": _extract_error_context(qc_program, q_log),
+                "output_paths": {
+                    "primary": str(p_out),
+                    "qc": str(q_out),
+                },
             }
 
         comparison = compare_output_directories(p_out, q_out)
@@ -312,4 +471,9 @@ def run_dual_program_comparison(
         comparison["status"] = "MATCH" if comparison["matched"] else "MISMATCH"
         comparison["primary_log"] = p_log[-1000:]
         comparison["qc_log"] = q_log[-1000:]
+        if comparison["status"] == "MISMATCH":
+            comparison["mismatch_report"] = {
+                "summary": "Creator and QC outputs differ after semantic normalization.",
+                "files": comparison.get("files", []),
+            }
         return comparison

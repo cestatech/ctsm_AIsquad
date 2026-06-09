@@ -39,6 +39,11 @@ from app.services.context_graph_service import ContextGraphService
 from app.services.intelligence_service import AIDecisionService, DataLineageService
 from app.services.mapping_service import MappingService
 from app.services.upload_service import UploadService
+from app.services.data_cut_service import (
+    assert_compatible_data_cuts,
+    data_cut_from_dataset,
+    prepare_pipeline_artifact,
+)
 from app.services.dual_programmer_qc_service import DualProgrammerQCService
 from app.services.pinnacle21_service import Pinnacle21Service
 from app.services.validation_service import ValidationService
@@ -170,19 +175,28 @@ class SDTMGenerationService:
             study_name=study.name,
             protocol_number=study.protocol_number,
         )
+        data_cut = data_cut_from_dataset(dataset, upload, actor.id)
+        art_name, art_desc, content, metadata = prepare_pipeline_artifact(
+            study_name=study.name,
+            package_label="SDTM Package",
+            data_cut=data_cut,
+            content=content,
+            base_description=(
+                f"AI-derived SDTM IG {self._settings.SDTM_IG_VERSION} "
+                f"from '{upload.original_filename}'"
+            ),
+        )
 
         artifact = await self._artifact_svc.create_artifact(
             organization_id=actor.organization_id,
             study_id=dataset.study_id,
             user=actor,
             artifact_type=ArtifactType.SDTM_DATASET,
-            name=f"{study.name} — SDTM ({dataset.dataset_name})",
-            description=(
-                f"AI-derived SDTM IG {self._settings.SDTM_IG_VERSION} dataset "
-                f"from raw upload '{upload.original_filename}'"
-            ),
+            name=art_name,
+            description=art_desc,
             content=content,
             change_summary=f"SDTM derivation from dataset {dataset.dataset_name}",
+            metadata=metadata,
         )
 
         return await self._finalize_generation(
@@ -282,6 +296,7 @@ class SDTMGenerationService:
         total_rows = 0
         total_mappings = 0
         source_ids: list[UUID] = []
+        shared_data_cut = None
 
         for dataset in datasets:
             fields = await self._field_repo.list_for_dataset(
@@ -293,6 +308,13 @@ class SDTMGenerationService:
             )
             if upload is None:
                 continue
+            ds_cut = data_cut_from_dataset(dataset, upload, actor.id)
+            if shared_data_cut is None:
+                shared_data_cut = ds_cut
+            else:
+                assert_compatible_data_cuts(
+                    shared_data_cut, ds_cut, operation="SDTM study merge"
+                )
             raw_rows = self._load_dataset_rows(
                 upload=upload, dataset=dataset, fields=fields
             )
@@ -340,19 +362,35 @@ class SDTMGenerationService:
             "row_count": total_rows,
             "mapping_count": total_mappings,
         }
+        if shared_data_cut is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "NO_DATA_CUT",
+                    "message": "Could not resolve data cut from study datasets.",
+                },
+            )
+        art_name, art_desc, content, metadata = prepare_pipeline_artifact(
+            study_name=study.name,
+            package_label="SDTM Package",
+            data_cut=shared_data_cut,
+            content=content,
+            base_description=(
+                f"AI-derived SDTM IG {self._settings.SDTM_IG_VERSION} — "
+                f"{len(source_ids)} dataset(s) merged"
+            ),
+        )
 
         artifact = await self._artifact_svc.create_artifact(
             organization_id=actor.organization_id,
             study_id=study_id,
             user=actor,
             artifact_type=ArtifactType.SDTM_DATASET,
-            name=f"{study.name} — SDTM Full Study Package",
-            description=(
-                f"AI-derived SDTM IG {self._settings.SDTM_IG_VERSION} — "
-                f"{len(source_ids)} dataset(s) merged"
-            ),
+            name=art_name,
+            description=art_desc,
             content=content,
             change_summary=f"Study-level SDTM merge from {len(source_ids)} datasets",
+            metadata=metadata,
         )
 
         return await self._finalize_generation(

@@ -20,6 +20,7 @@ from app.repositories.study_repository import StudyRepository
 from app.schemas.validation import ValidationRunCreate
 from app.services.artifact_service import ArtifactService
 from app.services.audit_service import AuditService
+from app.services.data_cut_service import extract_data_cut, prepare_pipeline_artifact
 from app.services.dual_programmer_qc_service import DualProgrammerQCService
 from app.services.intelligence_service import AIDecisionService
 from app.services.validation_service import ValidationService
@@ -88,16 +89,33 @@ class TLFGenerationService:
             adam_content=adam_content,
             source_adam_artifact_id=adam_artifact_id,
         )
+        data_cut = extract_data_cut(adam_artifact.extra_data, adam_content)
+        if data_cut is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "NO_DATA_CUT",
+                    "message": "ADaM source artifact must include data cut metadata.",
+                },
+            )
+        art_name, art_desc, content, metadata = prepare_pipeline_artifact(
+            study_name=study.name,
+            package_label="TLF Package",
+            data_cut=data_cut,
+            content=content,
+            base_description="AI-derived TLF specification from ADaM analysis datasets",
+        )
 
         artifact = await self._artifact_svc.create_artifact(
             organization_id=actor.organization_id,
             study_id=study.id,
             user=actor,
             artifact_type=ArtifactType.TLF,
-            name=f"{study.name} — TLF Package",
-            description="AI-derived TLF specification from ADaM analysis datasets",
+            name=art_name,
+            description=art_desc,
             content=content,
             change_summary=f"TLF derivation from ADaM artifact {adam_artifact.name}",
+            metadata=metadata,
         )
 
         await self._ai_decision.complete_decision(

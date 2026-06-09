@@ -9,6 +9,7 @@ const STATUS_COLORS: Record<string, string> = {
   MATCH: "bg-emerald-100 text-emerald-800",
   MISMATCH: "bg-red-100 text-red-800",
   EXECUTION_FAILED: "bg-amber-100 text-amber-800",
+  PREFLIGHT_FAILED: "bg-amber-100 text-amber-900",
   R_UNAVAILABLE: "bg-slate-100 text-slate-600",
   PROGRAMS_GENERATED: "bg-blue-100 text-blue-800",
   PENDING: "bg-slate-100 text-slate-500",
@@ -134,11 +135,30 @@ function QCRunCard({
                   <> · {comparison.file_count} output file(s)</>
                 )}
               </p>
-              {run.status === "EXECUTION_FAILED" && (
-                <details className="text-[10px]">
+              {(run.status === "EXECUTION_FAILED" || comparison.status === "PREFLIGHT_FAILED") && (
+                <details className="text-[10px]" open>
                   <summary className="cursor-pointer text-amber-700 font-medium">
-                    Show R error output
+                    {comparison.status === "PREFLIGHT_FAILED"
+                      ? "Preflight validation errors"
+                      : "Show R error output"}
                   </summary>
+                  {comparison.preflight != null &&
+                    Array.isArray((comparison.preflight as { errors?: string[] }).errors) && (
+                      <ul className="mt-1 list-disc list-inside text-amber-800">
+                        {((comparison.preflight as { errors: string[] }).errors).map((err) => (
+                          <li key={err}>{err}</li>
+                        ))}
+                      </ul>
+                    )}
+                  {typeof comparison.primary_error_context === "object" &&
+                    comparison.primary_error_context !== null && (
+                      <pre className="mt-1 p-2 bg-white border border-slate-200 overflow-x-auto font-mono max-h-24">
+                        {String(
+                          (comparison.primary_error_context as { error_line?: string })
+                            .error_line ?? ""
+                        )}
+                      </pre>
+                    )}
                   {typeof comparison.primary_log === "string" && comparison.primary_log && (
                     <pre className="mt-1 p-2 bg-white border border-slate-200 overflow-x-auto font-mono max-h-24">
                       {comparison.primary_log}
@@ -146,6 +166,16 @@ function QCRunCard({
                   )}
                 </details>
               )}
+              {run.status === "MISMATCH" && comparison.mismatch_report != null ? (
+                <details className="text-[10px]" open>
+                  <summary className="cursor-pointer text-red-700 font-medium">
+                    Mismatch report
+                  </summary>
+                  <pre className="mt-1 p-2 bg-white border border-red-100 overflow-x-auto font-mono max-h-40 text-[10px]">
+                    {JSON.stringify(comparison.mismatch_report, null, 2)}
+                  </pre>
+                </details>
+              ) : null}
             </div>
           )}
           <div className="flex flex-wrap gap-2">
