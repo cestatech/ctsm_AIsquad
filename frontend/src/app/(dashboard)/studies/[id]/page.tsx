@@ -75,6 +75,7 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
   const [uploadSourceType, setUploadSourceType] = useState<DataSourceType>("LIVE_FINAL");
   const [uploadCutLabel, setUploadCutLabel] = useState("");
   const [uploadCutDate, setUploadCutDate] = useState("");
+  const [terminateError, setTerminateError] = useState<string | null>(null);
 
   const { data: study, isLoading: studyLoading } = useQuery({
     queryKey: ["study", studyId, token],
@@ -110,6 +111,17 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
     queryKey: ["uploads", studyId, token],
     queryFn: () => uploadsApi.list(studyId, token!),
     enabled: !!token,
+  });
+
+  const terminateMutation = useMutation({
+    mutationFn: () => studiesApi.terminate(studyId, token!),
+    onSuccess: () => {
+      setTerminateError(null);
+      queryClient.invalidateQueries({ queryKey: ["study", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["studies"] });
+    },
+    onError: (err) =>
+      setTerminateError(getApiErrorMessage(err, "Failed to terminate study.")),
   });
 
   const uploadMutation = useMutation({
@@ -326,7 +338,30 @@ export default function StudyWorkspacePage({ params }: { params: { id: string } 
               <p className="text-slate-500 text-sm mt-1 max-w-2xl">{study.description}</p>
             )}
           </div>
-          <div className="flex gap-2 flex-shrink-0 ml-6">
+          <div className="flex gap-2 flex-shrink-0 ml-6 items-center">
+            {terminateError && (
+              <span className="text-xs text-red-600 mr-2">{terminateError}</span>
+            )}
+            {perms.isAdmin &&
+              study.status !== "TERMINATED" &&
+              study.status !== "ARCHIVED" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Terminate "${study.name}"? The study will become read-only.`
+                      )
+                    ) {
+                      terminateMutation.mutate();
+                    }
+                  }}
+                  disabled={terminateMutation.isPending}
+                  className="border border-red-200 text-red-700 hover:bg-red-50 text-sm font-medium px-4 py-2 transition-colors disabled:opacity-50"
+                >
+                  {terminateMutation.isPending ? "Terminating…" : "Terminate study"}
+                </button>
+              )}
             <Link
               href={`/studies/${study.id}/intake`}
               className="border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium px-4 py-2 transition-colors"

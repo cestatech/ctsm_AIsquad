@@ -16,6 +16,7 @@ const ACTION_COLORS: Record<string, string> = {
   STUDY_CREATED: "bg-blue-100 text-blue-700",
   STUDY_UPDATED: "bg-blue-100 text-blue-600",
   STUDY_ARCHIVED: "bg-slate-100 text-slate-600",
+  STUDY_TERMINATED: "bg-red-100 text-red-700",
   ARTIFACT_CREATED: "bg-indigo-100 text-indigo-700",
   ARTIFACT_UPDATED: "bg-indigo-100 text-indigo-600",
   ARTIFACT_SUBMITTED: "bg-amber-100 text-amber-700",

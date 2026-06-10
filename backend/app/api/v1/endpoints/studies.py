@@ -141,6 +141,28 @@ async def archive_study(
     return StudyResponse.model_validate(study)
 
 
+@router.post(
+    "/{study_id}/terminate",
+    response_model=StudyResponse,
+    summary="Terminate a study",
+)
+async def terminate_study(
+    study_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StudyResponse:
+    """Terminate a study early. Admin only. Terminated studies are read-only."""
+    svc = StudyService(db)
+    study = await svc.terminate(
+        study_id=study_id,
+        actor=current_user,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return StudyResponse.model_validate(study)
+
+
 # ---------------------------------------------------------------------------
 # Member management
 # ---------------------------------------------------------------------------

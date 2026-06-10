@@ -40,6 +40,7 @@ class AuditAction(str, enum.Enum):
     STUDY_CREATED = "study.created"
     STUDY_UPDATED = "study.updated"
     STUDY_ARCHIVED = "study.archived"
+    STUDY_TERMINATED = "study.terminated"
     STUDY_MEMBER_ADDED = "study.member_added"
     STUDY_MEMBER_REMOVED = "study.member_removed"
     STUDY_MEMBER_ROLE_CHANGED = "study.member_role_changed"

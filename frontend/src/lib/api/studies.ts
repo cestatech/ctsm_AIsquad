@@ -40,6 +40,9 @@ export const studiesApi = {
   archive: (id: string, token: string) =>
     apiClient.post<Study>(`/studies/${id}/archive`, { token }),
 
+  terminate: (id: string, token: string) =>
+    apiClient.post<Study>(`/studies/${id}/terminate`, { token }),
+
   getMembers: (id: string, token: string) =>
     apiClient.get<StudyMember[]>(`/studies/${id}/members`, { token }),
 

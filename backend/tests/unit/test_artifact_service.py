@@ -98,6 +98,28 @@ class TestArtifactServiceDelete:
 
 
 @pytest.mark.asyncio
+class TestArtifactServiceSubmit:
+    async def test_transition_sets_updated_at_for_response_serialization(self):
+        db = MagicMock()
+        svc = ArtifactService(db)
+        org_id = uuid4()
+        contributor = _make_user(Role.CONTRIBUTOR, org_id=org_id)
+        artifact = _make_artifact(org_id=org_id)
+        artifact.can_transition_to = MagicMock(return_value=True)
+
+        svc._repo.get_by_id = AsyncMock(return_value=artifact)
+        svc._audit.log = AsyncMock()
+        svc._notify.create = AsyncMock()
+
+        before = datetime.now(UTC)
+        result = await svc.submit_for_review(artifact.id, org_id, contributor)
+
+        assert result.status == ArtifactStatus.IN_REVIEW
+        assert artifact.updated_at >= before
+        svc._notify.create.assert_called_once()
+
+
+@pytest.mark.asyncio
 class TestArtifactServiceExport:
     async def test_get_artifact_export_returns_content(self):
         db = MagicMock()

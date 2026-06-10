@@ -6,6 +6,7 @@ Study creation also registers the study as a STUDY node in the Context Graph.
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -251,6 +252,62 @@ class StudyService:
             study_id=study.id,
             actor_user_id=actor.id,
             payload={"study_id": str(study.id)},
+        )
+
+        return study
+
+    async def terminate(
+        self,
+        study_id: UUID,
+        actor: User,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> Study:
+        """Mark a study as terminated. Admin only. Terminal — study becomes read-only."""
+        check_permission(actor, Permission.STUDY_ARCHIVE)
+        study = await self._repo.get(study_id, actor.organization_id)
+
+        if study.status == StudyStatus.TERMINATED:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "ALREADY_TERMINATED",
+                    "message": "Study is already terminated.",
+                },
+            )
+        if study.status == StudyStatus.ARCHIVED:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "STUDY_ARCHIVED",
+                    "message": "Archived studies cannot be terminated.",
+                },
+            )
+
+        before = study.to_audit_dict()
+        study.status = StudyStatus.TERMINATED
+        if study.end_date is None:
+            study.end_date = date.today()
+        study = await self._repo.update(study)
+
+        await self._audit.log(
+            action=AuditAction.STUDY_TERMINATED,
+            resource_type="study",
+            organization_id=actor.organization_id,
+            actor_user_id=actor.id,
+            resource_id=study.id,
+            before_state=before,
+            after_state=study.to_audit_dict(),
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+
+        await self._graph.emit_event(
+            organization_id=actor.organization_id,
+            event_type="STUDY_TERMINATED",
+            study_id=study.id,
+            actor_user_id=actor.id,
+            payload={"study_id": str(study.id), "status": study.status.value},
         )
 
         return study

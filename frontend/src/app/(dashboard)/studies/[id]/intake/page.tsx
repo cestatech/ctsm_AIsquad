@@ -18,6 +18,7 @@ import {
   type StudyBrief,
 } from "@/types";
 import { ApiClientError } from "@/lib/api/client";
+import { mergeDomainsCompleted, mergeIntakeSession } from "@/lib/intakeProgress";
 
 const DOMAIN_LABELS: Record<IntakeDomain, string> = Object.fromEntries(
   INTAKE_DOMAINS.map((d) => [d.key, d.label])
@@ -83,8 +84,33 @@ export default function IntakePage() {
   const perms = useStudyPermissions(studyId);
   const queryClient = useQueryClient();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const isSubmittingRef = useRef(false);
+  const sessionBootstrappedRef = useRef(false);
+  const domainsHighWaterRef = useRef<IntakeDomain[]>([]);
 
   const [activeIntake, setActiveIntake] = useState<SponsorIntake | null>(null);
+  const [sidebarDomains, setSidebarDomains] = useState<IntakeDomain[]>([]);
+
+  function applyIntakeUpdate(
+    updater: SponsorIntake | ((prev: SponsorIntake | null) => SponsorIntake | null)
+  ) {
+    setActiveIntake((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      if (!next) {
+        domainsHighWaterRef.current = [];
+        setSidebarDomains([]);
+        return null;
+      }
+      const merged = mergeIntakeSession(prev, next);
+      const stableDomains = mergeDomainsCompleted(
+        domainsHighWaterRef.current,
+        merged.domains_completed
+      );
+      domainsHighWaterRef.current = stableDomains;
+      setSidebarDomains(stableDomains);
+      return { ...merged, domains_completed: stableDomains };
+    });
+  }
   const [input, setInput] = useState("");
   const [brief, setBrief] = useState<StudyBrief | null>(null);
   const [briefOpen, setBriefOpen] = useState(false);
@@ -102,15 +128,20 @@ export default function IntakePage() {
     queryKey: ["intakes", studyId, token],
     queryFn: () => intakeApi.list(studyId, token!),
     enabled: !!token,
+    placeholderData: (previous) => previous,
   });
 
   // Resume in-progress session, or load the latest compiled session on return visits
   useEffect(() => {
-    if (!existingIntakes?.length) return;
-    if (activeIntake) return;
+    if (!existingIntakes?.length || !token || sessionBootstrappedRef.current) return;
     const inProgress = existingIntakes.find((i) => i.status !== "COMPILED");
-    setActiveIntake(inProgress ?? existingIntakes[0]);
-  }, [existingIntakes, activeIntake]);
+    const target = inProgress ?? existingIntakes[0];
+    sessionBootstrappedRef.current = true;
+    intakeApi
+      .get(target.id, token)
+      .then((session) => applyIntakeUpdate(session))
+      .catch(() => applyIntakeUpdate(target));
+  }, [existingIntakes, token]);
 
   // Load compiled brief when revisiting a completed intake
   useEffect(() => {
@@ -125,7 +156,8 @@ export default function IntakePage() {
   const startMutation = useMutation({
     mutationFn: () => intakeApi.start(studyId, token!),
     onSuccess: (data) => {
-      setActiveIntake(data.intake);
+      sessionBootstrappedRef.current = true;
+      applyIntakeUpdate(data.intake);
       setStartError(null);
       queryClient.invalidateQueries({ queryKey: ["intakes", studyId] });
     },
@@ -133,7 +165,11 @@ export default function IntakePage() {
       if (err instanceof ApiClientError && err.error.code === "INTAKE_EXISTS") {
         const sessions = await intakeApi.list(studyId, token!);
         const active = sessions.find((i) => i.status !== "COMPILED");
-        if (active) setActiveIntake(active);
+        if (active) {
+          sessionBootstrappedRef.current = true;
+          const session = await intakeApi.get(active.id, token!);
+          applyIntakeUpdate(session);
+        }
         setStartError(null);
       } else if (err instanceof ApiClientError) {
         const detail = err.error.detail;
@@ -151,11 +187,20 @@ export default function IntakePage() {
   const respondMutation = useMutation({
     mutationFn: (message: string) => intakeApi.respond(activeIntake!.id, message, token!),
     onSuccess: (data) => {
-      setActiveIntake(data);
+      applyIntakeUpdate(data);
       setInput("");
+      isSubmittingRef.current = false;
+      queryClient.invalidateQueries({ queryKey: ["intakes", studyId] });
     },
-    onError: (_err, message) => {
-      setActiveIntake((prev) => {
+    onError: (err, message) => {
+      isSubmittingRef.current = false;
+      if (err instanceof ApiClientError && err.error.code === "DUPLICATE_MESSAGE") {
+        if (activeIntake && token) {
+          intakeApi.get(activeIntake.id, token).then((session) => applyIntakeUpdate(session));
+        }
+        return;
+      }
+      applyIntakeUpdate((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -174,7 +219,7 @@ export default function IntakePage() {
       setBrief(data);
       setBriefOpen(true);
       const refreshed = await intakeApi.get(activeIntake!.id, token!);
-      setActiveIntake(refreshed);
+      applyIntakeUpdate(refreshed);
       queryClient.invalidateQueries({ queryKey: ["intakes", studyId] });
     },
   });
@@ -196,7 +241,16 @@ export default function IntakePage() {
 
   function submitMessage(raw: string) {
     const trimmed = raw.trim();
-    if (!trimmed || !activeIntake || respondMutation.isPending) return;
+    if (
+      !trimmed ||
+      !activeIntake ||
+      respondMutation.isPending ||
+      isSubmittingRef.current
+    ) {
+      return;
+    }
+
+    isSubmittingRef.current = true;
 
     const optimisticMsg: IntakeMessage = {
       id: `optimistic-${Date.now()}`,
@@ -207,7 +261,7 @@ export default function IntakePage() {
       created_at: new Date().toISOString(),
     };
 
-    setActiveIntake((prev) =>
+    applyIntakeUpdate((prev) =>
       prev ? { ...prev, messages: [...prev.messages, optimisticMsg] } : prev
     );
     setInput("");
@@ -221,13 +275,13 @@ export default function IntakePage() {
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      submitMessage(e.currentTarget.value);
+      handleSend();
     }
   }
 
-  const progress =
-    activeIntake ? Math.round((activeIntake.domains_completed.length / 9) * 100) : 0;
-  const isReady = activeIntake?.ready_to_compile ?? false;
+  const progress = Math.round((sidebarDomains.length / 9) * 100);
+  const isReady =
+    (activeIntake?.ready_to_compile ?? false) || sidebarDomains.length === 9;
   const isCompiled = activeIntake?.status === "COMPILED";
 
   return (
@@ -254,7 +308,7 @@ export default function IntakePage() {
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-slate-600">Domains covered</span>
             <span className="text-xs font-semibold text-brand-600">
-              {activeIntake?.domains_completed.length ?? 0}/9
+              {sidebarDomains.length}/9
             </span>
           </div>
           <div className="w-full bg-slate-100 rounded-full h-1.5">
@@ -265,9 +319,9 @@ export default function IntakePage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          {activeIntake ? (
-            <DomainProgress domainsCompleted={activeIntake.domains_completed} />
+        <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0">
+          {activeIntake || sidebarDomains.length > 0 ? (
+            <DomainProgress domainsCompleted={sidebarDomains} />
           ) : (
             <p className="text-xs text-slate-400 text-center mt-8">
               Start an intake session to begin.

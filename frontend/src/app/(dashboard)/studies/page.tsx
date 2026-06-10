@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { studiesApi } from "@/lib/api/studies";
-import type { StudyStatus } from "@/types";
+import type { Study, StudyStatus } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600",
@@ -31,10 +31,17 @@ const PHASE_LABELS: Record<string, string> = {
 
 const ALL_STATUSES: StudyStatus[] = ["DRAFT", "ACTIVE", "ON_HOLD", "COMPLETED", "ARCHIVED", "TERMINATED"];
 
+function canTerminateStudy(study: Study): boolean {
+  return study.status !== "TERMINATED" && study.status !== "ARCHIVED";
+}
+
 export default function StudiesPage() {
   const { token, role } = useAuthStore();
   const perms = usePermissions(role);
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<StudyStatus | "ALL">("ALL");
+  const [terminatingId, setTerminatingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["studies", token, statusFilter],
@@ -47,6 +54,25 @@ export default function StudiesPage() {
   });
 
   const studies = data?.items ?? [];
+
+  const terminateMutation = useMutation({
+    mutationFn: (studyId: string) => studiesApi.terminate(studyId, token!),
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["studies"] });
+    },
+    onError: (err: Error) => setActionError(err.message),
+    onSettled: () => setTerminatingId(null),
+  });
+
+  function handleTerminate(study: Study) {
+    const confirmed = window.confirm(
+      `Terminate "${study.name}"? The study will become read-only and cannot be reactivated.`
+    );
+    if (!confirmed) return;
+    setTerminatingId(study.id);
+    terminateMutation.mutate(study.id);
+  }
 
   return (
     <div>
@@ -68,6 +94,12 @@ export default function StudiesPage() {
       </div>
 
       <div className="px-8 py-6">
+        {actionError && (
+          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-3">
+            {actionError}
+          </div>
+        )}
+
         {/* Filters */}
         <div className="flex gap-1.5 mb-6">
           <button
@@ -106,18 +138,21 @@ export default function StudiesPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Phase</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Start Date</th>
+                {perms.isAdmin && (
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={perms.isAdmin ? 7 : 6} className="px-4 py-10 text-center text-slate-400 text-sm">
                     Loading studies…
                   </td>
                 </tr>
               ) : studies.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={perms.isAdmin ? 7 : 6} className="px-4 py-10 text-center text-slate-400 text-sm">
                     No studies found.{" "}
                     {perms.isAdmin && (
                       <Link href="/studies/new" className="text-brand-600 hover:underline">
@@ -161,6 +196,22 @@ export default function StudiesPage() {
                         ? new Date(study.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                         : "—"}
                     </td>
+                    {perms.isAdmin && (
+                      <td className="px-4 py-3 text-right">
+                        {canTerminateStudy(study) ? (
+                          <button
+                            type="button"
+                            onClick={() => handleTerminate(study)}
+                            disabled={terminatingId === study.id}
+                            className="text-xs font-medium text-red-700 hover:text-red-800 border border-red-200 hover:border-red-300 px-2.5 py-1 disabled:opacity-50"
+                          >
+                            {terminatingId === study.id ? "Terminating…" : "Terminate"}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

@@ -79,6 +79,76 @@ class TestAssertReadyForGeneration:
         SDTMGenerationService._assert_ready_for_generation([_make_field()])
 
 
+class TestParseAiSpec:
+    def test_parses_fenced_json(self):
+        raw = '```json\n{"domains": [{"domain": "DM"}], "derived_variables": []}\n```'
+        parsed = SDTMGenerationService._parse_ai_spec(raw)
+        assert parsed is not None
+        assert parsed["domains"][0]["domain"] == "DM"
+
+    def test_returns_none_for_empty_text(self):
+        assert SDTMGenerationService._parse_ai_spec("") is None
+        assert SDTMGenerationService._parse_ai_spec("   ") is None
+
+    def test_returns_none_for_garbage(self):
+        assert SDTMGenerationService._parse_ai_spec("not json at all") is None
+
+
+class TestMaterializeSdtmDomains:
+    def test_materializes_all_rows_from_compact_spec(self):
+        ai_spec = {
+            "domains": [
+                {
+                    "domain": "DM",
+                    "domain_label": "Demographics",
+                    "variables": ["STUDYID", "DOMAIN", "USUBJID", "AGE"],
+                    "column_transforms": [
+                        {"source_column": "AGE", "target_variable": "AGE", "transform": "direct"}
+                    ],
+                }
+            ],
+            "derived_variables": [],
+        }
+        mapping = [
+            {
+                "column_name": "AGE",
+                "sdtm_variable": "DM.AGE",
+                "ecrf_field": "AGE",
+                "inferred_type": "number",
+            }
+        ]
+        rows = [{"AGE": "30"}, {"AGE": "45"}]
+        result = SDTMGenerationService._materialize_sdtm_domains(
+            ai_spec,
+            mapping_spec=mapping,
+            raw_rows=rows,
+            protocol_number="PROT-001",
+        )
+        assert len(result["domains"]) == 1
+        assert len(result["domains"][0]["observations"]) == 2
+        assert result["domains"][0]["observations"][1]["AGE"] == "45"
+
+
+class TestBuildSdtmUserPrompt:
+    def test_limits_sample_rows_and_columns(self):
+        mapping = [
+            {"column_name": "AGE", "sdtm_variable": "DM.AGE"},
+            {"column_name": "SEX", "sdtm_variable": "DM.SEX"},
+        ]
+        rows = [
+            {"AGE": "30", "SEX": "M", "IGNORED": "x"} for _ in range(20)
+        ]
+        prompt = SDTMGenerationService._build_sdtm_user_prompt(
+            study_name="Study",
+            protocol_number="PROT-001",
+            mapping_spec=mapping,
+            raw_rows=rows,
+        )
+        assert "Total source rows to materialize locally: 20" in prompt
+        assert "IGNORED" not in prompt
+        assert '"AGE":"30"' in prompt.replace(" ", "")
+
+
 class TestDeterministicDomains:
     def test_builds_domain_observations(self):
         mapping = [

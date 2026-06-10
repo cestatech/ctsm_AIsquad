@@ -288,6 +288,7 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
     onSuccess: (updated) => {
       queryClient.setQueryData(["artifact", artifactId, token], updated);
       queryClient.invalidateQueries({ queryKey: ["artifacts", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["approvals-queue"] });
     },
     onError: (err) => setActionError(getApiErrorMessage(err, "Action failed.")),
   });

@@ -8,8 +8,9 @@ Pinnacle 21 is not required; validation uses engine=internal.
 
 from __future__ import annotations
 
+import asyncio
 import json
-import re
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -45,23 +46,30 @@ from app.services.data_cut_service import (
     prepare_pipeline_artifact,
 )
 from app.services.dual_programmer_qc_service import DualProgrammerQCService
+from app.services.generators.base_generator import BaseGenerator
 from app.services.pinnacle21_service import Pinnacle21Service
 from app.services.validation_service import ValidationService
 from app.models.statistical_qc import StatisticalQCWorkflow
 
+logger = logging.getLogger(__name__)
+
 _AGENT_NAME = "sdtm-derivation-agent"
-_MODEL_ID = "claude-sonnet-4-20250514"
+_MODEL_ID = "claude-sonnet-4-6"
 _MAX_ROWS = 5000
+_SAMPLE_ROWS = 10
+_MAX_AI_ATTEMPTS = 3
 
-_SYSTEM_PROMPT = """You are a CDISC SDTM expert. Transform raw clinical data rows into SDTM IG 3.3 domain datasets.
+_SYSTEM_PROMPT = """You are a CDISC SDTM expert. Derive SDTM IG 3.3 domain specifications from approved mappings.
 
-Given approved column→SDTM variable mappings and sample raw rows, produce SDTM domain content.
+Given approved column→SDTM variable mappings and sample raw rows, return a COMPACT derivation spec.
+Do NOT emit full observation arrays — the platform materializes all rows locally from your spec.
 
 Rules:
 - Group variables by SDTM domain (prefix before the dot, e.g. DM.USUBJID → domain DM)
 - Include standard required variables per domain where derivable (STUDYID, DOMAIN, USUBJID)
-- Apply simple 1:1 mappings directly; document transforms in transformation_notes
-- Return ONLY valid JSON matching the schema below
+- Describe each column mapping in column_transforms; use transform "direct" for 1:1 copies
+- Document non-trivial transforms in transformation_notes and derived_variables
+- Return ONLY valid JSON matching the schema below — no markdown fences or prose
 
 Schema:
 {
@@ -70,8 +78,10 @@ Schema:
       "domain": "DM",
       "domain_label": "Demographics",
       "class": "Special-Purpose",
-      "variables": ["STUDYID", "DOMAIN", "USUBJID", "..."],
-      "observations": [{"STUDYID": "...", "DOMAIN": "DM", "USUBJID": "...", ...}],
+      "variables": ["STUDYID", "DOMAIN", "USUBJID", "AGE"],
+      "column_transforms": [
+        {"source_column": "AGE", "target_variable": "AGE", "transform": "direct"}
+      ],
       "transformation_notes": ["<note>"]
     }
   ],
@@ -639,27 +649,40 @@ class SDTMGenerationService:
         ]
 
         if self._client:
-            ai_domains = await self._call_claude(
+            ai_spec = await self._call_claude(
                 study_name=study_name,
                 protocol_number=protocol_number,
                 mapping_spec=mapping_spec,
-                raw_rows=raw_rows[:50],
+                raw_rows=raw_rows,
             )
+            ai_domains = self._materialize_sdtm_domains(
+                ai_spec,
+                mapping_spec=mapping_spec,
+                raw_rows=raw_rows,
+                protocol_number=protocol_number,
+            )
+            derivation_method = "ai"
         else:
             ai_domains = self._deterministic_domains(
                 mapping_spec=mapping_spec,
                 raw_rows=raw_rows,
                 protocol_number=protocol_number,
             )
+            derivation_method = "deterministic"
 
         obs_count = sum(
             len(d.get("observations", [])) for d in ai_domains.get("domains", [])
         )
         if obs_count == 0 and raw_rows:
-            ai_domains = self._deterministic_domains(
-                mapping_spec=mapping_spec,
-                raw_rows=raw_rows,
-                protocol_number=protocol_number,
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "SDTM_DERIVATION_EMPTY",
+                    "message": (
+                        "SDTM agent returned a derivation spec that produced no "
+                        "observations from the source rows."
+                    ),
+                },
             )
 
         return {
@@ -676,6 +699,7 @@ class SDTMGenerationService:
             "derived_variables": ai_domains.get("derived_variables", []),
             "row_count": len(raw_rows),
             "mapping_count": len(mapping_spec),
+            "derivation_method": derivation_method,
         }
 
     async def _call_claude(
@@ -686,29 +710,218 @@ class SDTMGenerationService:
         mapping_spec: list[dict],
         raw_rows: list[dict],
     ) -> dict:
-        user_prompt = f"""Study: {study_name}
+        user_prompt = self._build_sdtm_user_prompt(
+            study_name=study_name,
+            protocol_number=protocol_number,
+            mapping_spec=mapping_spec,
+            raw_rows=raw_rows,
+        )
+        last_error = "unknown error"
+
+        for attempt in range(1, _MAX_AI_ATTEMPTS + 1):
+            try:
+                text, meta = await self._invoke_claude_messages(user_prompt)
+            except (anthropic.APIError, TimeoutError) as exc:
+                last_error = str(exc)
+                logger.warning(
+                    "SDTM agent API call failed (attempt %s/%s): %s",
+                    attempt,
+                    _MAX_AI_ATTEMPTS,
+                    exc,
+                )
+                continue
+
+            if not text.strip():
+                last_error = (
+                    f"empty model response (stop_reason={meta.get('stop_reason')}, "
+                    f"input_tokens={meta.get('input_tokens')}, "
+                    f"output_tokens={meta.get('output_tokens')})"
+                )
+                logger.warning(
+                    "SDTM agent returned empty text on attempt %s/%s: %s",
+                    attempt,
+                    _MAX_AI_ATTEMPTS,
+                    last_error,
+                )
+                continue
+
+            parsed = self._parse_ai_spec(text)
+            if parsed is not None and parsed.get("domains"):
+                return parsed
+
+            last_error = f"unparseable or empty domains JSON: {text[:300]!r}"
+            logger.warning(
+                "SDTM agent returned invalid JSON on attempt %s/%s",
+                attempt,
+                _MAX_AI_ATTEMPTS,
+            )
+            try:
+                repair_text, _ = await self._invoke_claude_messages(
+                    (
+                        "The following SDTM derivation JSON is invalid. "
+                        "Repair syntax errors and return valid JSON only. "
+                        "Do not include observations arrays — only the compact schema.\n\n"
+                        f"{text[:14000]}"
+                    ),
+                    system_prompt=(
+                        "You fix invalid JSON. Return ONLY a single valid JSON object. "
+                        "No markdown fences or commentary."
+                    ),
+                )
+            except (anthropic.APIError, TimeoutError) as exc:
+                last_error = f"JSON repair call failed: {exc}"
+                continue
+
+            parsed = self._parse_ai_spec(repair_text)
+            if parsed is not None and parsed.get("domains"):
+                return parsed
+            last_error = f"repair still invalid: {repair_text[:300]!r}"
+
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "AI_PARSE_ERROR",
+                "message": (
+                    f"SDTM agent failed after {_MAX_AI_ATTEMPTS} attempts: {last_error}"
+                ),
+            },
+        )
+
+    @staticmethod
+    def _build_sdtm_user_prompt(
+        *,
+        study_name: str,
+        protocol_number: str,
+        mapping_spec: list[dict],
+        raw_rows: list[dict],
+    ) -> str:
+        """Build a bounded prompt — sample rows and mapped columns only."""
+        mapped_columns = {m["column_name"] for m in mapping_spec}
+        sample_rows = [
+            {col: row.get(col) for col in mapped_columns if col in row}
+            for row in raw_rows[:_SAMPLE_ROWS]
+        ]
+        return f"""Study: {study_name}
 Protocol: {protocol_number}
-SDTM IG: {self._settings.SDTM_IG_VERSION}
+SDTM IG: 3.3
+Total source rows to materialize locally: {len(raw_rows)}
 
 Approved mappings:
-{json.dumps(mapping_spec, indent=2)}
+{json.dumps(mapping_spec, separators=(",", ":"), default=str)}
 
-Sample raw rows (max 50):
-{json.dumps(raw_rows, indent=2, default=str)}
+Sample raw rows (mapped columns only, max {_SAMPLE_ROWS}):
+{json.dumps(sample_rows, separators=(",", ":"), default=str)}
 
-Generate SDTM domain datasets with observations transformed from the raw rows."""
+Return the compact SDTM derivation spec JSON. Do not include observations arrays."""
 
-        response = await self._client.messages.create(
-            model=_MODEL_ID,
-            max_tokens=8000,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
+    async def _invoke_claude_messages(
+        self,
+        user_prompt: str,
+        *,
+        system_prompt: str = _SYSTEM_PROMPT,
+    ) -> tuple[str, dict[str, object]]:
+        """Call Claude with timeout and response diagnostics."""
+        response = await asyncio.wait_for(
+            self._client.messages.create(
+                model=_MODEL_ID,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            ),
+            timeout=self._settings.AI_JOB_TIMEOUT_SECONDS,
         )
-        text = ""
-        for block in response.content:
+
+        text = self._extract_response_text(response)
+
+        meta = {
+            "stop_reason": response.stop_reason,
+            "input_tokens": getattr(response.usage, "input_tokens", None),
+            "output_tokens": getattr(response.usage, "output_tokens", None),
+            "model": response.model,
+        }
+        return text, meta
+
+    @staticmethod
+    def _extract_response_text(response) -> str:
+        """Concatenate all text blocks from a Claude response."""
+        parts: list[str] = []
+        for block in response.content or []:
             if isinstance(block, TextBlock):
-                text += block.text
-        return self._parse_json(text)
+                parts.append(block.text)
+        return "".join(parts)
+
+    @staticmethod
+    def _parse_ai_spec(text: str) -> dict | None:
+        try:
+            parsed = BaseGenerator._parse_json_response(text)
+        except ValueError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    @staticmethod
+    def _materialize_sdtm_domains(
+        ai_spec: dict,
+        *,
+        mapping_spec: list[dict],
+        raw_rows: list[dict],
+        protocol_number: str,
+    ) -> dict:
+        """Expand compact AI derivation specs into full SDTM domain observations."""
+        domains_out: list[dict] = []
+
+        for domain_spec in ai_spec.get("domains", []):
+            domain = domain_spec.get("domain", "UNK")
+            if domain_spec.get("observations"):
+                domains_out.append(domain_spec)
+                continue
+
+            variables: set[str] = set(domain_spec.get("variables") or [])
+            variables.update({"STUDYID", "DOMAIN"})
+            if domain == "DM":
+                variables.add("USUBJID")
+
+            col_to_var: dict[str, str] = {}
+            for transform in domain_spec.get("column_transforms") or []:
+                source = transform.get("source_column")
+                target = transform.get("target_variable")
+                if source and target:
+                    col_to_var[str(source)] = str(target)
+
+            for mapping in mapping_spec:
+                sdtm_var = mapping.get("sdtm_variable") or ""
+                if "." not in sdtm_var:
+                    continue
+                domain_code, variable = sdtm_var.split(".", 1)
+                if domain_code != domain:
+                    continue
+                col_to_var[mapping["column_name"]] = variable
+                variables.add(variable)
+
+            observations: list[dict[str, str]] = []
+            for index, row in enumerate(raw_rows):
+                obs: dict[str, str] = {
+                    "STUDYID": protocol_number,
+                    "DOMAIN": domain,
+                }
+                if domain == "DM":
+                    obs["USUBJID"] = f"{protocol_number}-{index + 1:04d}"
+                for column, variable in col_to_var.items():
+                    if column in row and row[column] is not None:
+                        obs[variable] = str(row[column])
+                observations.append(obs)
+
+            domains_out.append({
+                **domain_spec,
+                "variables": sorted(variables),
+                "observations": observations,
+                "transformation_notes": domain_spec.get("transformation_notes")
+                or ["AI derivation spec materialized locally for all source rows"],
+            })
+
+        return {
+            "domains": domains_out,
+            "derived_variables": ai_spec.get("derived_variables", []),
+        }
 
     @staticmethod
     def _deterministic_domains(
@@ -758,23 +971,6 @@ Generate SDTM domain datasets with observations transformed from the raw rows.""
             })
 
         return {"domains": domains_out, "derived_variables": []}
-
-    @staticmethod
-    def _parse_json(text: str) -> dict:
-        text = text.strip()
-        fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-        if fence:
-            text = fence.group(1).strip()
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "code": "AI_PARSE_ERROR",
-                    "message": f"SDTM agent returned invalid JSON: {exc}",
-                },
-            ) from exc
 
     async def _register_cip_links(
         self,

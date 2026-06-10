@@ -471,6 +471,9 @@ class ArtifactService:
             )
 
         artifact.status = new_status
+        # Keep updated_at in-instance so async response serialization does not
+        # lazy-load a server-generated column (MissingGreenlet on validate).
+        artifact.updated_at = datetime.now(UTC)
 
         await self._audit.log(
             action=audit_action,

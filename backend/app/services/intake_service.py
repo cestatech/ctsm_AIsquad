@@ -167,7 +167,7 @@ _DOMAIN_QUESTIONS: dict[str, str] = {
         "therapeutic area, indication, phase, sponsor name, and compound/drug code."
     ),
     "STUDY_DESIGN": (
-        "Thank you. Now describe the study design: parallel/crossover/factorial, "
+        "Now describe the study design: parallel/crossover/factorial, "
         "randomization method, blinding, comparator, treatment duration, and periods."
     ),
     "POPULATION": (
@@ -339,8 +339,12 @@ class IntakeService:
         )
         self._db.add(ai_msg)
 
-        intake.domains_completed = parsed.get("domains_completed", [])
-        intake.ready_to_compile = parsed.get("ready_to_compile", False)
+        parsed = self._normalize_intake_progress(
+            domains_completed=intake.domains_completed,
+            parsed=parsed,
+        )
+        intake.domains_completed = parsed["domains_completed"]
+        intake.ready_to_compile = parsed["ready_to_compile"]
         if intake.ready_to_compile:
             intake.status = IntakeStatus.READY_TO_COMPILE
 
@@ -382,6 +386,18 @@ class IntakeService:
         """
         intake = await self._get_active(intake_id, organization_id)
         visible_messages = [m for m in intake.messages if not m.is_hidden]
+        if (
+            visible_messages
+            and visible_messages[-1].role == "user"
+            and visible_messages[-1].content.strip() == user_message.strip()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "DUPLICATE_MESSAGE",
+                    "message": "This message was already recorded. Wait for the assistant reply.",
+                },
+            )
 
         user_msg = IntakeMessage(
             intake_id=intake_id,
@@ -394,7 +410,7 @@ class IntakeService:
         await self._db.flush()
 
         # Build history for decision input context
-        current_domain = visible_messages[-1].domain if visible_messages else None
+        current_domain = self._current_domain(visible_messages)
         msg_count = len(visible_messages) + 1  # +1 for the message just added
 
         # CIP: log the decision before calling Claude
@@ -445,6 +461,12 @@ class IntakeService:
             domains_completed=list(intake.domains_completed),
         )
         parsed = self._parse_ai_response(raw_response)
+        parsed = self._normalize_intake_progress(
+            domains_completed=intake.domains_completed,
+            parsed=parsed,
+            current_domain=current_domain,
+            user_answered=True,
+        )
 
         ai_msg = IntakeMessage(
             intake_id=intake_id,
@@ -457,18 +479,15 @@ class IntakeService:
         self._db.add(ai_msg)
         await self._db.flush()
 
-        newly_completed = [
-            d
-            for d in parsed.get("domains_completed", [])
-            if d not in intake.domains_completed
-        ]
-
-        intake.domains_completed = parsed.get(
-            "domains_completed", intake.domains_completed
-        )
-        intake.ready_to_compile = parsed.get("ready_to_compile", False)
+        prior_completed = list(intake.domains_completed)
+        intake.domains_completed = parsed["domains_completed"]
+        intake.ready_to_compile = parsed["ready_to_compile"]
         if intake.ready_to_compile:
             intake.status = IntakeStatus.READY_TO_COMPILE
+
+        newly_completed = [
+            d for d in intake.domains_completed if d not in prior_completed
+        ]
 
         # CIP: complete decision — the reasoning tells the graph exactly WHY
         # Claude asked this next question and what it inferred from the user's answer
@@ -791,10 +810,19 @@ class IntakeService:
         from typing import cast
         from anthropic.types import MessageParam
 
+        completed = domains_completed or []
+        remaining = [d for d in _DOMAIN_ORDER if d not in completed]
+        state_note = (
+            f"\n\nINTAKE STATE (authoritative — do not contradict): "
+            f"domains_completed={completed}. "
+            f"active_domain={current_domain}. "
+            f"remaining_domains={remaining}. "
+            f"Never re-ask a domain already in domains_completed."
+        )
         response = await self._client.messages.create(
             model=_INTAKE_MODEL,
             max_tokens=1024,
-            system=_SYSTEM_PROMPT,
+            system=_SYSTEM_PROMPT + state_note,
             messages=cast(list[MessageParam], messages),
         )
         block = response.content[0]
@@ -944,6 +972,88 @@ class IntakeService:
                     domain_answers.get("SITES", "TBD"),
                 ],
             },
+        }
+
+    @staticmethod
+    def _current_domain(messages: list[IntakeMessage]) -> str | None:
+        """Return the domain from the most recent assistant turn."""
+        for msg in reversed(messages):
+            if msg.role == "assistant" and msg.domain:
+                return msg.domain
+        return None
+
+    @classmethod
+    def _merge_domains_completed(
+        cls,
+        existing: list[str],
+        incoming: list[str] | None,
+    ) -> list[str]:
+        """Union domain completion lists while preserving canonical order."""
+        merged: list[str] = []
+        seen: set[str] = set()
+        for domain in _DOMAIN_ORDER:
+            if domain in existing or (incoming and domain in incoming):
+                if domain not in seen:
+                    merged.append(domain)
+                    seen.add(domain)
+        return merged
+
+    @classmethod
+    def _next_domain(cls, domains_completed: list[str]) -> str | None:
+        for domain in _DOMAIN_ORDER:
+            if domain not in domains_completed:
+                return domain
+        return None
+
+    @classmethod
+    def _normalize_intake_progress(
+        cls,
+        *,
+        domains_completed: list[str],
+        parsed: dict,
+        current_domain: str | None = None,
+        user_answered: bool = False,
+    ) -> dict:
+        """Enforce monotonic domain progression and prevent repeated questions."""
+        merged = cls._merge_domains_completed(
+            domains_completed,
+            parsed.get("domains_completed"),
+        )
+        if user_answered and current_domain and current_domain in _DOMAIN_ORDER:
+            if current_domain not in merged:
+                merged = cls._merge_domains_completed(merged, [current_domain])
+
+        next_domain = cls._next_domain(merged)
+        ready = bool(parsed.get("ready_to_compile")) and next_domain is None
+        domain = parsed.get("domain") or current_domain or next_domain
+
+        if domain in merged and not ready:
+            domain = next_domain
+
+        if ready:
+            domain = "SITES"
+            message = parsed.get(
+                "message",
+                "Thank you — all nine intake domains are covered. "
+                "You can now compile the Study Brief.",
+            )
+        elif domain and domain in _DOMAIN_ORDER:
+            if domain != parsed.get("domain"):
+                message = (
+                    f"Thank you for that information. {_DOMAIN_QUESTIONS[domain]}"
+                )
+            else:
+                message = parsed.get("message", _DOMAIN_QUESTIONS[domain])
+        else:
+            domain = next_domain or "STUDY_OVERVIEW"
+            message = parsed.get("message", _DOMAIN_QUESTIONS[domain])
+
+        return {
+            "message": message,
+            "domain": domain,
+            "domains_completed": merged,
+            "ready_to_compile": ready,
+            "reasoning": parsed.get("reasoning"),
         }
 
     def _parse_ai_response(self, text: str) -> dict:
