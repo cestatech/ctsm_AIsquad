@@ -267,7 +267,60 @@ class MappingService:
         check_permission(actor, Permission.ARTIFACT_REJECT)
 
         field = await self.get_field(field_id, actor.organization_id)
+        return await self._reject_mapping_field(
+            field=field,
+            reason=notes,
+            actor=actor,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
 
+    async def bulk_reject_mappings(
+        self,
+        dataset_id: UUID,
+        mapping_ids: list[UUID],
+        reason: str,
+        actor: User,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> tuple[int, int]:
+        """Reject multiple pending mappings. Requires Admin or Contributor role."""
+        check_permission(actor, Permission.ARTIFACT_EDIT)
+
+        await self.get_dataset(dataset_id, actor.organization_id)
+        fields = await self._field_repo.get_mappings_by_ids(
+            mapping_ids, dataset_id, actor.organization_id
+        )
+
+        rejected = 0
+        failed = 0
+        for field in fields:
+            if field.mapping_status != "PENDING_APPROVAL":
+                failed += 1
+                continue
+            try:
+                await self._reject_mapping_field(
+                    field=field,
+                    reason=reason,
+                    actor=actor,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                )
+                rejected += 1
+            except HTTPException:
+                failed += 1
+
+        return rejected, failed
+
+    async def _reject_mapping_field(
+        self,
+        *,
+        field: RawField,
+        reason: str | None,
+        actor: User,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> RawField:
         if field.mapping_status != "PENDING_APPROVAL":
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -284,17 +337,21 @@ class MappingService:
             latest = versions[-1]
             latest.mapping_status = "REJECTED"
             latest.approved_by_id = actor.id
-            if notes:
-                latest.notes = (latest.notes or "") + f"\nRejection note: {notes}"
+            if reason:
+                latest.notes = (latest.notes or "") + f"\nRejection note: {reason}"
 
         await self._audit.log(
-            action=AuditAction.STUDY_UPDATED,
+            action=AuditAction.DATA_MAPPING_REJECTED,
             resource_type="raw_field_mapping_rejected",
             organization_id=actor.organization_id,
             actor_user_id=actor.id,
             resource_id=field.id,
             before_state={"mapping_status": "PENDING_APPROVAL"},
-            after_state={"mapping_status": "REJECTED", "rejected_by": str(actor.id)},
+            after_state={
+                "mapping_status": "REJECTED",
+                "rejected_by": str(actor.id),
+                "reason": reason,
+            },
             ip_address=ip_address,
             user_agent=user_agent,
         )

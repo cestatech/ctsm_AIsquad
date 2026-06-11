@@ -84,6 +84,7 @@ class AuditAction(str, enum.Enum):
     DATA_FILE_DELETED = "data.file_deleted"
     DATA_FIELD_MAPPED = "data.field_mapped"
     DATA_MAPPING_APPROVED = "data.mapping_approved"
+    DATA_MAPPING_REJECTED = "data.mapping_rejected"
 
     # Submission
     SUBMISSION_PACKAGE_CREATED = "submission.package_created"

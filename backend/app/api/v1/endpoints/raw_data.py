@@ -16,6 +16,8 @@ from app.repositories.raw_data_repository import (
 from app.schemas.raw_data import (
     ApplyMappingSuggestionsRequest,
     BulkApproveMappingsResponse,
+    BulkRejectMappingsRequest,
+    BulkRejectMappingsResponse,
     FieldMappingRequest,
     FieldMappingVersionResponse,
     MappingApprovalRequest,
@@ -211,6 +213,36 @@ async def bulk_approve_dataset_mappings(
         skipped_count=pending_count - len(approved),
         fields=[RawFieldResponse.model_validate(f) for f in approved],
     )
+
+
+@router.post(
+    "/datasets/{dataset_id}/mapping/bulk-reject",
+    response_model=BulkRejectMappingsResponse,
+    summary="Reject multiple pending mappings in a dataset",
+)
+async def bulk_reject_dataset_mappings(
+    dataset_id: UUID,
+    body: BulkRejectMappingsRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> BulkRejectMappingsResponse:
+    """
+    Reject selected PENDING_APPROVAL mappings in a dataset.
+
+    Requires Admin or Contributor role. A rejection reason is mandatory.
+    """
+    svc = MappingService(db)
+    rejected, failed = await svc.bulk_reject_mappings(
+        dataset_id=dataset_id,
+        mapping_ids=body.mapping_ids,
+        reason=body.reason,
+        actor=current_user,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return BulkRejectMappingsResponse(rejected=rejected, failed=failed)
 
 
 @router.get(

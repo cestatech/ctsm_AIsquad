@@ -82,6 +82,16 @@ class BulkApproveMappingsResponse(BaseModel):
     fields: list[RawFieldResponse]
 
 
+class BulkRejectMappingsRequest(BaseModel):
+    mapping_ids: list[UUID] = Field(min_length=1)
+    reason: str = Field(min_length=10, max_length=2000)
+
+
+class BulkRejectMappingsResponse(BaseModel):
+    rejected: int
+    failed: int
+
+
 class StudySDTMReadinessResponse(BaseModel):
     study_id: UUID
     dataset_count: int

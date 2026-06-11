@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { useStudyPermissions } from "@/hooks/useStudyPermissions";
 import { getApiErrorMessage } from "@/lib/api/errors";
+import { BulkRejectDialog } from "@/components/datasets/BulkRejectDialog";
 import { rawDataApi } from "@/lib/api/rawData";
 import type { FieldMappingSuggestion, RawDataset, RawField } from "@/types";
 
@@ -49,9 +50,21 @@ interface FieldRowProps {
   token: string;
   canEdit: boolean;
   canApprove: boolean;
+  selectable: boolean;
+  selected: boolean;
+  onToggleSelect: (fieldId: string) => void;
 }
 
-function FieldRow({ field, studyId, token, canEdit, canApprove }: FieldRowProps) {
+function FieldRow({
+  field,
+  studyId,
+  token,
+  canEdit,
+  canApprove,
+  selectable,
+  selected,
+  onToggleSelect,
+}: FieldRowProps) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [form, setForm] = useState<MappingFormState>({
@@ -102,6 +115,21 @@ function FieldRow({ field, studyId, token, canEdit, canApprove }: FieldRowProps)
         className="hover:bg-slate-50 cursor-pointer transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
+        <td className="px-4 py-2.5 w-10">
+          {selectable ? (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(e) => {
+                e.stopPropagation();
+                onToggleSelect(field.id);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              aria-label={`Select ${field.column_name}`}
+            />
+          ) : null}
+        </td>
         <td className="px-4 py-2.5 text-xs font-mono text-slate-700 whitespace-nowrap">
           {field.column_name}
         </td>
@@ -149,7 +177,7 @@ function FieldRow({ field, studyId, token, canEdit, canApprove }: FieldRowProps)
       </tr>
       {expanded && (
         <tr className="bg-slate-50">
-          <td colSpan={7} className="px-4 py-4">
+          <td colSpan={8} className="px-4 py-4">
             <div className="grid grid-cols-2 gap-6">
               {/* Sample values + stats */}
               <div>
@@ -283,6 +311,8 @@ interface DatasetPanelProps {
 
 function DatasetPanel({ dataset, studyId, token, canEdit, canApprove }: DatasetPanelProps) {
   const queryClient = useQueryClient();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<FieldMappingSuggestion[] | null>(null);
   const [aiDecisionId, setAiDecisionId] = useState<string | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
@@ -338,6 +368,27 @@ function DatasetPanel({ dataset, studyId, token, canEdit, canApprove }: DatasetP
       queryClient.invalidateQueries({ queryKey: ["sdtm-readiness"] });
     },
   });
+
+  const pendingSelectableIds =
+    fields
+      ?.filter((field) => field.mapping_status === "PENDING_APPROVAL")
+      .map((field) => field.id) ?? [];
+
+  function toggleFieldSelection(fieldId: string) {
+    setSelectedIds((current) =>
+      current.includes(fieldId)
+        ? current.filter((id) => id !== fieldId)
+        : [...current, fieldId]
+    );
+  }
+
+  function toggleSelectAllPending() {
+    if (selectedIds.length === pendingSelectableIds.length) {
+      setSelectedIds([]);
+      return;
+    }
+    setSelectedIds(pendingSelectableIds);
+  }
 
   const applyMutation = useMutation({
     mutationFn: () => {
@@ -510,6 +561,14 @@ function DatasetPanel({ dataset, studyId, token, canEdit, canApprove }: DatasetP
                   : `Approve all pending (${validation.pending_fields})`}
               </button>
             )}
+            {canEdit && selectedIds.length > 0 && (
+              <button
+                onClick={() => setBulkRejectOpen(true)}
+                className="text-xs bg-red-700 hover:bg-red-600 text-white font-semibold px-3 py-1.5 transition-colors"
+              >
+                Reject selected ({selectedIds.length})
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -570,6 +629,20 @@ function DatasetPanel({ dataset, studyId, token, canEdit, canApprove }: DatasetP
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-slate-100">
+                <th className="px-4 py-2 w-10">
+                  {canEdit && pendingSelectableIds.length > 0 ? (
+                    <input
+                      type="checkbox"
+                      checked={
+                        pendingSelectableIds.length > 0 &&
+                        selectedIds.length === pendingSelectableIds.length
+                      }
+                      onChange={toggleSelectAllPending}
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                      aria-label="Select all pending mappings"
+                    />
+                  ) : null}
+                </th>
                 {["Column", "Type", "eCRF Field", "SDTM Variable", "Status", "Stats", ""].map(
                   (h) => (
                     <th
@@ -591,12 +664,30 @@ function DatasetPanel({ dataset, studyId, token, canEdit, canApprove }: DatasetP
                   token={token}
                   canEdit={canEdit}
                   canApprove={canApprove}
+                  selectable={
+                    canEdit && field.mapping_status === "PENDING_APPROVAL"
+                  }
+                  selected={selectedIds.includes(field.id)}
+                  onToggleSelect={toggleFieldSelection}
                 />
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <BulkRejectDialog
+        open={bulkRejectOpen}
+        datasetId={dataset.id}
+        mappingIds={selectedIds}
+        token={token}
+        onClose={() => setBulkRejectOpen(false)}
+        onSuccess={() => {
+          setSelectedIds([]);
+          queryClient.invalidateQueries({ queryKey: ["raw-fields", dataset.id] });
+          queryClient.invalidateQueries({ queryKey: ["mapping-validation", dataset.id] });
+        }}
+      />
     </div>
   );
 }

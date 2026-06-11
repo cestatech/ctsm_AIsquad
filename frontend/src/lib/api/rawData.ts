@@ -66,6 +66,20 @@ export const rawDataApi = {
       fields: RawField[];
     }>(`/raw-data/datasets/${datasetId}/mapping/bulk-approve`, { body, token }),
 
+  bulkRejectMappings: (
+    datasetId: string,
+    mappingIds: string[],
+    reason: string,
+    token: string
+  ) =>
+    apiClient.post<{ rejected: number; failed: number }>(
+      `/raw-data/datasets/${datasetId}/mapping/bulk-reject`,
+      {
+        body: { mapping_ids: mappingIds, reason },
+        token,
+      }
+    ),
+
   downloadMappingExport: async (datasetId: string, token: string): Promise<Blob> => {
     const response = await fetch(
       `${API_URL}/raw-data/datasets/${datasetId}/mapping/export`,

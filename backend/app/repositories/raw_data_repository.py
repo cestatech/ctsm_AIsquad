@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,6 +81,49 @@ class RawFieldRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def get_mappings_by_ids(
+        self,
+        field_ids: list[UUID],
+        dataset_id: UUID,
+        organization_id: UUID,
+    ) -> list[RawField]:
+        """Fetch raw fields by ID, scoped to dataset and organization."""
+        if not field_ids:
+            return []
+
+        result = await self._db.execute(
+            select(RawField).where(RawField.id.in_(field_ids))
+        )
+        fields = list(result.scalars().all())
+        by_id = {field.id: field for field in fields}
+
+        for field_id in field_ids:
+            if field_id not in by_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"code": "NOT_FOUND", "message": "Field mapping not found."},
+                )
+
+        for field in fields:
+            if field.organization_id != organization_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={
+                        "code": "PERMISSION_DENIED",
+                        "message": "Field mapping belongs to a different organization.",
+                    },
+                )
+            if field.raw_dataset_id != dataset_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={
+                        "code": "PERMISSION_DENIED",
+                        "message": "Field mapping does not belong to this dataset.",
+                    },
+                )
+
+        return [by_id[field_id] for field_id in field_ids]
 
     async def list_for_dataset(
         self, dataset_id: UUID, organization_id: UUID
