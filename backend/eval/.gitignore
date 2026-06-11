@@ -1,0 +1,4 @@
+# Sweep outputs (raw model artifacts, CSVs) — regenerated per run
+results/
+# Local roster — may contain endpoint API keys; copy from models.example.yaml
+models.yaml

@@ -87,6 +87,6 @@ Return only valid JSON matching the required schema."""
             system_prompt=_SYSTEM,
             user_prompt=user_prompt,
             model_id=model_id,
-            max_tokens=8000,
+            max_tokens=16000,
         )
         return self._parse_json_response(text)

@@ -1,0 +1,68 @@
+# Model roster for the generator eval sweep.
+#
+# Copy this to models.yaml and edit. Each entry is one model under test.
+# Disable an entry without deleting it via `enabled: false`.
+#
+# provider: "anthropic"      -> frontier Claude, uses $ANTHROPIC_API_KEY
+# provider: "openai_compat"  -> any server speaking the OpenAI /v1 chat API
+#                               (vLLM, Ollama, LM Studio, TGI, OpenRouter, ...)
+#
+# Fields:
+#   model_id     (required) the model name the endpoint expects
+#   provider     (required) "anthropic" | "openai_compat"
+#   base_url     (openai_compat only) server root INCLUDING /v1
+#   api_key      (openai_compat only) dummy ok for local servers
+#   label        (optional) name shown in reports; defaults to model_id
+#   tier         (optional) free-text grouping shown in reports
+#   temperature  (optional) defaults to 0.0 for reproducibility
+#   max_tokens_cap (optional) clamp the per-call max_tokens. The generators ask
+#                  for up to 16000; set this lower for a local model whose served
+#                  context / output limit is smaller (continuation handles the
+#                  overflow automatically). Omit for frontier models.
+#   enabled      (optional) defaults to true
+
+models:
+  # --- Frontier reference (what production uses today) -------------------
+  - provider: anthropic
+    model_id: claude-sonnet-4-6
+    label: claude-sonnet-4-6
+    tier: frontier
+
+  # Uncomment to anchor the top of the quality range.
+  # - provider: anthropic
+  #   model_id: claude-opus-4-7
+  #   label: claude-opus-4-7
+  #   tier: frontier
+
+  # --- Local candidates (edit base_url to your serving host) ------------
+  # 70B-class — the floor candidate.
+  - provider: openai_compat
+    model_id: qwen2.5-72b-instruct
+    base_url: http://localhost:8000/v1
+    label: qwen2.5-72b
+    tier: 70B-local
+    max_tokens_cap: 8192   # raise to match your served output limit
+    enabled: false
+
+  # 32B — the "can we go smaller" candidate.
+  - provider: openai_compat
+    model_id: qwen2.5-32b-instruct
+    base_url: http://localhost:8000/v1
+    label: qwen2.5-32b
+    tier: 32B-local
+    enabled: false
+
+  # 14B — the cheap end.
+  - provider: openai_compat
+    model_id: qwen2.5-14b-instruct
+    base_url: http://localhost:8000/v1
+    label: qwen2.5-14b
+    tier: 14B-local
+    enabled: false
+
+  # Ollama example (note the :11434 port and tag-style model id).
+  # - provider: openai_compat
+  #   model_id: llama3.3:70b
+  #   base_url: http://localhost:11434/v1
+  #   label: llama3.3-70b
+  #   tier: 70B-local

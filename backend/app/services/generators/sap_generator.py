@@ -95,7 +95,7 @@ Return only valid JSON."""
             system_prompt=_SYSTEM,
             user_prompt=user_prompt,
             model_id=model_id,
-            max_tokens=8192,
+            max_tokens=16000,
         )
         try:
             return self._parse_json_response(text)
@@ -111,6 +111,6 @@ Return only valid JSON."""
                     f"{text[:14000]}"
                 ),
                 model_id=model_id,
-                max_tokens=8192,
+                max_tokens=16000,
             )
             return self._parse_json_response(repair_text)
