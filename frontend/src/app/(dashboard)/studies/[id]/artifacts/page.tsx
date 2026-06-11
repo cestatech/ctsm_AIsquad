@@ -179,7 +179,11 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
                   <tr key={a.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3">
                       <Link
-                        href={`/studies/${studyId}/artifacts/${a.id}`}
+                        href={
+                          a.artifact_type === "SDTM_DATASET"
+                            ? `/studies/${studyId}/sdtm/${a.id}`
+                            : `/studies/${studyId}/artifacts/${a.id}`
+                        }
                         className="font-medium text-slate-900 hover:text-brand-700 transition-colors"
                       >
                         {a.name}
