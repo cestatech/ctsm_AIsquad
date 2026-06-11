@@ -29,6 +29,7 @@ node_modules/
 .next/
 out/
 .pnpm-store/
+*.tsbuildinfo
 
 # IDEs
 .vscode/
