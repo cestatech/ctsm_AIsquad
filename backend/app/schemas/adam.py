@@ -23,3 +23,21 @@ class ADAMGenerationResponse(BaseModel):
     dataset_count: int
     study_id: UUID
     source_sdtm_artifact_ids: list[UUID] = Field(default_factory=list)
+
+
+class ADaMDefineExportResponse(BaseModel):
+    """Binary ADaM define.xml export payload."""
+
+    filename: str
+    media_type: str = "application/xml"
+    content: bytes
+
+
+class ADRGExportResponse(BaseModel):
+    """Binary ADRG DOCX export payload."""
+
+    filename: str
+    media_type: str = (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    content: bytes
