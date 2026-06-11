@@ -47,3 +47,11 @@ class CSRGenerationResponse(BaseModel):
     study_id: UUID
     source_tlf_artifact_ids: list[UUID] = Field(default_factory=list)
     source_study_artifact_ids: list[UUID] = Field(default_factory=list)
+
+
+class ReviewersGuideResponse(BaseModel):
+    """Binary Reviewer's Guide (SDRG) PDF export payload."""
+
+    filename: str
+    media_type: str = "application/pdf"
+    content: bytes

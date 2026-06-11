@@ -182,3 +182,163 @@ class TestCSREndpoints:
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert resp.status_code == 422
+
+
+async def _seed_artifact_with_content(
+    idb, i_org, i_study, i_admin, *, art_type, name, content, status
+):
+    """Seed one artifact + current version with the given content and status."""
+    artifact = Artifact(
+        id=uuid4(),
+        organization_id=i_org.id,
+        study_id=i_study.id,
+        artifact_type=art_type,
+        name=name,
+        status=status,
+        created_by_id=i_admin.id,
+    )
+    idb.add(artifact)
+    await idb.flush()
+    version = ArtifactVersion(
+        id=uuid4(),
+        artifact_id=artifact.id,
+        organization_id=i_org.id,
+        version_number=1,
+        is_current=True,
+        content=content,
+        content_hash=hashlib.sha256(
+            json.dumps(content, sort_keys=True).encode()
+        ).hexdigest(),
+        status_at_creation=status,
+        created_by_id=i_admin.id,
+        created_at=datetime.now(UTC),
+    )
+    idb.add(version)
+    await idb.flush()
+    artifact.current_version_id = version.id
+    artifact.current_version_number = 1
+    await idb.commit()
+    return artifact
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestReviewersGuideEndpoint:
+    async def test_reviewers_guide_download_flow(
+        self,
+        iclient: AsyncClient,
+        idb,
+        i_study: Study,
+        i_org,
+        i_admin,
+        admin_tok: str,
+        reviewer_tok: str,
+        contributor_tok: str,
+    ):
+        csr = await _seed_artifact_with_content(
+            idb,
+            i_org,
+            i_study,
+            i_admin,
+            art_type=ArtifactType.CSR,
+            name="CSR for Reviewer's Guide",
+            content={
+                "title": "Test CSR",
+                "study_identification": {"sponsor": "Celerius", "phase": "Phase 3"},
+                "sections": [{"number": "1", "title": "Title Page"}],
+            },
+            status=ArtifactStatus.APPROVED,
+        )
+        await _seed_artifact_with_content(
+            idb,
+            i_org,
+            i_study,
+            i_admin,
+            art_type=ArtifactType.ADAM_DATASET,
+            name="ADaM for Reviewer's Guide",
+            content={
+                "datasets": [
+                    {
+                        "dataset": "ADSL",
+                        "label": "Subject Level Analysis Dataset",
+                        "observations": [{"USUBJID": "S1-001"}],
+                    }
+                ]
+            },
+            status=ArtifactStatus.APPROVED,
+        )
+
+        # Admin downloads the PDF.
+        resp = await iclient.get(
+            f"/api/v1/csr/artifacts/{csr.id}/reviewers-guide",
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/pdf"
+        assert resp.content.startswith(b"%PDF")
+        assert b"Study Data Reviewer's Guide" in resp.content
+
+        # Reviewer can also download.
+        reviewer_resp = await iclient.get(
+            f"/api/v1/csr/artifacts/{csr.id}/reviewers-guide",
+            headers={"Authorization": f"Bearer {reviewer_tok}"},
+        )
+        assert reviewer_resp.status_code == 200
+
+        # Contributor cannot.
+        contributor_resp = await iclient.get(
+            f"/api/v1/csr/artifacts/{csr.id}/reviewers-guide",
+            headers={"Authorization": f"Bearer {contributor_tok}"},
+        )
+        assert contributor_resp.status_code == 403
+
+    async def test_reviewers_guide_rejects_non_csr_artifact(
+        self,
+        iclient: AsyncClient,
+        idb,
+        i_study: Study,
+        i_org,
+        i_admin,
+        admin_tok: str,
+    ):
+        sdtm = await _seed_artifact_with_content(
+            idb,
+            i_org,
+            i_study,
+            i_admin,
+            art_type=ArtifactType.SDTM_DATASET,
+            name="SDTM not CSR",
+            content={"domains": []},
+            status=ArtifactStatus.APPROVED,
+        )
+        resp = await iclient.get(
+            f"/api/v1/csr/artifacts/{sdtm.id}/reviewers-guide",
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "NOT_CSR"
+
+    async def test_reviewers_guide_rejects_draft_csr(
+        self,
+        iclient: AsyncClient,
+        idb,
+        i_study: Study,
+        i_org,
+        i_admin,
+        admin_tok: str,
+    ):
+        draft_csr = await _seed_artifact_with_content(
+            idb,
+            i_org,
+            i_study,
+            i_admin,
+            art_type=ArtifactType.CSR,
+            name="Draft CSR",
+            content={"title": "Draft", "sections": []},
+            status=ArtifactStatus.DRAFT,
+        )
+        resp = await iclient.get(
+            f"/api/v1/csr/artifacts/{draft_csr.id}/reviewers-guide",
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["code"] == "CSR_DRAFT"
