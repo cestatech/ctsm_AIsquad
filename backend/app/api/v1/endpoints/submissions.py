@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db
 from app.core.permissions import require_admin
 from app.models.audit import AuditAction
+from app.models.submission import SubmissionPackageStatus
 from app.models.user import User
 from app.schemas.submission import (
     SubmissionCreateResponse,
@@ -138,6 +139,17 @@ async def download_ectd_xml(
     require_admin(current_user)
     svc = SubmissionService(db)
     package = await svc.get_manifest(package_id, current_user)
+    if package.status != SubmissionPackageStatus.READY:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "PACKAGE_NOT_READY",
+                "message": (
+                    f"Package status is {package.status.value}; eCTD backbone "
+                    "export requires READY."
+                ),
+            },
+        )
     manifest_body = package.manifest or {}
     if not manifest_body.get("files"):
         raise HTTPException(

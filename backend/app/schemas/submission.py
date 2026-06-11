@@ -53,3 +53,11 @@ class SubmissionManifestResponse(BaseModel):
     error_message: str | None = None
     data_classification: str | None = None
     manifest: dict
+
+
+class ECTDExportResponse(BaseModel):
+    """Binary eCTD backbone export payload (index.xml + index-md5.txt zip)."""
+
+    filename: str
+    media_type: str = "application/zip"
+    content: bytes

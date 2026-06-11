@@ -260,3 +260,74 @@ class TestSubmissionEndpoints:
             headers={"Authorization": f"Bearer {reviewer_tok}"},
         )
         assert download.status_code == 403
+
+    async def test_ectd_xml_export_flow(
+        self,
+        iclient: AsyncClient,
+        idb: AsyncSession,
+        i_study: Study,
+        i_org: Organization,
+        i_admin: User,
+        reviewer_tok: str,
+        admin_tok: str,
+    ):
+        import io
+        import zipfile
+
+        await _seed_approved_pipeline_artifacts(idb, i_org, i_study, i_admin)
+        await idb.commit()
+
+        create = await iclient.post(
+            f"/api/v1/submissions/studies/{i_study.id}/create",
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert create.status_code == 200
+        package_id = create.json()["package_id"]
+
+        # Package is still DRAFT (not assembled): export must 409.
+        not_ready = await iclient.get(
+            f"/api/v1/submissions/{package_id}/ectd-xml",
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert not_ready.status_code == 409
+        assert not_ready.json()["detail"]["code"] == "PACKAGE_NOT_READY"
+
+        # Promote the package to READY with a manifest directly — the endpoint
+        # contract is what's under test here, not the assembly executor.
+        from app.models.submission import SubmissionPackage, SubmissionPackageStatus
+
+        package = await idb.get(SubmissionPackage, UUID(package_id))
+        package.status = SubmissionPackageStatus.READY
+        package.manifest = {
+            "files": [
+                {"path": "m5/define.xml", "sha256": "a" * 64, "grade": "generated"},
+                {
+                    "path": "m5/clinical-study-reports/csr.pdf",
+                    "sha256": "b" * 64,
+                    "grade": "placeholder",
+                },
+            ],
+            "data_classification": "SYNTHETIC_DEMO",
+        }
+        await idb.commit()
+
+        # Reviewer is not Admin: 403.
+        forbidden = await iclient.get(
+            f"/api/v1/submissions/{package_id}/ectd-xml",
+            headers={"Authorization": f"Bearer {reviewer_tok}"},
+        )
+        assert forbidden.status_code == 403
+
+        # Admin on READY package: zip with both backbone files.
+        export = await iclient.get(
+            f"/api/v1/submissions/{package_id}/ectd-xml",
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert export.status_code == 200
+        assert export.headers["content-type"] == "application/zip"
+        with zipfile.ZipFile(io.BytesIO(export.content)) as zf:
+            names = sorted(zf.namelist())
+            index_xml = zf.read("index.xml")
+        assert names == ["index-md5.txt", "index.xml"]
+        assert b"dtd-version" in index_xml
+        assert str(i_study.id).encode() in index_xml

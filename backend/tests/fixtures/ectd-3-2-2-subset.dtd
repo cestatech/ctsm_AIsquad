@@ -1,0 +1,42 @@
+<!--
+  eCTD 3.2.2 backbone DTD — documented subset.
+
+  This is the grammar contract for the index.xml emitted by
+  app/services/ectd_xml_export_service.py. It follows the ICH eCTD 3.2.2
+  backbone structure (ectd:ectd root, module elements, leaf/title with
+  xlink href and checksum attributes) restricted to the elements the
+  platform currently emits: Module 1 stub, Module 5 leaves, and the
+  platform's submission-metadata block. Full ICH DTD conformance (all
+  module sections, node-extensions, regional STF metadata) is Phase 2.3
+  scope and will replace this subset with the official ICH DTD.
+-->
+
+<!ELEMENT ectd:ectd (
+  m1-administrative-information-and-prescribing-information,
+  m5-clinical-study-reports,
+  submission-metadata
+)>
+<!ATTLIST ectd:ectd
+  xmlns:ectd  CDATA #REQUIRED
+  xmlns:xlink CDATA #REQUIRED
+  dtd-version CDATA #REQUIRED
+>
+
+<!ELEMENT m1-administrative-information-and-prescribing-information (#PCDATA)>
+
+<!ELEMENT m5-clinical-study-reports (leaf*)>
+
+<!ELEMENT leaf (title)>
+<!ATTLIST leaf
+  ID            ID    #REQUIRED
+  operation     (new|append|replace|delete) #REQUIRED
+  xlink:href    CDATA #REQUIRED
+  checksum-type CDATA #REQUIRED
+  checksum      CDATA #REQUIRED
+>
+
+<!ELEMENT title (#PCDATA)>
+
+<!ELEMENT submission-metadata (study-id, generated-at)>
+<!ELEMENT study-id (#PCDATA)>
+<!ELEMENT generated-at (#PCDATA)>

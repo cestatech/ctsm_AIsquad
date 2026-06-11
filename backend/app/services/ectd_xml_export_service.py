@@ -1,4 +1,17 @@
-"""Generate FDA eCTD 3.2.2 backbone files (index.xml, index-md5.txt) from a package manifest."""
+"""Generate FDA eCTD 3.2.2 backbone files (index.xml, index-md5.txt) from a package manifest.
+
+Stateless utility: receives the submission package manifest dict produced by
+``SubmissionService`` and returns bytes. It never touches the database or the
+filesystem, so checksums are taken from the manifest as recorded at assembly
+time (SHA-256). The index.xml leaf checksums are therefore declared with
+``checksum-type="SHA256"`` — we do not fabricate MD5 values for file contents
+we cannot read here. The only MD5 actually computed is the eCTD-required MD5
+of index.xml itself, which this module generates and can hash honestly.
+
+The emitted grammar is a documented subset of the eCTD 3.2.2 backbone
+(`tests/fixtures/ectd-3-2-2-subset.dtd`); full regional STF metadata is
+Phase 2.3 scope.
+"""
 
 from __future__ import annotations
 
@@ -9,10 +22,6 @@ from datetime import UTC, datetime
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 
-def _file_md5(data: bytes) -> str:
-    return hashlib.md5(data).hexdigest()
-
-
 def _leaf_path_to_ectd_href(logical_path: str) -> str:
     """Map manifest logical path to eCTD-relative href within the submission unit."""
     return logical_path.lstrip("/")
@@ -20,10 +29,11 @@ def _leaf_path_to_ectd_href(logical_path: str) -> str:
 
 def generate_index_xml(manifest: dict, *, study_id: str) -> bytes:
     """
-    Build a simplified eCTD 3.2.2 index.xml from a submission manifest dict.
+    Build an eCTD 3.2.2 backbone index.xml from a submission manifest dict.
 
-    Produces a valid XML document with leaf elements for each file entry.
-    Full STF/regulatory-activity metadata is added in Lane 3 integration.
+    Produces a valid XML document with one ``leaf`` element per manifest file
+    entry under Module 5, carrying the file's SHA-256 checksum as recorded in
+    the manifest. Full STF/regulatory-activity metadata is Phase 2.3 scope.
     """
     root = Element(
         "ectd:ectd",
@@ -46,11 +56,11 @@ def generate_index_xml(manifest: dict, *, study_id: str) -> bytes:
             m5,
             "leaf",
             attrib={
-                "ID": hashlib.sha256(path.encode()).hexdigest()[:16],
+                "ID": f"leaf-{hashlib.sha256(path.encode()).hexdigest()[:16]}",
                 "operation": "new",
                 "xlink:href": _leaf_path_to_ectd_href(path),
-                "checksum-type": "MD5",
-                "checksum": entry.get("md5") or entry.get("sha256", "")[:32],
+                "checksum-type": "SHA256",
+                "checksum": entry.get("sha256", ""),
             },
         )
         title = SubElement(leaf, "title")
@@ -66,35 +76,27 @@ def generate_index_xml(manifest: dict, *, study_id: str) -> bytes:
 
 def generate_index_md5(index_xml: bytes, file_entries: list[dict]) -> bytes:
     """
-    Build index-md5.txt listing MD5 checksums for index.xml and package files.
+    Build index-md5.txt: the MD5 of index.xml (computed from the actual bytes,
+    per eCTD convention), followed by the SHA-256 checksum of every package
+    file as recorded in the manifest.
 
-    Format: MD5(hex)  relative/path
+    Format, one entry per line: ``<checksum>  <relative/path>``. File lines are
+    prefixed with ``SHA256:`` to make the digest type unambiguous to reviewers.
     """
-    lines = [f"{_file_md5(index_xml)}  index.xml"]
+    lines = [f"{hashlib.md5(index_xml).hexdigest()}  index.xml"]
     for entry in sorted(file_entries, key=lambda e: e.get("path", "")):
         path = entry.get("path", "")
         if not path:
             continue
         sha = entry.get("sha256", "")
-        # Use MD5 of path placeholder when only SHA256 stored; Lane 3 adds real MD5.
-        md5_val = entry.get("md5") or hashlib.md5(sha.encode()).hexdigest() if sha else "0" * 32
-        lines.append(f"{md5_val}  {path}")
+        lines.append(f"SHA256:{sha}  {path}")
     return "\n".join(lines).encode("utf-8") + b"\n"
 
 
 def generate_ectd_xml_zip(manifest: dict, *, study_id: str) -> bytes:
     """Return a zip archive containing index.xml and index-md5.txt."""
-    files = manifest.get("files", [])
-    # Enrich entries with md5 from sha256 prefix for index-md5 when md5 absent
-    enriched = []
-    for entry in files:
-        e = dict(entry)
-        if "md5" not in e and e.get("sha256"):
-            e["md5"] = hashlib.md5(bytes.fromhex(e["sha256"][:32].ljust(32, "0")[:32])).hexdigest()
-        enriched.append(e)
-
     index_xml = generate_index_xml(manifest, study_id=study_id)
-    index_md5 = generate_index_md5(index_xml, enriched)
+    index_md5 = generate_index_md5(index_xml, manifest.get("files", []))
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
