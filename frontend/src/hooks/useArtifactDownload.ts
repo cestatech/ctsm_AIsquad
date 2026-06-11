@@ -15,7 +15,15 @@ export function useArtifactDownload(token: string | null) {
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   async function downloadArtifact(
-    artifact: Pick<Artifact, "id" | "artifact_type" | "name" | "description" | "current_version_id">,
+    artifact: Pick<
+      Artifact,
+      | "id"
+      | "artifact_type"
+      | "name"
+      | "description"
+      | "current_version_id"
+      | "current_version_number"
+    >,
     formatOverride?: ArtifactExportFormat
   ) {
     if (!token) {

@@ -280,6 +280,7 @@ export default function SyntheticDataPage() {
                           name: "Synthetic Data",
                           description: "SYNTHETIC",
                           current_version_id: activeRun.output_artifact_id!,
+                          current_version_number: 1,
                         });
                       } catch (err) {
                         setCreateError(getApiErrorMessage(err, "CSV download failed."));

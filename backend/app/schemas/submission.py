@@ -25,6 +25,7 @@ class SubmissionPackageResponse(BaseModel):
     artifact_ids: list[str]
     local_path: str | None
     package_checksum: str | None
+    error_message: str | None = None
     created_by_id: UUID | None
     created_at: datetime
     updated_at: datetime
@@ -49,4 +50,6 @@ class SubmissionManifestResponse(BaseModel):
     study_id: UUID
     status: SubmissionPackageStatus
     package_checksum: str | None
+    error_message: str | None = None
+    data_classification: str | None = None
     manifest: dict

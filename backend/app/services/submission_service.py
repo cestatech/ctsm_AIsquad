@@ -32,6 +32,7 @@ from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
 from app.services.context_graph_service import ContextGraphService
 from app.services.sdtm_define_service import build_define_xml
+from app.services.tlf_renderer import TLFRenderer
 
 _REQUIRED_TYPES = (
     ArtifactType.SDTM_DATASET,
@@ -303,10 +304,10 @@ class SubmissionService:
                 issues.append(f"Missing approved {req_type.value} artifact.")
 
         for art in artifacts:
-            if art.status != ArtifactStatus.APPROVED:
+            if art.status not in (ArtifactStatus.APPROVED, ArtifactStatus.LOCKED):
                 issues.append(
                     f"{art.artifact_type.value} '{art.name}' is {art.status.value}, "
-                    "not APPROVED."
+                    "not APPROVED or LOCKED."
                 )
 
         pending_ai = await self._db.execute(
@@ -351,7 +352,7 @@ class SubmissionService:
                 a
                 for a in artifacts
                 if a.artifact_type == req_type
-                and a.status == ArtifactStatus.APPROVED
+                and a.status in (ArtifactStatus.APPROVED, ArtifactStatus.LOCKED)
             ]
             if matches:
                 result.append(
@@ -396,7 +397,9 @@ class SubmissionService:
                 define_path = root / "m5" / "define.xml"
                 define_path.write_text(define_xml, encoding="utf-8")
                 files_manifest.append(
-                    self._file_entry(define_path, root, "m5/define.xml")
+                    self._file_entry(
+                        define_path, root, "m5/define.xml", grade="generated"
+                    )
                 )
                 for domain in content.get("domains", []):
                     domain_code = domain.get("domain", "UNK")
@@ -404,7 +407,10 @@ class SubmissionService:
                     self._write_domain_csv(csv_path, domain)
                     files_manifest.append(
                         self._file_entry(
-                            csv_path, root, f"m5/datasets/sdtm/{domain_code}.csv"
+                            csv_path,
+                            root,
+                            f"m5/datasets/sdtm/{domain_code}.csv",
+                            grade="generated",
                         )
                     )
             elif art.artifact_type == ArtifactType.ADAM_DATASET:
@@ -414,17 +420,19 @@ class SubmissionService:
                     self._write_adam_csv(csv_path, ds)
                     files_manifest.append(
                         self._file_entry(
-                            csv_path, root, f"m5/datasets/adam/{ds_name}.csv"
+                            csv_path,
+                            root,
+                            f"m5/datasets/adam/{ds_name}.csv",
+                            grade="generated",
                         )
                     )
             elif art.artifact_type == ArtifactType.TLF:
                 tlf_path = root / "tlf" / f"{art.id}.rtf"
-                tlf_path.write_text(
-                    self._build_tlf_placeholder(content, art.name),
-                    encoding="utf-8",
-                )
+                tlf_path.write_bytes(TLFRenderer().render_to_rtf(content))
                 files_manifest.append(
-                    self._file_entry(tlf_path, root, f"tlf/{art.id}.rtf")
+                    self._file_entry(
+                        tlf_path, root, f"tlf/{art.id}.rtf", grade="generated"
+                    )
                 )
             elif art.artifact_type == ArtifactType.CSR:
                 csr_path = root / "csr" / f"{art.id}.pdf"
@@ -432,7 +440,9 @@ class SubmissionService:
                     self._build_csr_placeholder(content, art.name, study.name)
                 )
                 files_manifest.append(
-                    self._file_entry(csr_path, root, f"csr/{art.id}.pdf")
+                    self._file_entry(
+                        csr_path, root, f"csr/{art.id}.pdf", grade="placeholder"
+                    )
                 )
 
         reviewers_path = root / "m5" / "reviewers-guide.pdf"
@@ -441,7 +451,10 @@ class SubmissionService:
         )
         files_manifest.append(
             self._file_entry(
-                reviewers_path, root, "m5/reviewers-guide.pdf"
+                reviewers_path,
+                root,
+                "m5/reviewers-guide.pdf",
+                grade="placeholder",
             )
         )
 
@@ -453,13 +466,20 @@ class SubmissionService:
             "assembled_at": datetime.now(UTC).isoformat(),
             "artifact_ids": package.artifact_ids,
             "ectd_structure": "m5",
+            "data_classification": "SYNTHETIC_DEMO",
+            "grading_legend": {
+                "generated": "Real output derived from approved artifact content.",
+                "placeholder": (
+                    "Stub file — not regulatory-grade; demonstrable on synthetic data only."
+                ),
+            },
             "files": files_manifest,
         }
         manifest_path = root / "manifest.json"
         manifest_json = json.dumps(manifest, indent=2)
         manifest_path.write_text(manifest_json, encoding="utf-8")
         files_manifest.append(
-            self._file_entry(manifest_path, root, "manifest.json")
+            self._file_entry(manifest_path, root, "manifest.json", grade="generated")
         )
         manifest["files"] = files_manifest
 
@@ -471,12 +491,19 @@ class SubmissionService:
         return version.content or {}
 
     @staticmethod
-    def _file_entry(path: Path, root: Path, logical_path: str) -> dict:
+    def _file_entry(
+        path: Path,
+        root: Path,
+        logical_path: str,
+        *,
+        grade: str = "generated",
+    ) -> dict:
         data = path.read_bytes()
         return {
             "path": logical_path,
             "size_bytes": len(data),
             "sha256": hashlib.sha256(data).hexdigest(),
+            "grade": grade,
         }
 
     @staticmethod
@@ -514,22 +541,6 @@ class SubmissionService:
             writer.writeheader()
             for row in observations:
                 writer.writerow(row)
-
-    @staticmethod
-    def _build_tlf_placeholder(content: dict, name: str) -> str:
-        tables = content.get("tables", content.get("tlfs", []))
-        lines = [
-            r"{\rtf1\ansi",
-            rf"\b {name} \b0\par",
-            r"\par",
-            r"TLF package placeholder - RTF output pending full rendering.\par",
-        ]
-        for tbl in tables[:10]:
-            tid = tbl.get("table_id", tbl.get("id", "?"))
-            title = tbl.get("title", "")
-            lines.append(rf"Table {tid}: {title}\par")
-        lines.append("}")
-        return "\n".join(lines)
 
     @staticmethod
     def _build_csr_placeholder(content: dict, name: str, study_name: str) -> bytes:

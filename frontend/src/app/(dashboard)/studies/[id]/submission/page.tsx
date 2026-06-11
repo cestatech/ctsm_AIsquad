@@ -1,15 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { PackageCheck } from "lucide-react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, PackageCheck } from "lucide-react";
 import { ReadinessChecklist, ReadinessChecklistSkeleton } from "@/components/submission/ReadinessChecklist";
 import type { ReadinessItemModel, ReadinessStatus } from "@/components/submission/ReadinessChecklist";
+import { PackagePanel } from "@/components/submission/PackagePanel";
 import { adamApi } from "@/lib/api/adam";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { csrApi } from "@/lib/api/csr";
+import { ApiClientError } from "@/lib/api/client";
+import { getApiErrorMessage } from "@/lib/api/errors";
 import { intelligenceApi } from "@/lib/api/intelligence";
 import { studiesApi } from "@/lib/api/studies";
+import { submissionsApi } from "@/lib/api/submissions";
+import { useStudyPermissions } from "@/hooks/useStudyPermissions";
+import { shouldPollPackage } from "@/lib/submissionStatus";
 import { useAuthStore } from "@/store/authStore";
 import type { Artifact, ArtifactType } from "@/types";
 
@@ -32,11 +39,33 @@ function statusResolution(status: ReadinessStatus, complete: string, warning: st
 export default function SubmissionReadinessPage({ params }: { params: { id: string } }) {
   const studyId = params.id;
   const { token } = useAuthStore();
+  const perms = useStudyPermissions(studyId);
+  const queryClient = useQueryClient();
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [notReadyIssues, setNotReadyIssues] = useState<string[]>([]);
 
   const { data: study, isLoading: studyLoading } = useQuery({
     queryKey: ["study", studyId, token],
     queryFn: () => studiesApi.get(studyId, token!),
     enabled: !!token,
+  });
+
+  const { data: backendReadiness, isLoading: backendReadinessLoading } = useQuery({
+    queryKey: ["submission-readiness", studyId, token],
+    queryFn: () => submissionsApi.getReadiness(studyId, token!),
+    enabled: !!token,
+  });
+
+  const { data: packagesData, isLoading: packagesLoading } = useQuery({
+    queryKey: ["submission-packages", studyId, token],
+    queryFn: () => submissionsApi.listForStudy(studyId, token!),
+    enabled: !!token,
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      const latest = items[0];
+      if (!latest) return false;
+      return shouldPollPackage(latest) ? 5000 : false;
+    },
   });
 
   const { data: artifactsData, isLoading: artifactsLoading } = useQuery({
@@ -87,8 +116,31 @@ export default function SubmissionReadinessPage({ params }: { params: { id: stri
     enabled: !!token,
   });
 
+  const createMutation = useMutation({
+    mutationFn: () => submissionsApi.createPackage(studyId, token!),
+    onMutate: () => {
+      setCreateError(null);
+      setNotReadyIssues([]);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["submission-packages", studyId] });
+      queryClient.invalidateQueries({ queryKey: ["submission-readiness", studyId] });
+    },
+    onError: (err) => {
+      setCreateError(getApiErrorMessage(err, "Failed to create submission package."));
+      if (err instanceof ApiClientError) {
+        const detail = err.error.detail;
+        if (detail && typeof detail === "object" && Array.isArray(detail.issues)) {
+          setNotReadyIssues(detail.issues);
+        }
+      }
+    },
+  });
+
   const isLoading =
     studyLoading ||
+    backendReadinessLoading ||
+    packagesLoading ||
     artifactsLoading ||
     adamLoading ||
     csrLoading ||
@@ -227,7 +279,11 @@ export default function SubmissionReadinessPage({ params }: { params: { id: stri
   const passingCount = items.filter((item) => item.status === "complete").length;
   const warningCount = items.filter((item) => item.status === "warning").length;
   const missingCount = items.filter((item) => item.status === "missing").length;
-  const allReady = passingCount === items.length;
+  const checklistReady = passingCount === items.length;
+  const backendReady = backendReadiness?.ready === true;
+  const canCreate =
+    perms.canCreateSubmissionPackage && backendReady && !createMutation.isPending;
+  const latestPackage = packagesData?.items?.[0] ?? null;
 
   return (
     <div>
@@ -246,7 +302,7 @@ export default function SubmissionReadinessPage({ params }: { params: { id: stri
               Submission Readiness
             </h1>
             <p className="text-slate-500 text-sm mt-0.5">
-              Checklist for regulatory package readiness across data, outputs, validation, and audit gates.
+              Backend readiness gates packaging. The checklist below is explanatory only.
             </p>
           </div>
         </div>
@@ -261,26 +317,85 @@ export default function SubmissionReadinessPage({ params }: { params: { id: stri
               </div>
               <div>
                 <p className="font-display text-lg font-semibold text-slate-900">
-                  {passingCount} / {items.length} checks passing
+                  {backendReady
+                    ? "Backend readiness: ready"
+                    : "Backend readiness: not ready"}
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                  {allReady
-                    ? "All frontend readiness checks are passing."
-                    : `${warningCount} warning(s) and ${missingCount} missing gate(s) need attention before packaging.`}
+                  Checklist: {passingCount} / {items.length} passing
+                  {!checklistReady &&
+                    ` (${warningCount} warning(s), ${missingCount} missing)`}
+                  . Packaging requires backend approval of SDTM, ADaM, TLF, and CSR.
                 </p>
               </div>
             </div>
-            {/* TODO: wire to Phase 8 API */}
-            <button
-              type="button"
-              disabled
-              title="Backend coming soon"
-              className="w-full md:w-auto bg-slate-200 text-slate-500 text-sm font-semibold font-display px-5 py-2.5 cursor-not-allowed"
-            >
-              Package Submission
-            </button>
+            {perms.canCreateSubmissionPackage ? (
+              <button
+                type="button"
+                disabled={!canCreate}
+                onClick={() => createMutation.mutate()}
+                title={
+                  !backendReady
+                    ? "Resolve backend readiness blockers before packaging"
+                    : undefined
+                }
+                className="w-full md:w-auto bg-brand-600 text-white text-sm font-semibold font-display px-5 py-2.5 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
+              >
+                {createMutation.isPending ? "Creating package…" : "Package Submission"}
+              </button>
+            ) : (
+              <p className="text-sm text-slate-600 max-w-sm">
+                Submission packaging requires the <strong>Admin</strong> role. You can
+                track package status below.
+              </p>
+            )}
           </div>
+
+          {!backendReady && backendReadiness?.issues && backendReadiness.issues.length > 0 && (
+            <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">Backend blockers</p>
+              <ul className="mt-2 list-disc pl-5 space-y-1">
+                {backendReadiness.issues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {createError && (
+            <div className="mt-4 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-semibold">Could not create package</p>
+                  <p className="mt-1">{createError}</p>
+                  {notReadyIssues.length > 0 && (
+                    <ul className="mt-2 list-disc pl-5 space-y-1">
+                      {notReadyIssues.map((issue) => (
+                        <li key={issue}>{issue}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </section>
+
+        {latestPackage && token && (
+          <PackagePanel
+            studyId={studyId}
+            token={token}
+            package={latestPackage}
+            permissions={{
+              canCreateSubmissionPackage: perms.canCreateSubmissionPackage,
+              canViewSubmissionManifest: perms.canViewSubmissionManifest,
+              canDownloadSubmissionPackage: perms.canDownloadSubmissionPackage,
+            }}
+            onRecreate={() => createMutation.mutate()}
+            isRecreating={createMutation.isPending}
+          />
+        )}
 
         {isLoading ? <ReadinessChecklistSkeleton /> : <ReadinessChecklist items={items} />}
       </div>

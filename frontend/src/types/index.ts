@@ -713,3 +713,65 @@ export interface SDTMGenerationResponse {
   study_id: string;
   source_dataset_ids: string[];
 }
+
+export type SubmissionPackageStatus = "DRAFT" | "PACKAGING" | "READY" | "SUBMITTED";
+
+export type SubmissionFileGrade = "generated" | "placeholder";
+
+export interface SubmissionReadiness {
+  study_id: string;
+  ready: boolean;
+  issues: string[];
+  required_artifacts: Record<string, string | null>;
+}
+
+export interface SubmissionPackage {
+  id: string;
+  study_id: string;
+  organization_id: string;
+  status: SubmissionPackageStatus;
+  artifact_ids: string[];
+  local_path: string | null;
+  package_checksum: string | null;
+  error_message: string | null;
+  created_by_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubmissionCreateResponse {
+  package_id: string;
+  status: SubmissionPackageStatus;
+  artifact_ids: string[];
+  issues: string[];
+}
+
+export interface SubmissionManifestFile {
+  path: string;
+  size_bytes: number;
+  sha256: string;
+  grade?: SubmissionFileGrade;
+}
+
+export interface SubmissionManifestBody {
+  package_id: string;
+  study_id: string;
+  study_name?: string;
+  protocol_number?: string;
+  assembled_at?: string;
+  artifact_ids?: string[];
+  ectd_structure?: string;
+  data_classification?: string;
+  grading_legend?: Record<string, string>;
+  files: SubmissionManifestFile[];
+}
+
+export interface SubmissionManifest {
+  package_id: string;
+  study_id: string;
+  status: SubmissionPackageStatus;
+  package_checksum: string | null;
+  error_message: string | null;
+  data_classification: string | null;
+  manifest: SubmissionManifestBody;
+}

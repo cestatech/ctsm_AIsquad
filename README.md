@@ -107,12 +107,19 @@ The **Celerius Intelligence Platform** layer makes every AI action and data tran
 | Validation Evidence | `/intelligence/validation` |
 | Synthetic Data Runs | `/intelligence/synthetic` |
 
-### What is NOT yet implemented
-- AI generation modules (Protocol, ICF, SAP, SDTM, ADaM, TLF, CSR) — Phase 7+
-- Graph visualization (React Flow / Cytoscape) — Phase 7
-- Pinnacle 21 integration
-- Regulatory submission packaging
-- Backend domain endpoints (studies, artifacts, approvals, users) — placeholders only
+### Maturity legend
+
+| Tier | Meaning |
+|------|---------|
+| **Demonstrable** | End-to-end on synthetic data; some outputs may be placeholders |
+| **Functionally complete** | Real outputs for all artifacts; synthetic data only |
+| **Regulatory-ready** | Validated, compliant, real-data capable |
+
+### What is NOT yet regulatory-ready
+- CSR PDF and Reviewer's Guide in submission ZIP (placeholders — honestly labeled in manifest UI)
+- eCTD XML backbone export
+- Pinnacle 21 production credentials
+- Production cloud storage and durable job queue
 
 ---
 
@@ -414,11 +421,11 @@ Required secrets in GitHub:
 | CIP Phase 4 | Data Lineage Engine (field-level + artifact-level) | ✅ Complete |
 | CIP Phase 5 | Validation Intelligence + Synthetic Data models | ✅ Complete |
 | CIP Phase 6 | Frontend Intelligence Screens (Graph Explorer, AI Decisions, Lineage) | ✅ Complete |
-| CIP Phase 7 | Graph Visualization (React Flow / Cytoscape) | 🔲 Planned |
-| M1–M15 Backend | Implement domain API endpoints (studies, artifacts, approvals, etc.) | 🔲 Planned |
-| AI Modules | Protocol, ICF, SAP, SDTM, ADaM, TLF, CSR generators | 🔲 Planned |
-| Validation Engine | Pinnacle 21 integration, CDISC conformance checks | 🔲 Planned |
-| Submission Package | Regulatory submission assembly (eCTD) | 🔲 Planned |
+| CIP Phase 7 | Graph Visualization (React Flow) | ✅ Demonstrable |
+| Pipeline Backend | Studies, artifacts, approvals, SDTM→ADaM→TLF→CSR generators | ✅ Demonstrable |
+| Validation Engine | Internal CDISC checks; Pinnacle 21 adapter (stub) | ✅ Demonstrable |
+| Submission Package | eCTD m5 assembly + frontend workflow | ✅ Demonstrable |
+| Regulatory depth | Real CSR PDF, Reviewer's Guide, eCTD XML | 🔲 Planned |
 
 ---
 

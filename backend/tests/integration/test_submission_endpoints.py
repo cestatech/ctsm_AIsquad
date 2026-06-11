@@ -174,9 +174,11 @@ class TestSubmissionEndpoints:
         assert manifest.status_code == 200
         data = manifest.json()
         assert data["status"] == "READY"
+        assert data["data_classification"] == "SYNTHETIC_DEMO"
         assert data["manifest"]["files"]
         assert data["package_checksum"]
         assert any(f["sha256"] for f in data["manifest"]["files"])
+        assert any(f.get("grade") == "placeholder" for f in data["manifest"]["files"])
 
         download = await iclient.get(
             f"/api/v1/submissions/{package_id}/download",

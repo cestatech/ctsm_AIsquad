@@ -6,7 +6,13 @@ Each test builds a minimal content dict and asserts on rule outcomes.
 
 from __future__ import annotations
 
-from app.services.cdisc_validation_engine import FAIL, PASS, run_cdisc_validation
+from app.services.cdisc_validation_engine import (
+    FAIL,
+    PASS,
+    run_cdisc_validation,
+    run_define_xpt_cross_validation,
+)
+from app.services.sdtm_define_service import build_define_xml
 
 
 # ---------------------------------------------------------------------------
@@ -361,6 +367,58 @@ class TestProtocolRules:
         result = run_cdisc_validation(content, "PROTOCOL")
         findings = _findings_by_id(result)
         assert findings["PROT-005"]["status"] == FAIL
+
+
+# ---------------------------------------------------------------------------
+# Define-XML / XPT cross-validation (DEF-*, XPT-*)
+# ---------------------------------------------------------------------------
+
+
+def _minimal_sdtm_for_define() -> dict:
+    return {
+        "document_type": "SDTM_DATASET",
+        "protocol_number": "PROT-001",
+        "domains": [{
+            "domain": "DM",
+            "domain_label": "Demographics",
+            "class": "Special-Purpose",
+            "variables": [
+                {"variable": "STUDYID", "label": "Study ID", "type": "Char"},
+                {"variable": "USUBJID", "label": "Unique Subject ID", "type": "Char"},
+            ],
+            "observations": [{"STUDYID": "S1", "USUBJID": "S1-001"}],
+        }],
+    }
+
+
+class TestDefineXptCrossValidation:
+    def test_passes_when_define_and_xpt_align(self):
+        define_xml = build_define_xml(_minimal_sdtm_for_define())
+        result = run_define_xpt_cross_validation(
+            define_xml,
+            xpt_filenames=["dm.xpt"],
+            expected_domain_codes=["DM"],
+        )
+        findings = _findings_by_id(result)
+        assert findings["DEF-001"]["status"] == PASS
+        assert findings["DEF-002"]["status"] == PASS
+        assert findings["DEF-003"]["status"] == PASS
+        assert findings["XPT-001"]["status"] == PASS
+
+    def test_fails_when_xpt_missing(self):
+        define_xml = build_define_xml(_minimal_sdtm_for_define())
+        result = run_define_xpt_cross_validation(
+            define_xml,
+            xpt_filenames=[],
+            expected_domain_codes=["DM"],
+        )
+        findings = _findings_by_id(result)
+        assert findings["XPT-001"]["status"] == FAIL
+
+    def test_fails_on_malformed_define(self):
+        result = run_define_xpt_cross_validation("<bad>")
+        findings = _findings_by_id(result)
+        assert findings["DEF-001"]["status"] == FAIL
 
 
 # ---------------------------------------------------------------------------

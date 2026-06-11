@@ -8,6 +8,7 @@ Usage (from repo root / Docker backend):
     python /database/seeds/demo_program_seed.py --protocol DEMO-002
     python /database/seeds/demo_program_seed.py --all
     python /database/seeds/demo_program_seed.py --protocol DEMO-002 --force
+    python /database/seeds/demo_program_seed.py --approve-artifacts
 """
 
 from __future__ import annotations
@@ -48,6 +49,13 @@ DOC_TYPES = (
     ArtifactType.EDC_CRF,
 )
 
+PIPELINE_SUBMISSION_TYPES = (
+    ArtifactType.SDTM_DATASET,
+    ArtifactType.ADAM_DATASET,
+    ArtifactType.TLF,
+    ArtifactType.CSR,
+)
+
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Seed full demo program studies")
@@ -66,6 +74,14 @@ async def main() -> None:
         action="store_true",
         help="Re-seed even if demo_program_seeded flag is already set",
     )
+    parser.add_argument(
+        "--approve-artifacts",
+        action="store_true",
+        help=(
+            "Seed approved SDTM/ADaM/TLF/CSR pipeline artifacts for submission "
+            "readiness demos (opt-in; leaves document artifacts DRAFT)"
+        ),
+    )
     args = parser.parse_args()
 
     protocols = list(DEMO_PROFILES.keys()) if args.all else [args.protocol.upper()]
@@ -78,7 +94,12 @@ async def main() -> None:
     async with factory() as session:
         async with session.begin():
             for protocol in protocols:
-                lines = await seed_demo_program(session, protocol, force=args.force)
+                lines = await seed_demo_program(
+                    session,
+                    protocol,
+                    force=args.force,
+                    approve_artifacts=args.approve_artifacts,
+                )
                 all_lines.extend(lines)
                 all_lines.append("")
 
@@ -90,7 +111,11 @@ async def main() -> None:
 
 
 async def seed_demo_program(
-    db: AsyncSession, protocol_number: str, *, force: bool = False
+    db: AsyncSession,
+    protocol_number: str,
+    *,
+    force: bool = False,
+    approve_artifacts: bool = False,
 ) -> list[str]:
     """Seed or refresh one demo program study."""
     profile = get_profile(protocol_number)
@@ -118,6 +143,16 @@ async def seed_demo_program(
     await _seed_synthetic_run(db, org.id, study.id, admin.id, synthetic_artifact.id, profile)
     await _seed_graph(db, org.id, study, admin, intake, brief, artifacts)
 
+    submission_lines: list[str] = []
+    if approve_artifacts:
+        pipeline = await _seed_submission_pipeline_artifacts(
+            db, org.id, study, admin, profile
+        )
+        await _approve_submission_pipeline_artifacts(db, org.id, admin, pipeline)
+        submission_lines.append(
+            "Submission pipeline: SDTM, ADaM, TLF, CSR seeded and APPROVED"
+        )
+
     study.extra_data = {**meta, "demo_program_seeded": DEMO_MARKER}
     await db.flush()
 
@@ -128,6 +163,7 @@ async def seed_demo_program(
         f"Artifacts: PROTOCOL, ICF, SAP, EDC_CRF, Synthetic raw data",
         f"Synthetic run: {profile.synthetic_run['run_name']}",
         "→ Intake, Artifacts, EDC Screens, Intelligence → Synthetic Data",
+        *submission_lines,
     ]
 
 
@@ -268,7 +304,11 @@ async def _clear_demo_data(db: AsyncSession, study_id, org_id) -> None:
                 Artifact.organization_id == org_id,
                 Artifact.deleted_at.is_(None),
                 Artifact.artifact_type.in_(
-                    [*DOC_TYPES, ArtifactType.OTHER, ArtifactType.SDTM_DATASET]
+                    [
+                        *DOC_TYPES,
+                        ArtifactType.OTHER,
+                        *PIPELINE_SUBMISSION_TYPES,
+                    ]
                 ),
                 Artifact.description.like(f"%{DEMO_MARKER}%"),
             )
@@ -629,6 +669,137 @@ async def _seed_synthetic_run(
         )
     await db.flush()
     return run
+
+
+def _submission_pipeline_specs(profile: DemoProfile) -> list[tuple[ArtifactType, str, dict, str]]:
+    """Minimal approved-pipeline artifact content for submission readiness demos."""
+    protocol = profile.protocol_number
+    study_name = profile.study_name
+    marker = DEMO_MARKER
+    return [
+        (
+            ArtifactType.SDTM_DATASET,
+            f"{study_name} — SDTM Package (SYNTHETIC)",
+            {
+                "document_type": "SDTM_DATASET",
+                "protocol_number": protocol,
+                "domains": [
+                    {
+                        "domain": "DM",
+                        "domain_label": "Demographics",
+                        "class": "Special-Purpose",
+                        "variables": ["STUDYID", "USUBJID", "AGE", "SEX"],
+                        "observations": [
+                            {
+                                "STUDYID": protocol,
+                                "USUBJID": f"{protocol}-001",
+                                "AGE": "54",
+                                "SEX": "F",
+                            }
+                        ],
+                    }
+                ],
+            },
+            f"Synthetic SDTM demo package — {marker}",
+        ),
+        (
+            ArtifactType.ADAM_DATASET,
+            f"{study_name} — ADaM Package (SYNTHETIC)",
+            {
+                "datasets": [
+                    {
+                        "dataset": "ADSL",
+                        "variables": [{"variable": "USUBJID"}, {"variable": "AGE"}],
+                        "observations": [
+                            {"USUBJID": f"{protocol}-001", "AGE": "54"},
+                        ],
+                    }
+                ],
+            },
+            f"Synthetic ADaM demo package — {marker}",
+        ),
+        (
+            ArtifactType.TLF,
+            f"{study_name} — TLF Package (SYNTHETIC)",
+            {
+                "study_name": study_name,
+                "protocol_number": protocol,
+                "tables": [
+                    {
+                        "table_id": "T-01",
+                        "title": "Summary of Demographics and Baseline Characteristics",
+                        "columns": ["Parameter", "Treatment A (N=XX)"],
+                        "rows": [["Age (years)", "54.0 (10.2)"]],
+                    }
+                ],
+                "listings": [],
+                "figures": [],
+            },
+            f"Synthetic TLF demo package — {marker}",
+        ),
+        (
+            ArtifactType.CSR,
+            f"{study_name} — Clinical Study Report Shell (SYNTHETIC)",
+            {
+                "title": f"Clinical Study Report — {study_name}",
+                "sections": [
+                    {"number": "1", "title": "Title Page"},
+                    {"number": "2", "title": "Synopsis"},
+                ],
+            },
+            f"Synthetic CSR demo shell — {marker}",
+        ),
+    ]
+
+
+async def _seed_submission_pipeline_artifacts(
+    db: AsyncSession,
+    org_id,
+    study: Study,
+    admin: User,
+    profile: DemoProfile,
+) -> list[Artifact]:
+    """Create DRAFT pipeline artifacts used for submission packaging demos."""
+    created: list[Artifact] = []
+    for art_type, name, content, description in _submission_pipeline_specs(profile):
+        created.append(
+            await _create_artifact(
+                db,
+                org_id=org_id,
+                study=study,
+                admin=admin,
+                artifact_type=art_type,
+                name=name,
+                content=content,
+                description=description,
+            )
+        )
+    return created
+
+
+async def _approve_submission_pipeline_artifacts(
+    db: AsyncSession,
+    org_id,
+    admin: User,
+    artifacts: list[Artifact],
+) -> None:
+    """Submit and approve pipeline artifacts with audit trail (demo-only)."""
+    from app.services.artifact_service import ArtifactService
+
+    svc = ArtifactService(db)
+    for artifact in artifacts:
+        if artifact.status in (ArtifactStatus.APPROVED, ArtifactStatus.LOCKED):
+            continue
+        current = artifact
+        if current.status == ArtifactStatus.DRAFT:
+            current = await svc.submit_for_review(current.id, org_id, admin)
+        if current.status == ArtifactStatus.IN_REVIEW:
+            await svc.approve(
+                current.id,
+                org_id,
+                admin,
+                comments="Demo seed — approved for submission packaging walkthrough",
+            )
 
 
 async def _seed_graph(

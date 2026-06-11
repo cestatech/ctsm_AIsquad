@@ -19,7 +19,7 @@ Percentages reflect **functional completeness** toward each phase Definition of 
 | **5** | SDTM → ADaM | **95%** | Complete (ADLB/ADVS/ADTTE auto-derivation) |
 | **6** | ADaM → TLF | **95%** | Complete (no P21) |
 | **7** | TLF → CSR | **95%** | Complete |
-| **8** | Submission packaging | **100%** | Complete (issue #7) |
+| **8** | Submission packaging | **Demonstrable** | Backend + frontend E2E (Phase 1) |
 
 **Overall pipeline (Phases 0–8): ~95%**
 
@@ -147,30 +147,34 @@ Percentages reflect **functional completeness** toward each phase Definition of 
 
 ---
 
-## Phase 8 — Submission Packaging (100% — issue #7 complete)
+## Phase 8 — Submission Packaging (Demonstrable)
 
-**Done (this release):**
+**Done:**
 
 - `SubmissionService` — readiness validation, eCTD m5 folder assembly, manifest checksums
-- Async assembly via `submission_executor` (DRAFT on create → background PACKAGING → READY)
-- `POST /submissions/studies/{study_id}/create` — Admin-only package creation (DRAFT + async job)
-- `GET /submissions/studies/{study_id}` — list packages
-- `GET /submissions/{package_id}/manifest` — Reviewer/Admin manifest with SHA-256 per file
-- `GET /submissions/{package_id}/download` — Admin zip export
-- `submission_packages` table + reversible migration
-- Context graph: `SUBMISSION_PACKAGE` node with `INCLUDES` edges to artifacts
-- Audit: `SUBMISSION_PACKAGE_CREATED`, `SUBMISSION_PACKAGE_STATUS_CHANGED`, `SUBMISSION_PACKAGE_EXPORTED`
-- RBAC integration tests: Contributor blocked from create/download; Reviewer can view manifest
-- Readiness gates: approved SDTM/ADaM/TLF/CSR, no PENDING_REVIEW AI decisions, no open FAIL validation evidence
-- `Pinnacle21Service` — SDTM validation adapter with `ValidationEvidence.source=PINNACLE21`
-- ADaM BDS auto-derivation: ADLB, ADVS, ADTTE from LB/VS/AE/DS domains
+- Async assembly via `submission_executor` (DRAFT → PACKAGING → READY)
+- REST API: readiness, create, list, manifest, ZIP download
+- Frontend: submission page wired to backend (create, poll, manifest, download)
+- Manifest: per-file `grade`, `data_classification: SYNTHETIC_DEMO`, placeholder badges
+- TLF RTF via `TLFRenderer` in package assembly
+- RBAC: Admin create/download; Reviewer manifest; Contributor read-only status
+- E2E: `frontend/e2e/submission-packaging.spec.ts`
+- Demo seed: `demo_program_seed.py --approve-artifacts`
+- Runbook: `docs/runbooks/submission_demo.md`
 
-**Out of scope for issue #7 (future polish):**
+**Real vs placeholder in ZIP:**
 
-- Frontend submission panel
+| Output | Grade |
+|--------|-------|
+| SDTM/ADaM CSVs, define.xml, TLF RTF, manifest.json | Generated |
+| CSR PDF, Reviewer's Guide PDF | Placeholder (labeled in UI) |
+
+**Not regulatory-ready (planned):**
+
+- Real CSR PDF and Reviewer's Guide authoring
 - Full eCTD XML export
 - S3/Azure storage backend
-- Production Reviewer's Guide PDF generation
+- Pinnacle 21 production validation
 
 ---
 
@@ -198,4 +202,4 @@ When `Rscript` is not installed (typical dev Docker), programs are stored with s
 
 ## Recommended next step
 
-**Phase 8 polish** — Frontend submission panel, eCTD XML export, S3 package storage.
+**Regulatory output depth** — real CSR PDF, Reviewer's Guide, eCTD XML (see `docs/phased_implementation_plan.md` Phase 2).

@@ -74,6 +74,30 @@ class TestSubmissionReadiness:
         assert readiness.ready is True
         assert readiness.issues == []
 
+    async def test_readiness_passes_with_locked_artifacts(self):
+        db = AsyncMock()
+        svc = SubmissionService(db)
+        study_id = uuid4()
+        org_id = uuid4()
+
+        artifacts = [
+            _artifact(ArtifactType.SDTM_DATASET, ArtifactStatus.LOCKED),
+            _artifact(ArtifactType.ADAM_DATASET, ArtifactStatus.LOCKED),
+            _artifact(ArtifactType.TLF, ArtifactStatus.LOCKED),
+            _artifact(ArtifactType.CSR, ArtifactStatus.LOCKED),
+        ]
+        svc._study_repo.get = AsyncMock()
+        svc._artifact_repo.list_by_study = AsyncMock(return_value=(artifacts, 4))
+
+        pending_result = MagicMock()
+        pending_result.scalars.return_value.all.return_value = []
+        fail_result = MagicMock()
+        fail_result.scalars.return_value.all.return_value = []
+        db.execute = AsyncMock(side_effect=[pending_result, fail_result])
+
+        readiness = await svc.get_readiness(study_id, org_id)
+        assert readiness.ready is True
+
 
 @pytest.mark.asyncio
 class TestManifestGeneration:
@@ -139,8 +163,21 @@ class TestManifestGeneration:
 
         assert checksum
         assert manifest["study_name"] == "Test Study"
+        assert manifest["data_classification"] == "SYNTHETIC_DEMO"
         assert any(f["path"] == "manifest.json" for f in manifest["files"])
         assert any(f["path"] == "m5/define.xml" for f in manifest["files"])
+        define_entry = next(
+            f for f in manifest["files"] if f["path"] == "m5/define.xml"
+        )
+        assert define_entry["grade"] == "generated"
+        reviewers_entry = next(
+            f for f in manifest["files"] if f["path"] == "m5/reviewers-guide.pdf"
+        )
+        assert reviewers_entry["grade"] == "placeholder"
+        csr_entries = [f for f in manifest["files"] if f["path"].startswith("csr/")]
+        assert csr_entries and csr_entries[0]["grade"] == "placeholder"
+        tlf_entries = [f for f in manifest["files"] if f["path"].startswith("tlf/")]
+        assert tlf_entries and tlf_entries[0]["grade"] == "generated"
         assert Path(local_path).exists()
         manifest_file = Path(local_path) / "manifest.json"
         loaded = json.loads(manifest_file.read_text())

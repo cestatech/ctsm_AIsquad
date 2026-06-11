@@ -16,6 +16,9 @@ interface Permissions {
   canRunValidation: boolean;
   canTriggerGeneration: boolean;
   canDeleteDraftArtifact: boolean;
+  canCreateSubmissionPackage: boolean;
+  canViewSubmissionManifest: boolean;
+  canDownloadSubmissionPackage: boolean;
   isAdmin: boolean;
   isContributor: boolean;
   isReviewer: boolean;
@@ -36,6 +39,9 @@ const PERMISSION_MAP: Record<Role, Permissions> = {
     canRunValidation: true,
     canTriggerGeneration: true,
     canDeleteDraftArtifact: true,
+    canCreateSubmissionPackage: true,
+    canViewSubmissionManifest: true,
+    canDownloadSubmissionPackage: true,
     isAdmin: true,
     isContributor: false,
     isReviewer: false,
@@ -54,6 +60,9 @@ const PERMISSION_MAP: Record<Role, Permissions> = {
     canRunValidation: true,
     canTriggerGeneration: true,
     canDeleteDraftArtifact: true,
+    canCreateSubmissionPackage: false,
+    canViewSubmissionManifest: false,
+    canDownloadSubmissionPackage: false,
     isAdmin: false,
     isContributor: true,
     isReviewer: false,
@@ -72,6 +81,9 @@ const PERMISSION_MAP: Record<Role, Permissions> = {
     canRunValidation: true,
     canTriggerGeneration: false,
     canDeleteDraftArtifact: false,
+    canCreateSubmissionPackage: false,
+    canViewSubmissionManifest: true,
+    canDownloadSubmissionPackage: false,
     isAdmin: false,
     isContributor: false,
     isReviewer: true,

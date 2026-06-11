@@ -1057,6 +1057,169 @@ def _check_generic(content: dict, artifact_type: str) -> list[Finding]:
 
 
 # ===========================================================================
+# Define-XML / XPT cross-validation (Lane 1c)
+# ===========================================================================
+
+
+def run_define_xpt_cross_validation(
+    define_xml: str,
+    *,
+    xpt_filenames: list[str] | None = None,
+    expected_domain_codes: list[str] | None = None,
+) -> dict:
+    """
+    Validate define.xml structure and alignment with XPT transport files.
+
+    Used before submission packaging (Lane 3) and by validation runs that include
+    define.xml + exported XPT filenames from ``xpt_export_service``.
+
+    Args:
+        define_xml: Raw define.xml text.
+        xpt_filenames: Basenames of XPT files present in the package (e.g. ``dm.xpt``).
+        expected_domain_codes: SDTM/ADaM domain codes from artifact content.
+    """
+    from app.services.define_xml_validator import (
+        validate_define_xpt_alignment,
+        validate_define_xml_structure,
+    )
+
+    findings: list[Finding] = []
+
+    struct = validate_define_xml_structure(define_xml)
+    if struct.valid:
+        findings.append(
+            _f(
+                "DEF-001",
+                "define.xml is well-formed with required Define-XML 2.1 markers",
+                PASS,
+                ERROR,
+            )
+        )
+    else:
+        for issue in struct.issues:
+            findings.append(
+                _f(
+                    "DEF-001",
+                    "define.xml is well-formed with required Define-XML 2.1 markers",
+                    FAIL,
+                    ERROR,
+                    issue,
+                )
+            )
+
+    if struct.leaf_hrefs:
+        xpt_hrefs = [h for h in struct.leaf_hrefs if h.lower().endswith(".xpt")]
+        if xpt_hrefs:
+            findings.append(
+                _f(
+                    "DEF-002",
+                    "define.xml leaf hrefs reference .xpt transport files",
+                    PASS,
+                    ERROR,
+                )
+            )
+        else:
+            findings.append(
+                _f(
+                    "DEF-002",
+                    "define.xml leaf hrefs reference .xpt transport files",
+                    FAIL,
+                    ERROR,
+                    "No .xpt leaf hrefs found in define.xml.",
+                )
+            )
+
+    if expected_domain_codes is not None:
+        align = validate_define_xpt_alignment(
+            define_xml,
+            expected_domain_codes=expected_domain_codes,
+        )
+        if align.valid:
+            findings.append(
+                _f(
+                    "DEF-003",
+                    "define.xml domains align with artifact domain codes",
+                    PASS,
+                    ERROR,
+                )
+            )
+        else:
+            for issue in align.issues:
+                if "missing leaf href" in issue or "not present in artifact" in issue:
+                    findings.append(
+                        _f(
+                            "DEF-003",
+                            "define.xml domains align with artifact domain codes",
+                            FAIL,
+                            ERROR,
+                            issue,
+                        )
+                    )
+
+    if xpt_filenames is not None:
+        href_basenames = {
+            h.rsplit("/", 1)[-1].lower() for h in struct.leaf_hrefs
+        }
+        xpt_basenames = {
+            f.rsplit("/", 1)[-1].lower()
+            for f in xpt_filenames
+            if f.lower().endswith(".xpt")
+        }
+        missing_on_disk = href_basenames - xpt_basenames
+        extra_on_disk = xpt_basenames - href_basenames
+
+        if not missing_on_disk and not extra_on_disk and href_basenames:
+            findings.append(
+                _f(
+                    "XPT-001",
+                    "XPT files match define.xml leaf href basenames",
+                    PASS,
+                    ERROR,
+                )
+            )
+        else:
+            if missing_on_disk:
+                findings.append(
+                    _f(
+                        "XPT-001",
+                        "XPT files match define.xml leaf href basenames",
+                        FAIL,
+                        ERROR,
+                        f"Missing XPT files: {', '.join(sorted(missing_on_disk))}",
+                    )
+                )
+            if extra_on_disk:
+                findings.append(
+                    _f(
+                        "XPT-002",
+                        "No orphan XPT files without define.xml leaf href",
+                        FAIL,
+                        WARNING,
+                        f"Orphan XPT files: {', '.join(sorted(extra_on_disk))}",
+                    )
+                )
+
+    total = len(findings)
+    passed = sum(1 for f in findings if f["status"] == PASS)
+    failed = sum(1 for f in findings if f["status"] == FAIL)
+    warnings = sum(
+        1 for f in findings if f["status"] == FAIL and f["severity"] == WARNING
+    )
+    errors = sum(1 for f in findings if f["status"] == FAIL and f["severity"] == ERROR)
+
+    return {
+        "total_checks": total,
+        "passed_checks": passed,
+        "failed_checks": failed,
+        "warning_count": warnings,
+        "error_count": errors,
+        "findings": findings,
+        "rule_set": "CDISC-DEFINE-XPT-1.0",
+        "artifact_type": "DEFINE_XPT_CROSSCHECK",
+    }
+
+
+# ===========================================================================
 # Public entry point
 # ===========================================================================
 
