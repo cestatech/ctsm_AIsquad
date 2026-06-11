@@ -309,6 +309,11 @@ class GraphEdge(UUIDMixin, Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # SHA-256 of composite idempotency key when raw key exceeds length threshold
+    idempotency_key_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+
     created_by_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False),
         ForeignKey("users.id", ondelete="SET NULL"),

@@ -12,6 +12,7 @@ display data.
 
 from __future__ import annotations
 
+import hashlib
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,24 @@ from app.services.graph_event_writer import (
     GraphEventWriter,
     require_ai_decision_for_generated_edge,
 )
+
+EDGE_IDEMPOTENCY_HASH_THRESHOLD = 200
+
+
+def edge_idempotency_raw_key(
+    source_node_id: UUID,
+    edge_type_value: str,
+    target_node_id: UUID,
+) -> str:
+    """Composite idempotency key: source + edge type + target."""
+    return f"{source_node_id}:{edge_type_value}:{target_node_id}"
+
+
+def edge_idempotency_key_hash(raw_key: str) -> str | None:
+    """Return SHA-256 hex digest when the raw key exceeds the length threshold."""
+    if len(raw_key) <= EDGE_IDEMPOTENCY_HASH_THRESHOLD:
+        return None
+    return hashlib.sha256(raw_key.encode()).hexdigest()
 
 
 class ContextGraphService:
@@ -139,6 +158,11 @@ class ContextGraphService:
         """
         require_ai_decision_for_generated_edge(is_ai_generated, ai_decision_id)
 
+        raw_idempotency_key = edge_idempotency_raw_key(
+            source_node_id, edge_type.value, target_node_id
+        )
+        idempotency_key_hash = edge_idempotency_key_hash(raw_idempotency_key)
+
         edge, created = await self._repo.upsert_edge(
             organization_id=organization_id,
             study_id=study_id,
@@ -151,6 +175,7 @@ class ContextGraphService:
             is_ai_generated=is_ai_generated,
             ai_decision_id=ai_decision_id,
             created_by_id=actor.id if actor else None,
+            idempotency_key_hash=idempotency_key_hash,
         )
 
         await self._events.write(

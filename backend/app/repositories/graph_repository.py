@@ -185,6 +185,21 @@ class GraphRepository:
         )
         return result.scalar_one_or_none()
 
+    async def find_edge_by_idempotency_hash(
+        self,
+        organization_id: UUID,
+        idempotency_key_hash: str,
+    ) -> GraphEdge | None:
+        """Find an active edge by its hashed idempotency key."""
+        result = await self._db.execute(
+            select(GraphEdge).where(
+                GraphEdge.organization_id == organization_id,
+                GraphEdge.idempotency_key_hash == idempotency_key_hash,
+                GraphEdge.is_active.is_(True),
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def list_edges_from_node(
         self,
         node_id: UUID,
@@ -275,11 +290,17 @@ class GraphRepository:
         is_ai_generated: bool = False,
         ai_decision_id: UUID | None = None,
         created_by_id: UUID | None = None,
+        idempotency_key_hash: str | None = None,
     ) -> tuple[GraphEdge, bool]:
         """Create or update a directed edge. Returns (edge, created: bool)."""
-        existing = await self.find_edge(
-            source_node_id, target_node_id, edge_type, organization_id
-        )
+        if idempotency_key_hash:
+            existing = await self.find_edge_by_idempotency_hash(
+                organization_id, idempotency_key_hash
+            )
+        else:
+            existing = await self.find_edge(
+                source_node_id, target_node_id, edge_type, organization_id
+            )
         if existing is not None:
             if confidence is not None:
                 existing.confidence = confidence
@@ -302,6 +323,7 @@ class GraphRepository:
             is_ai_generated=is_ai_generated,
             ai_decision_id=ai_decision_id,
             created_by_id=created_by_id,
+            idempotency_key_hash=idempotency_key_hash,
         )
         self._db.add(edge)
         await self._db.flush()
