@@ -206,33 +206,95 @@ class BaseGenerator(ABC):
         """Map legacy shorthand model names to current Anthropic model IDs."""
         return _MODEL_ALIASES.get(model_id, model_id)
 
+    #: Hard ceiling on continuation rounds for a single generation. Each round
+    #: is one additional API call resuming a truncated response. This bounds
+    #: cost/latency and guarantees the loop terminates.
+    MAX_CONTINUATION_ROUNDS: int = 4
+
+    #: Instruction used to resume a truncated response. We cannot prefill the
+    #: assistant turn — current Claude models reject a conversation ending in an
+    #: assistant message — so the partial output is sent back as a prior turn and
+    #: the model is asked to emit only the remainder, which we concatenate.
+    _CONTINUE_INSTRUCTION = (
+        "Your previous response was cut off because it hit the length limit. "
+        "Continue the JSON output from exactly where you stopped. Output only "
+        "the remaining characters — do not repeat any prior content and do not "
+        "wrap the output in markdown fences."
+    )
+
     async def _call_claude(
         self,
         system_prompt: str,
         user_prompt: str,
         model_id: str,
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
     ) -> str:
-        """Make a Claude API call and return the text response."""
+        """Make a Claude API call and return the full text response.
+
+        When the model hits the ``max_tokens`` budget for a single response,
+        the JSON is truncated mid-structure and cannot be parsed. To prevent
+        that, this method detects ``stop_reason == "max_tokens"`` and resumes
+        the generation: the partial output is replayed as an assistant turn and
+        the model is asked to continue (see ``_CONTINUE_INSTRUCTION``). The
+        pieces are concatenated until the model completes (``stop_reason`` other
+        than ``"max_tokens"``) or the continuation budget is exhausted.
+
+        Raises:
+            TimeoutError: if any single API call exceeds the job timeout.
+            ValueError: if the output is still truncated after
+                ``MAX_CONTINUATION_ROUNDS`` continuations — surfaced loudly so
+                the caller fails instead of parsing a partial artifact.
+        """
         resolved_model = self._normalize_model_id(model_id)
-        try:
-            response = await asyncio.wait_for(
-                self._client.messages.create(
-                    model=resolved_model,
-                    max_tokens=max_tokens,
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": user_prompt}],
-                ),
-                timeout=self._settings.AI_JOB_TIMEOUT_SECONDS,
-            )
-        except asyncio.TimeoutError as exc:
-            raise TimeoutError(
-                f"Claude API call timed out after "
-                f"{self._settings.AI_JOB_TIMEOUT_SECONDS}s "
-                f"(model: {resolved_model})"
-            ) from exc
-        block = response.content[0]
-        return block.text if isinstance(block, TextBlock) else ""
+        accumulated = ""
+
+        for round_index in range(self.MAX_CONTINUATION_ROUNDS + 1):
+            # First round sends only the user prompt; subsequent rounds replay
+            # the text so far as an assistant turn and ask the model to continue
+            # (the conversation must end with a user message).
+            if accumulated:
+                messages = [
+                    {"role": "user", "content": user_prompt},
+                    {"role": "assistant", "content": accumulated},
+                    {"role": "user", "content": self._CONTINUE_INSTRUCTION},
+                ]
+            else:
+                messages = [{"role": "user", "content": user_prompt}]
+
+            try:
+                response = await asyncio.wait_for(
+                    self._client.messages.create(
+                        model=resolved_model,
+                        max_tokens=max_tokens,
+                        system=system_prompt,
+                        messages=messages,
+                    ),
+                    timeout=self._settings.AI_JOB_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError as exc:
+                raise TimeoutError(
+                    f"Claude API call timed out after "
+                    f"{self._settings.AI_JOB_TIMEOUT_SECONDS}s "
+                    f"(model: {resolved_model})"
+                ) from exc
+
+            block = response.content[0] if response.content else None
+            chunk = block.text if isinstance(block, TextBlock) else ""
+            accumulated += chunk
+
+            if getattr(response, "stop_reason", None) != "max_tokens":
+                return accumulated
+
+            # Truncated: trim trailing whitespace (the API rejects an assistant
+            # prefill ending in whitespace) and continue from there.
+            accumulated = accumulated.rstrip()
+
+        raise ValueError(
+            f"Model output still truncated after "
+            f"{self.MAX_CONTINUATION_ROUNDS} continuation rounds "
+            f"({len(accumulated)} chars accumulated, model: {resolved_model}). "
+            f"Increase max_tokens or narrow the generation scope."
+        )
 
     async def _register_additional_graph(
         self,

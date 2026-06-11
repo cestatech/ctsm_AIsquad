@@ -10,6 +10,13 @@ from app.services.generators.base_generator import BaseGenerator
 _SYSTEM = """You are a CDISC ADaM expert. You create ADaM dataset specifications following the CDISC ADaM Implementation Guide v1.3 and BDS structure.
 
 Generate an ADaM derivation specification as a single JSON object. No prose outside the JSON.
+Use strict JSON: double-quoted strings only, escape internal quotes, no trailing commas.
+The full document must fit in one response, so be selective rather than exhaustive
+(at most 15 variables per dataset, plus population flags). Within each dataset,
+prioritise strictly: first include EVERY ADaM IG required variable (ADSL must
+include STUDYID, USUBJID, and SUBJID; ADAE must include USUBJID, AEDECOD, AESEV,
+and AESER), then the key analysis variables if slots remain. Keep "derivation"
+and "notes" under 200 characters each.
 
 Required schema:
 {
@@ -73,13 +80,14 @@ Study details:
 ADaM datasets to create:
 {ctx.get("adam_datasets", "ADSL (subject-level), ADAE (adverse events), ADLB (labs), ADVS (vital signs), primary efficacy BDS dataset")}
 
-Include full derivation algorithms, population flags, and analysis variable definitions.
+Include concise derivation algorithms, population flags, and the key analysis variable
+definitions (at most 15 variables per dataset, ADaM IG required variables first).
 Return only valid JSON."""
 
         text = await self._call_claude(
             system_prompt=_SYSTEM,
             user_prompt=user_prompt,
             model_id=model_id,
-            max_tokens=6000,
+            max_tokens=16000,
         )
         return self._parse_json_response(text)

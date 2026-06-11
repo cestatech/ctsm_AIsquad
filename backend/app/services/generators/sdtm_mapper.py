@@ -10,10 +10,18 @@ from app.services.generators.base_generator import BaseGenerator
 _SYSTEM = """You are a CDISC SDTM expert. You map eCRF fields to SDTM variables following CDISC SDTM Implementation Guide v3.3 and CDISC Foundational Standards.
 
 Generate an SDTM mapping specification as a single JSON object. No prose outside the JSON.
+Use strict JSON: double-quoted strings only, escape internal quotes, no trailing commas.
+The full document must fit in one response, so be selective rather than exhaustive
+(at most 15 variables per domain). Within each domain, prioritise strictly: first
+include EVERY variable the SDTM IG marks Required for that domain (for DM that
+includes STUDYID, USUBJID, RFSTDTC, RFENDTC, SEX, RACE, ETHNIC, ARMCD, ARM,
+COUNTRY, AGE, AGEU; for AE that includes AETERM, AEDECOD, AEBODSYS, AESEV, AESER,
+AEOUT), then Expected variables, then study-critical Permissible ones only if slots
+remain. Keep "transformation" and "notes" under 200 characters each.
 
 Required schema:
 {
-  "document_type": "SDTM_MAPPING",
+  "document_type": "SDTM_SPECIFICATION",
   "version": "1.0",
   "sdtm_ig_version": "3.3",
   "domains": [
@@ -69,13 +77,14 @@ eCRF fields to map (if provided):
 CDISC domains to include:
 {ctx.get("domains", "DM, DS, AE, CM, VS, LB, EX, MH, EC, IE — include all relevant domains")}
 
-Generate complete variable-level mappings for each domain including transformation logic.
+Generate variable-level mappings for each domain (at most 15 per domain), always
+including every SDTM IG Required variable first, with concise transformation logic.
 Return only valid JSON."""
 
         text = await self._call_claude(
             system_prompt=_SYSTEM,
             user_prompt=user_prompt,
             model_id=model_id,
-            max_tokens=6000,
+            max_tokens=24000,
         )
         return self._parse_json_response(text)

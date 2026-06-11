@@ -10,6 +10,10 @@ from app.services.generators.base_generator import BaseGenerator
 _SYSTEM = """You are a clinical reporting expert specialising in ICH E3 clinical study report structure and CDISC TLF standards.
 
 Generate a TLF (Tables, Listings, Figures) specification as a single JSON object. No prose outside the JSON.
+Use strict JSON: double-quoted strings only, escape internal quotes, no trailing commas.
+The full document must fit in one response, so be selective rather than exhaustive:
+at most 12 tables, 6 listings, and 5 figures covering the core ICH E3 displays, with
+"row_definition", "column_definition", and "statistical_summary" under 200 characters each.
 
 Required schema:
 {
@@ -87,7 +91,8 @@ Study details:
 - ADaM Datasets: {ctx.get("adam_datasets", "ADSL, ADAE, ADLB, ADVS, ADEFF")}
 - Number of Treatment Arms: {ctx.get("treatment_arms", "2 (active vs placebo)")}
 
-Generate comprehensive tables, listings, and figures covering:
+Generate the core tables, listings, and figures (at most 12 tables, 6 listings,
+5 figures) covering:
 1. Demographics and baseline (ICH E3 section 14.1)
 2. Drug exposure and compliance (14.2)
 3. Primary and secondary efficacy (14.3)
@@ -100,6 +105,6 @@ Return only valid JSON."""
             system_prompt=_SYSTEM,
             user_prompt=user_prompt,
             model_id=model_id,
-            max_tokens=6000,
+            max_tokens=16000,
         )
         return self._parse_json_response(text)
