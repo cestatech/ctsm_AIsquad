@@ -1,0 +1,8 @@
+# Development tooling — pinned so local lint/type-check matches CI exactly.
+# Test dependencies (pytest etc.) live in requirements.txt.
+#
+# Usage:
+#   pip install -r requirements.txt -r requirements-dev.txt
+
+ruff==0.15.17
+mypy==2.1.0
