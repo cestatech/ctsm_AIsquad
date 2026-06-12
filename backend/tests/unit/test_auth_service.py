@@ -150,7 +150,10 @@ class TestLogin:
         svc._users.get_by_email_any_org = AsyncMock(return_value=None)
 
         with pytest.raises(AuthenticationError):
-            await svc.login("nobody@test.com", "pass")
+            await svc.login("nobody@test.com", "pass", ip_address="203.0.113.42")
+
+        svc._audit.log.assert_awaited_once()
+        svc._db.commit.assert_awaited_once()
 
     async def test_locked_account_raises_rate_limit_error(self, svc):
         user = _make_user(locked_until=datetime.now(UTC) + timedelta(minutes=5))
@@ -170,6 +173,7 @@ class TestLogin:
 
         svc._users.increment_failed_login.assert_called_once_with(user)
         svc._audit.log.assert_called_once()
+        svc._db.commit.assert_awaited_once()
 
     async def test_wrong_password_audit_action_is_login_failed(self, svc, mock_db):
         user = _make_user()

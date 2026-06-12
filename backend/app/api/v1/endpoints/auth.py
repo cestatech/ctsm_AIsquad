@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.core.config import get_settings
+from app.core.exceptions import AuthenticationError
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -16,6 +17,7 @@ from app.schemas.auth import (
 from app.schemas.user import AuthResponse, UserResponse
 from app.services.auth_service import AuthService
 from app.services.context_graph_service import ContextGraphService
+from app.services.login_rate_limiter import LoginRateLimiter, get_login_rate_limiter
 
 router = APIRouter()
 settings = get_settings()
@@ -80,15 +82,26 @@ async def login(
     request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
+    rate_limiter: LoginRateLimiter = Depends(get_login_rate_limiter),
 ) -> AuthResponse:
     """Authenticate user credentials and return access token."""
+    ip_address = request.client.host if request.client else None
+    reservation = await rate_limiter.acquire(ip_address)
     service = AuthService(db)
-    user, access_token, refresh_token = await service.login(
-        body.email,
-        body.password,
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-    )
+    try:
+        user, access_token, refresh_token = await service.login(
+            body.email,
+            body.password,
+            ip_address=ip_address,
+            user_agent=request.headers.get("user-agent"),
+        )
+    except AuthenticationError:
+        raise
+    except Exception:
+        await rate_limiter.release(ip_address, reservation)
+        raise
+
+    await rate_limiter.release(ip_address, reservation)
     await ContextGraphService(db).emit_event(
         organization_id=user.organization_id,
         event_type="USER_LOGIN",
@@ -96,7 +109,7 @@ async def login(
         payload={
             "user_id": str(user.id),
             "email": user.email,
-            "ip_address": request.client.host if request.client else None,
+            "ip_address": ip_address,
             "user_agent": request.headers.get("user-agent"),
         },
     )
