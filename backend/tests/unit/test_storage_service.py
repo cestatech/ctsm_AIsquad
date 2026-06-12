@@ -6,12 +6,10 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from moto import mock_aws
 
 from app.core.config import Settings
 from app.services.storage.azure import AzureBlobStorageBackend
 from app.services.storage.filesystem import FilesystemStorageBackend
-from app.services.storage.s3 import S3StorageBackend
 from app.services.storage_service import (
     ConfigurationError,
     StorageService,
@@ -55,30 +53,36 @@ class TestStorageFactory:
         backend = create_storage_backend(settings)
         assert isinstance(backend, FilesystemStorageBackend)
 
+    def test_azure_backend(self):
+        settings = Settings(
+            APP_SECRET_KEY="test",
+            JWT_SECRET_KEY="test",
+            DATABASE_URL="postgresql://user:pass@localhost/db",
+            STORAGE_BACKEND="azure",
+            AZURE_CONTAINER_NAME="celerius",
+            AZURE_STORAGE_ACCOUNT_NAME="celerius",
+            AZURE_STORAGE_SAS_TOKEN="test-token",
+        )
+        backend = create_storage_backend(settings)
+        assert isinstance(backend, AzureBlobStorageBackend)
+
+    def test_s3_backend_is_rejected(self):
+        with pytest.raises(ValueError, match="STORAGE_BACKEND"):
+            Settings(
+                APP_SECRET_KEY="test",
+                JWT_SECRET_KEY="test",
+                DATABASE_URL="postgresql://user:pass@localhost/db",
+                STORAGE_BACKEND="s3",
+            )
+
     def test_unknown_backend_raises_configuration_error(self):
         settings = MagicMock()
         settings.STORAGE_BACKEND = "minio"
-        with pytest.raises(ConfigurationError, match="Unknown STORAGE_BACKEND"):
+        with pytest.raises(
+            ConfigurationError,
+            match="Expected one of: filesystem, azure",
+        ):
             create_storage_backend(settings)
-
-
-@mock_aws
-class TestS3Backend:
-    def test_put_get_delete_exists(self):
-        import boto3
-
-        bucket = "celerius-test"
-        region = "us-east-1"
-        client = boto3.client("s3", region_name=region)
-        client.create_bucket(Bucket=bucket)
-
-        backend = S3StorageBackend(bucket=bucket, region=region, client=client)
-        key = "org/demo/uploads/sample.csv"
-        backend.put(key, b"s3-data")
-        assert backend.exists(key)
-        assert backend.get(key) == b"s3-data"
-        backend.delete(key)
-        assert not backend.exists(key)
 
 
 class TestAzureBackend:

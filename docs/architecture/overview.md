@@ -64,7 +64,7 @@ The platform manages the complete lifecycle of clinical trial artifacts, from pr
               │              │                 │
     ┌─────────▼──────┐  ┌────▼────┐  ┌─────────▼──────┐
     │  PostgreSQL 16 │  │  Redis  │  │ Object Storage │
-    │ (Primary DB)   │  │ (Cache, │  │ (S3 / Azure /  │
+    │ (Primary DB)   │  │ (Cache, │  │ (Azure Blob /  │
     │                │  │  Rate   │  │  Filesystem)   │
     │  Per-org data  │  │ Limit)  │  │                │
     └────────────────┘  └─────────┘  └────────────────┘
@@ -255,7 +255,7 @@ class StorageBackend(ABC):
 # Key format: org/{org_id}/studies/{study_id}/artifacts/{artifact_id}/v{n}/{filename}
 ```
 
-Backends: `FilesystemStorage` (dev), `S3Storage` (production), `AzureBlobStorage` (enterprise).
+Backends: `FilesystemStorage` (local development), `AzureBlobStorage` (production).
 
 ---
 

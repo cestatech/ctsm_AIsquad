@@ -151,8 +151,7 @@ The **Celerius Intelligence Platform** layer makes every AI action and data tran
 
 ### Storage
 - Abstract storage layer (filesystem for dev)
-- S3-compatible interface (production)
-- Azure Blob (future enterprise option)
+- Azure Blob (production)
 
 ### Infrastructure
 - Docker + Docker Compose
@@ -201,7 +200,7 @@ The **Celerius Intelligence Platform** layer makes every AI action and data tran
            │
 ┌──────────▼──────────┐
 │   Abstract Storage  │
-│  (S3 / Azure Blob)  │
+│ (Local / Azure Blob)│
 └─────────────────────┘
 ```
 
@@ -320,11 +319,10 @@ JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
 # Storage
 STORAGE_BACKEND=filesystem
 STORAGE_LOCAL_PATH=/tmp/celerius-storage
-# For S3:
-# STORAGE_BACKEND=s3
-# AWS_ACCESS_KEY_ID=...
-# AWS_SECRET_ACCESS_KEY=...
-# AWS_S3_BUCKET=celerius-artifacts
+# For Azure Blob Storage:
+# STORAGE_BACKEND=azure
+# AZURE_CONTAINER_NAME=celerius-artifacts
+# AZURE_STORAGE_CONNECTION_STRING=...
 
 # Email (for notifications)
 SMTP_HOST=localhost
@@ -404,7 +402,7 @@ Required secrets in GitHub:
 - `DATABASE_URL` (production)
 - `JWT_SECRET_KEY`
 - `APP_SECRET_KEY`
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (if S3)
+- `AZURE_STORAGE_CONNECTION_STRING`
 - `DOCKER_REGISTRY_TOKEN`
 
 ---

@@ -1,7 +1,7 @@
 """Add uploaded_files table for study file uploads.
 
 Stores metadata about files (CSV/XLSX/PDF) uploaded to a study.
-Files are stored on disk (or S3); this table holds the metadata.
+Files are stored on disk (or Azure Blob Storage); this table holds the metadata.
 
 Revision ID: a1b2c3d4e5f6
 Revises: f6a7b8c9d0e1

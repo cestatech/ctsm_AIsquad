@@ -115,7 +115,7 @@ WP0 → WP1 → WP2 → WP3 → WP4 → WP5
 - Real CSR PDF rendering and Reviewer's Guide authoring (PDF library decision required)
 - eCTD XML backbone and define.xml 2.1 conformance validation
 - Pinnacle 21 integration
-- S3/Azure storage, durable job queue (Celery), production email
+- Azure storage, durable job queue (Celery), production email
 - Removing placeholders by mislabeling them as real
 
 ---
@@ -175,7 +175,7 @@ These overlap Phase 2 and Phase 5:
 
 | Initiative | Description | Notes |
 |------------|-------------|-------|
-| **4.1 Cloud storage** | S3 or Azure Blob for packages and artifacts | Model already has `s3_key` field |
+| **4.1 Cloud storage** | Azure Blob for packages and artifacts | Azure backend is available |
 | **4.2 Durable background jobs** | Replace FastAPI `BackgroundTasks` with Celery/Redis queue | Submission + generation executors |
 | **4.3 Production email** | Invites, notifications, approval alerts | Blocks Phase 1 polish item |
 | **4.4 Observability** | Structured logging, metrics, alerting | — |
@@ -277,6 +277,6 @@ These items span multiple phases and can be pulled forward when a specific demo 
 
 **Medium-term:** Phase 2 regulatory output depth (real CSR PDF, Reviewer's Guide, eCTD XML, full define.xml).
 
-**Pre-production:** Phase 4 (S3, durable jobs, email, observability).
+**Pre-production:** Phase 4 (Azure Blob, durable jobs, email, observability).
 
 **Continuous:** Phase 5 pipeline polish and Phase 6 frontend test depth, prioritized by demo and pilot feedback.

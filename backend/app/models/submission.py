@@ -63,7 +63,7 @@ class SubmissionPackage(UUIDMixin, Base):
     )
     artifact_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     local_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    s3_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    storage_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     package_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
     manifest: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

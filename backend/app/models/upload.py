@@ -25,7 +25,7 @@ class UploadedFile(UUIDMixin, TimestampMixin, Base):
     """
     Metadata record for a file uploaded to a study.
 
-    Stores the original filename, path in local/S3 storage, MIME type, size,
+    Stores the original filename, path in local/Azure storage, MIME type, size,
     and an optional extracted metadata blob (column headers, row count, etc.).
     Append-only — files are never deleted, only soft-archived.
 

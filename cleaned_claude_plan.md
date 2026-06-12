@@ -36,7 +36,7 @@ Compare that milestone against these alternatives:
 - Removal of placeholder submission outputs
 
 2. Production readiness:
-- S3 or Azure storage
+- Azure storage
 - Durable background jobs
 - Production email
 - Security/compliance hardening
@@ -225,7 +225,7 @@ Option: Production readiness
 Demo value: Low for demos
 Workflow completeness: None
 Risk reduction: High for ops, not for product
-Eng. risk: Medium (S3, durable jobs, email = infra churn)
+Eng. risk: Medium (Azure Blob, durable jobs, email = infra churn)
 Testability: Medium
 Effort: L
 
@@ -244,7 +244,7 @@ The deciding facts: the backend work for the milestone is already done (backend/
 unit + integration tests), so the milestone is mostly low-risk frontend wiring against verified APIs; and it converts an invisible asset into the single most valuable demo moment. Alternatives 1–3 all build on top of a flow nobody can currently see or exercise. Alternative 1 (regulatory depth) is the right next milestone after this one — and one cheap piece of it (real TLF RTF via the existing, dead-code TLFRenderer) is pulled in here as a stretch WP.
 
 Explicitly out of scope: real CSR PDF rendering and Reviewer's Guide authoring (needs a PDF library decision), eCTD XML backbone,
-define.xml 2.1 conformance validation, Pinnacle 21 integration, S3/Azure storage, durable job queue (Celery), production email, removing placeholders by faking them as real. Placeholders stay — but get honestly labeled.
+define.xml 2.1 conformance validation, Pinnacle 21 integration, Azure storage, durable job queue (Celery), production email, removing placeholders by faking them as real. Placeholders stay — but get honestly labeled.
 
 Maturity language used throughout: Demonstrable (works end-to-end on synthetic data; some outputs placeholder) → Functionally complete (real outputs, synthetic data) → Regulatory-ready (validated, compliant, real-data capable). After this milestone, submission packaging is Demonstrable, not regulatory-ready.
 
@@ -365,7 +365,7 @@ One WP = one PR. Every PR keeps type-check, vitest, backend pytest (and from WP5
 - Deps: all prior WPs. Acceptance: no doc contradicts code; taxonomy used consistently.
 
 Work classification: baseline repairs = WP0; product completion = WP1–WP6; regulatory-grade hardening = WP8 (plus the deferred items
-below); external blockers (none block this milestone): Pinnacle 21 license (PINNACLE21_ENABLED=false, internal validator fallback exists), live ANTHROPIC_API_KEY (deterministic fallbacks exist), BAA/DPA + production SMTP/S3 (production-readiness milestone only).
+below); external blockers (none block this milestone): Pinnacle 21 license (PINNACLE21_ENABLED=false, internal validator fallback exists), live ANTHROPIC_API_KEY (deterministic fallbacks exist), BAA/DPA + production SMTP/Azure Blob (production-readiness milestone only).
 
 ---
 
@@ -373,7 +373,7 @@ below); external blockers (none block this milestone): Pinnacle 21 license (PINN
 
 1. Regulatory output depth — real CSR PDF (PDF library decision required), Reviewer's Guide/ADRG content, eCTD XML backbone, define.xml conformance checking. Evidence that would change ranking: a scheduled regulator/partner review, or Pinnacle 21 license acquisition (would pull validation integration forward).
 2. Submission API hardening — remove local_path leak from SubmissionPackageResponse (needs deprecation note per API-versioning rules), role-gate or scope the package list endpoint deliberately, stall/retry semantics for stuck PACKAGING. Changes ranking if: a security review or external pilot starts.
-3. Production readiness — S3/Azure storage (model already has s3_key), durable jobs (BackgroundTasks → queue), production email, observability. Changes ranking if: a real deployment date or BAA/DPA is signed.
+3. Production readiness — Azure storage, durable jobs (BackgroundTasks → queue), production email, observability. Changes ranking if: a real deployment date or BAA/DPA is signed.
 4. Pipeline breadth/polish — dedicated SDTM/CSR review UIs, bulk reject, multi-sheet naming, traceability impact-report polish. Changes ranking if: demo feedback identifies a specific reviewer-workflow gap.
 5. Frontend test depth — add jsdom + @testing-library component tests (currently absent), expand E2E beyond mocked routes to a live-backend smoke profile using the WP6 seed flag. Changes ranking if: regressions start escaping to demos.
 

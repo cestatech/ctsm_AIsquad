@@ -9,7 +9,6 @@ from app.core.config import Settings, get_settings
 from app.services.storage.azure import AzureBlobStorageBackend
 from app.services.storage.base import StorageBackend
 from app.services.storage.filesystem import FilesystemStorageBackend
-from app.services.storage.s3 import S3StorageBackend
 
 
 class ConfigurationError(Exception):
@@ -23,13 +22,6 @@ def create_storage_backend(settings: Settings | None = None) -> StorageBackend:
 
     if backend == "filesystem":
         return FilesystemStorageBackend(cfg.STORAGE_LOCAL_PATH)
-    if backend == "s3":
-        return S3StorageBackend(
-            bucket=cfg.AWS_S3_BUCKET,
-            region=cfg.AWS_REGION,
-            access_key_id=cfg.AWS_ACCESS_KEY_ID,
-            secret_access_key=cfg.AWS_SECRET_ACCESS_KEY,
-        )
     if backend == "azure":
         return AzureBlobStorageBackend(
             container=cfg.AZURE_CONTAINER_NAME,
@@ -40,7 +32,7 @@ def create_storage_backend(settings: Settings | None = None) -> StorageBackend:
 
     raise ConfigurationError(
         f"Unknown STORAGE_BACKEND '{backend}'. "
-        "Expected one of: filesystem, s3, azure."
+        "Expected one of: filesystem, azure."
     )
 
 
