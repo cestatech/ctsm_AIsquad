@@ -53,9 +53,7 @@ class StatisticalQCRepository:
             filters.append(StatisticalProgramQCRun.workflow_step == workflow_step)
 
         count_result = await self._db.execute(
-            select(func.count())
-            .select_from(StatisticalProgramQCRun)
-            .where(*filters)
+            select(func.count()).select_from(StatisticalProgramQCRun).where(*filters)
         )
         total = count_result.scalar_one()
 

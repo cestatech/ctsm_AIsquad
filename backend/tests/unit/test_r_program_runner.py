@@ -25,12 +25,14 @@ from app.models.statistical_qc import StatisticalQCWorkflow
 class TestMaterializeFixtures:
     def test_writes_domain_csv_and_adsl(self, tmp_path: Path):
         payload = {
-            "domains": [{
-                "domain": "DM",
-                "observations": [
-                    {"STUDYID": "S1", "USUBJID": "S1-001", "AGE": "45"},
-                ],
-            }],
+            "domains": [
+                {
+                    "domain": "DM",
+                    "observations": [
+                        {"STUDYID": "S1", "USUBJID": "S1-001", "AGE": "45"},
+                    ],
+                }
+            ],
         }
         input_dir = materialize_input_fixtures(payload, tmp_path)
         assert (input_dir / "dm.csv").exists()
@@ -101,12 +103,14 @@ x <- 1
 class TestRunDualProgramComparison:
     def test_templates_execute_when_r_available(self):
         payload = {
-            "domains": [{
-                "domain": "DM",
-                "observations": [
-                    {"STUDYID": "S1", "USUBJID": "S1-001", "AGE": "45"},
-                ],
-            }],
+            "domains": [
+                {
+                    "domain": "DM",
+                    "observations": [
+                        {"STUDYID": "S1", "USUBJID": "S1-001", "AGE": "45"},
+                    ],
+                }
+            ],
         }
         result = run_dual_program_comparison(
             primary_program=_primary_sdtm_template(),
@@ -121,12 +125,14 @@ class TestRunDualProgramComparison:
     def test_broken_ai_program_falls_back_to_templates(self):
         broken = "stop('intentional AI execution failure')\n"
         payload = {
-            "domains": [{
-                "domain": "DM",
-                "observations": [
-                    {"STUDYID": "S1", "USUBJID": "S1-001", "AGE": "45"},
-                ],
-            }],
+            "domains": [
+                {
+                    "domain": "DM",
+                    "observations": [
+                        {"STUDYID": "S1", "USUBJID": "S1-001", "AGE": "45"},
+                    ],
+                }
+            ],
         }
         result = run_dual_program_comparison(
             primary_program=broken,

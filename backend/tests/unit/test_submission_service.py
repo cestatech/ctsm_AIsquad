@@ -16,7 +16,9 @@ from app.services.storage_service import StorageService
 from app.services.submission_service import SubmissionService
 
 
-def _artifact(artifact_type: ArtifactType, status: ArtifactStatus = ArtifactStatus.DRAFT):
+def _artifact(
+    artifact_type: ArtifactType, status: ArtifactStatus = ArtifactStatus.DRAFT
+):
     art = MagicMock()
     art.id = uuid4()
     art.artifact_type = artifact_type
@@ -127,20 +129,24 @@ class TestManifestGeneration:
         sdtm_content = {
             "document_type": "SDTM_DATASET",
             "protocol_number": "PROT-001",
-            "domains": [{
-                "domain": "DM",
-                "domain_label": "Demographics",
-                "class": "Special-Purpose",
-                "variables": ["STUDYID", "USUBJID"],
-                "observations": [{"STUDYID": "S1", "USUBJID": "S1-001"}],
-            }],
+            "domains": [
+                {
+                    "domain": "DM",
+                    "domain_label": "Demographics",
+                    "class": "Special-Purpose",
+                    "variables": ["STUDYID", "USUBJID"],
+                    "observations": [{"STUDYID": "S1", "USUBJID": "S1-001"}],
+                }
+            ],
         }
         adam_content = {
-            "datasets": [{
-                "dataset": "ADSL",
-                "variables": [{"variable": "USUBJID"}],
-                "observations": [],
-            }],
+            "datasets": [
+                {
+                    "dataset": "ADSL",
+                    "variables": [{"variable": "USUBJID"}],
+                    "observations": [],
+                }
+            ],
         }
         tlf_content = {"tables": [{"table_id": "T-01", "title": "Demographics"}]}
         csr_content = {"title": "CSR", "sections": [{"number": "1"}]}

@@ -56,7 +56,9 @@ class _PdfWriter:
         self._canvas.drawString(_MARGIN_LEFT, self._y, text[:90])
         self._y -= _LINE_HEIGHT * 1.5
 
-    def table_row(self, columns: list[str], widths: list[float], *, bold: bool = False) -> None:
+    def table_row(
+        self, columns: list[str], widths: list[float], *, bold: bool = False
+    ) -> None:
         self._ensure_room(_LINE_HEIGHT)
         self._canvas.setFont("Helvetica-Bold" if bold else "Helvetica", 9)
         x = _MARGIN_LEFT

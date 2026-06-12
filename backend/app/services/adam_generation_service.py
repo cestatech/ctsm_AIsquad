@@ -139,7 +139,9 @@ class ADAMGenerationService:
         artifacts, _ = await self._artifact_repo.list_by_study(
             study_id, organization_id, limit=100, offset=0
         )
-        sdtm_arts = [a for a in artifacts if a.artifact_type == ArtifactType.SDTM_DATASET]
+        sdtm_arts = [
+            a for a in artifacts if a.artifact_type == ArtifactType.SDTM_DATASET
+        ]
         issues: list[str] = []
         summaries: list[dict] = []
 
@@ -156,14 +158,16 @@ class ADAMGenerationService:
                 issues.append(f"{art.name}: no SDTM domains in content.")
             elif obs_count == 0:
                 issues.append(f"{art.name}: SDTM domains have no observations.")
-            summaries.append({
-                "artifact_id": str(art.id),
-                "artifact_name": art.name,
-                "domain_count": len(domains),
-                "domains": domain_codes,
-                "observation_count": obs_count,
-                "ready": art_ready,
-            })
+            summaries.append(
+                {
+                    "artifact_id": str(art.id),
+                    "artifact_name": art.name,
+                    "domain_count": len(domains),
+                    "domains": domain_codes,
+                    "observation_count": obs_count,
+                    "ready": art_ready,
+                }
+            )
 
         ready = bool(summaries) and all(s["ready"] for s in summaries)
         return StudyADAMReadiness(
@@ -229,7 +233,9 @@ class ADAMGenerationService:
         artifacts, _ = await self._artifact_repo.list_by_study(
             study_id, actor.organization_id, limit=100, offset=0
         )
-        sdtm_arts = [a for a in artifacts if a.artifact_type == ArtifactType.SDTM_DATASET]
+        sdtm_arts = [
+            a for a in artifacts if a.artifact_type == ArtifactType.SDTM_DATASET
+        ]
         source_artifacts: list[Artifact] = []
         source_contents: list[dict] = []
         merged_domains: list[dict] = []
@@ -307,7 +313,9 @@ class ADAMGenerationService:
             if shared_cut is None:
                 shared_cut = cut
             else:
-                assert_compatible_data_cuts(shared_cut, cut, operation="ADaM derivation")
+                assert_compatible_data_cuts(
+                    shared_cut, cut, operation="ADaM derivation"
+                )
         if shared_cut is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -509,8 +517,8 @@ class ADAMGenerationService:
             vars_set = set(current.get("variables", []))
             vars_set.update(domain.get("variables", []))
             current["variables"] = sorted(vars_set)
-            current["observations"] = (
-                current.get("observations", []) + domain.get("observations", [])
+            current["observations"] = current.get("observations", []) + domain.get(
+                "observations", []
             )
         return list(by_code.values())
 
@@ -534,9 +542,10 @@ class ADAMGenerationService:
                 trace_notes = ai_spec.get("traceability_notes", [])
             except HTTPException as exc:
                 detail = exc.detail if isinstance(exc.detail, dict) else {}
-                if exc.status_code != status.HTTP_502_BAD_GATEWAY or detail.get(
-                    "code"
-                ) != "AI_PARSE_ERROR":
+                if (
+                    exc.status_code != status.HTTP_502_BAD_GATEWAY
+                    or detail.get("code") != "AI_PARSE_ERROR"
+                ):
                     raise
                 fallback_reason = str(detail.get("message", exc))
                 logger.warning(
@@ -611,11 +620,13 @@ class ADAMGenerationService:
     ) -> dict:
         sample_domains = []
         for d in sdtm_domains[:10]:
-            sample_domains.append({
-                "domain": d.get("domain"),
-                "variables": d.get("variables", [])[:20],
-                "observations": (d.get("observations") or [])[:5],
-            })
+            sample_domains.append(
+                {
+                    "domain": d.get("domain"),
+                    "variables": d.get("variables", [])[:20],
+                    "observations": (d.get("observations") or [])[:5],
+                }
+            )
 
         user_prompt = f"""Study: {study_name}
 Protocol: {protocol_number}
@@ -671,74 +682,76 @@ Derive ADaM analysis datasets with full variable derivations and population flag
         ]
         for extra in ("AGE", "SEX", "RACE", "ETHNIC"):
             if extra in dm_vars:
-                adsl_variables.append(
-                    _var(extra, extra, f"DM.{extra}")
-                )
+                adsl_variables.append(_var(extra, extra, f"DM.{extra}"))
 
-        datasets: list[dict] = [{
-            "dataset": "ADSL",
-            "label": "Subject Level Analysis Dataset",
-            "structure": "One record per subject",
-            "source_domains": ["DM"] if dm else [],
-            "key_variables": ["STUDYID", "USUBJID"],
-            "variables": adsl_variables,
-            "population_flags": [
-                {
-                    "variable": "ITTFL",
-                    "label": "Intent-to-Treat Population Flag",
-                    "derivation": (
-                        "Y if subject has DM record with USUBJID, N otherwise"
-                    ),
-                },
-                {
-                    "variable": "SAFFL",
-                    "label": "Safety Population Flag",
-                    "derivation": "Y if subject received any treatment",
-                },
-            ],
-            "observation_count": len(dm_obs),
-        }]
+        datasets: list[dict] = [
+            {
+                "dataset": "ADSL",
+                "label": "Subject Level Analysis Dataset",
+                "structure": "One record per subject",
+                "source_domains": ["DM"] if dm else [],
+                "key_variables": ["STUDYID", "USUBJID"],
+                "variables": adsl_variables,
+                "population_flags": [
+                    {
+                        "variable": "ITTFL",
+                        "label": "Intent-to-Treat Population Flag",
+                        "derivation": (
+                            "Y if subject has DM record with USUBJID, N otherwise"
+                        ),
+                    },
+                    {
+                        "variable": "SAFFL",
+                        "label": "Safety Population Flag",
+                        "derivation": "Y if subject received any treatment",
+                    },
+                ],
+                "observation_count": len(dm_obs),
+            }
+        ]
 
         ae = next((d for d in sdtm_domains if d.get("domain") == "AE"), None)
         if ae:
-            datasets.append({
-                "dataset": "ADAE",
-                "label": "Adverse Events Analysis Dataset",
-                "structure": "One record per subject per AE per visit",
-                "source_domains": ["AE"],
-                "key_variables": ["STUDYID", "USUBJID", "AESEQ"],
-                "variables": [
-                    _var("USUBJID", "Unique Subject Identifier", "AE.USUBJID"),
-                    {
-                        "variable": "AEDECOD",
-                        "label": "Dictionary-Derived Term",
-                        "type": "Char",
-                        "origin": "SDTM.AE",
-                        "derivation": "AE.AEDECOD or AE.AETERM",
-                        "controlled_terminology": None,
-                        "notes": "",
-                    },
-                    {
-                        "variable": "AESEV",
-                        "label": "Severity",
-                        "type": "Char",
-                        "origin": "SDTM.AE",
-                        "derivation": "AE.AESEV",
-                        "controlled_terminology": None,
-                        "notes": "",
-                    },
-                    {
-                        "variable": "AESER",
-                        "label": "Serious Event Flag",
-                        "type": "Char",
-                        "origin": "SDTM.AE",
-                        "derivation": "AE.AESER",
-                        "controlled_terminology": None,
-                        "notes": "",
-                    },
-                ],
-                "population_flags": [],
-            })
+            datasets.append(
+                {
+                    "dataset": "ADAE",
+                    "label": "Adverse Events Analysis Dataset",
+                    "structure": "One record per subject per AE per visit",
+                    "source_domains": ["AE"],
+                    "key_variables": ["STUDYID", "USUBJID", "AESEQ"],
+                    "variables": [
+                        _var("USUBJID", "Unique Subject Identifier", "AE.USUBJID"),
+                        {
+                            "variable": "AEDECOD",
+                            "label": "Dictionary-Derived Term",
+                            "type": "Char",
+                            "origin": "SDTM.AE",
+                            "derivation": "AE.AEDECOD or AE.AETERM",
+                            "controlled_terminology": None,
+                            "notes": "",
+                        },
+                        {
+                            "variable": "AESEV",
+                            "label": "Severity",
+                            "type": "Char",
+                            "origin": "SDTM.AE",
+                            "derivation": "AE.AESEV",
+                            "controlled_terminology": None,
+                            "notes": "",
+                        },
+                        {
+                            "variable": "AESER",
+                            "label": "Serious Event Flag",
+                            "type": "Char",
+                            "origin": "SDTM.AE",
+                            "derivation": "AE.AESER",
+                            "controlled_terminology": None,
+                            "notes": "",
+                        },
+                    ],
+                    "population_flags": [],
+                }
+            )
 
         trace = [
             f"ADSL derived from SDTM DM domain ({len(dm_obs)} subjects)",
@@ -831,13 +844,15 @@ Derive ADaM analysis datasets with full variable derivations and population flag
         for row in obs:
             if not isinstance(row, dict):
                 continue
-            derived_obs.append({
-                "USUBJID": row.get("USUBJID"),
-                "PARAMCD": row.get("LBTESTCD") or row.get("LBTEST"),
-                "AVAL": row.get("LBSTRESN") or row.get("LBORRES"),
-                "AVALC": row.get("LBSTRESC") or row.get("LBORRES"),
-                "VISIT": row.get("VISIT"),
-            })
+            derived_obs.append(
+                {
+                    "USUBJID": row.get("USUBJID"),
+                    "PARAMCD": row.get("LBTESTCD") or row.get("LBTEST"),
+                    "AVAL": row.get("LBSTRESN") or row.get("LBORRES"),
+                    "AVALC": row.get("LBSTRESC") or row.get("LBORRES"),
+                    "VISIT": row.get("VISIT"),
+                }
+            )
         return {
             "dataset": "ADLB",
             "label": "Laboratory Results Analysis Dataset",
@@ -895,12 +910,14 @@ Derive ADaM analysis datasets with full variable derivations and population flag
                 continue
             testcd = str(row.get("VSTESTCD") or row.get("VSTEST") or "").upper()
             paramcd = testcd if testcd in param_map else testcd[:6] or "VS"
-            derived_obs.append({
-                "USUBJID": row.get("USUBJID"),
-                "PARAMCD": paramcd,
-                "AVAL": row.get("VSSTRESN") or row.get("VSORRES"),
-                "VISIT": row.get("VISIT"),
-            })
+            derived_obs.append(
+                {
+                    "USUBJID": row.get("USUBJID"),
+                    "PARAMCD": paramcd,
+                    "AVAL": row.get("VSSTRESN") or row.get("VSORRES"),
+                    "VISIT": row.get("VISIT"),
+                }
+            )
         return {
             "dataset": "ADVS",
             "label": "Vital Signs Analysis Dataset",
@@ -943,21 +960,26 @@ Derive ADaM analysis datasets with full variable derivations and population flag
             for row in obs:
                 if not isinstance(row, dict):
                     continue
-                derived_obs.append({
-                    "USUBJID": row.get("USUBJID"),
-                    "AVAL": row.get("AESTDY") or row.get("AEDUR"),
-                    "CNSR": "0" if row.get("AESER") == "Y" else "1",
-                    "EVNTDESC": row.get("AEDECOD") or row.get("AETERM"),
-                    "SRCDOM": "AE",
-                    "SRCVAR": "AESTDTC",
-                })
+                derived_obs.append(
+                    {
+                        "USUBJID": row.get("USUBJID"),
+                        "AVAL": row.get("AESTDY") or row.get("AEDUR"),
+                        "CNSR": "0" if row.get("AESER") == "Y" else "1",
+                        "EVNTDESC": row.get("AEDECOD") or row.get("AETERM"),
+                        "SRCDOM": "AE",
+                        "SRCVAR": "AESTDTC",
+                    }
+                )
         else:
             bds_vars = [
                 ADAMGenerationService._bds_var(
                     "AVAL", "Analysis Value (days)", "DS.DSDY or date diff", "SDTM.DS"
                 ),
                 ADAMGenerationService._bds_var(
-                    "CNSR", "Censoring Flag", "0=discontinued, 1=censored", "Derived",
+                    "CNSR",
+                    "Censoring Flag",
+                    "0=discontinued, 1=censored",
+                    "Derived",
                     "Char",
                 ),
                 ADAMGenerationService._bds_var(
@@ -977,14 +999,16 @@ Derive ADaM analysis datasets with full variable derivations and population flag
             for row in obs:
                 if not isinstance(row, dict):
                     continue
-                derived_obs.append({
-                    "USUBJID": row.get("USUBJID"),
-                    "AVAL": row.get("DSDY"),
-                    "CNSR": "0",
-                    "EVNTDESC": row.get("DSDECOD") or row.get("DSTERM"),
-                    "SRCDOM": "DS",
-                    "SRCVAR": "DSSTDTC",
-                })
+                derived_obs.append(
+                    {
+                        "USUBJID": row.get("USUBJID"),
+                        "AVAL": row.get("DSDY"),
+                        "CNSR": "0",
+                        "EVNTDESC": row.get("DSDECOD") or row.get("DSTERM"),
+                        "SRCDOM": "DS",
+                        "SRCVAR": "DSSTDTC",
+                    }
+                )
 
         return {
             "dataset": "ADTTE",

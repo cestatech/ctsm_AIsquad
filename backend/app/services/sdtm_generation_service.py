@@ -29,7 +29,10 @@ from app.models.raw_data import RawDataset, RawField
 from app.models.user import User
 from app.models.validation import ValidationRun
 from app.repositories.artifact_repository import ArtifactRepository
-from app.repositories.raw_data_repository import RawDatasetRepository, RawFieldRepository
+from app.repositories.raw_data_repository import (
+    RawDatasetRepository,
+    RawFieldRepository,
+)
 from app.repositories.study_repository import StudyRepository
 from app.repositories.upload_repository import UploadRepository
 from app.schemas.validation import ValidationRunCreate
@@ -166,7 +169,9 @@ class SDTMGenerationService:
             )
 
         study = await self._study_repo.get(dataset.study_id, actor.organization_id)
-        raw_rows = self._load_dataset_rows(upload=upload, dataset=dataset, fields=fields)
+        raw_rows = self._load_dataset_rows(
+            upload=upload, dataset=dataset, fields=fields
+        )
 
         decision = await self._ai_decision.begin_decision(
             organization_id=actor.organization_id,
@@ -256,20 +261,27 @@ class SDTMGenerationService:
                         f"{ds.dataset_name}/{f.column_name}: missing SDTM variable"
                     )
             issues.extend(ds_issues[:5])
-            dataset_summaries.append({
-                "dataset_id": str(ds.id),
-                "dataset_name": ds.dataset_name,
-                "total_fields": ds_total,
-                "approved_fields": ds_approved,
-                "ready": ds_total > 0 and ds_approved == ds_total
-                and all(f.mapped_sdtm_variable_id for f in fields),
-            })
+            dataset_summaries.append(
+                {
+                    "dataset_id": str(ds.id),
+                    "dataset_name": ds.dataset_name,
+                    "total_fields": ds_total,
+                    "approved_fields": ds_approved,
+                    "ready": ds_total > 0
+                    and ds_approved == ds_total
+                    and all(f.mapped_sdtm_variable_id for f in fields),
+                }
+            )
 
-        ready = bool(datasets) and bool(dataset_summaries) and all(
-            d["ready"] for d in dataset_summaries
+        ready = (
+            bool(datasets)
+            and bool(dataset_summaries)
+            and all(d["ready"] for d in dataset_summaries)
         )
         if total_fields > 0 and approved_fields < total_fields:
-            issues.insert(0, f"{total_fields - approved_fields} field(s) not yet approved.")
+            issues.insert(
+                0, f"{total_fields - approved_fields} field(s) not yet approved."
+            )
 
         return StudySDTMReadiness(
             study_id=study_id,
@@ -572,8 +584,8 @@ class SDTMGenerationService:
             vars_set = set(current.get("variables", []))
             vars_set.update(domain.get("variables", []))
             current["variables"] = sorted(vars_set)
-            current["observations"] = (
-                current.get("observations", []) + domain.get("observations", [])
+            current["observations"] = current.get("observations", []) + domain.get(
+                "observations", []
             )
             notes = current.get("transformation_notes", [])
             notes.extend(domain.get("transformation_notes", []))
@@ -619,9 +631,7 @@ class SDTMGenerationService:
             },
         )
 
-    async def _get_dataset(
-        self, dataset_id: UUID, organization_id: UUID
-    ) -> RawDataset:
+    async def _get_dataset(self, dataset_id: UUID, organization_id: UUID) -> RawDataset:
         ds = await self._ds_repo.get(dataset_id, organization_id)
         if ds is None:
             raise HTTPException(
@@ -964,13 +974,15 @@ Return the compact SDTM derivation spec JSON. Do not include observations arrays
                         obs[variable] = str(row[column])
                 observations.append(obs)
 
-            domains_out.append({
-                **domain_spec,
-                "variables": sorted(variables),
-                "observations": observations,
-                "transformation_notes": domain_spec.get("transformation_notes")
-                or ["AI derivation spec materialized locally for all source rows"],
-            })
+            domains_out.append(
+                {
+                    **domain_spec,
+                    "variables": sorted(variables),
+                    "observations": observations,
+                    "transformation_notes": domain_spec.get("transformation_notes")
+                    or ["AI derivation spec materialized locally for all source rows"],
+                }
+            )
 
         return {
             "domains": domains_out,
@@ -1015,14 +1027,18 @@ Return the compact SDTM derivation spec JSON. Do not include observations arrays
                         obs[var] = str(row[col])
                 obs_list.append(obs)
 
-            domains_out.append({
-                "domain": domain,
-                "domain_label": domain,
-                "class": "General",
-                "variables": sorted(variables),
-                "observations": obs_list,
-                "transformation_notes": ["Deterministic 1:1 column mapping (no AI)"],
-            })
+            domains_out.append(
+                {
+                    "domain": domain,
+                    "domain_label": domain,
+                    "class": "General",
+                    "variables": sorted(variables),
+                    "observations": obs_list,
+                    "transformation_notes": [
+                        "Deterministic 1:1 column mapping (no AI)"
+                    ],
+                }
+            )
 
         return {"domains": domains_out, "derived_variables": []}
 

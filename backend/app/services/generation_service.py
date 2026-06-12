@@ -209,9 +209,7 @@ class GenerationService:
         """Return PENDING jobs for background recovery."""
         return await self._repo.list_pending(organization_id, limit=limit)
 
-    async def recover_stale_running_jobs(
-        self, timeout_seconds: int = 300
-    ) -> int:
+    async def recover_stale_running_jobs(self, timeout_seconds: int = 300) -> int:
         """Mark stale RUNNING and abandoned PENDING jobs as FAILED."""
         from sqlalchemy import select
 

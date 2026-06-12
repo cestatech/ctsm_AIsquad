@@ -379,7 +379,9 @@ async def generate_study_sdtm(
     )
     await db.commit()
     background_tasks.add_task(
-        execute_validation_run, result.validation_run.id, result.validation_run.organization_id
+        execute_validation_run,
+        result.validation_run.id,
+        result.validation_run.organization_id,
     )
     return SDTMGenerationResponse(
         artifact_id=result.artifact.id,
@@ -420,7 +422,9 @@ async def generate_sdtm_from_dataset(
     )
     await db.commit()
     background_tasks.add_task(
-        execute_validation_run, result.validation_run.id, result.validation_run.organization_id
+        execute_validation_run,
+        result.validation_run.id,
+        result.validation_run.organization_id,
     )
     return SDTMGenerationResponse(
         artifact_id=result.artifact.id,

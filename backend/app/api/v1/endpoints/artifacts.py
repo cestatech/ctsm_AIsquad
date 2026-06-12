@@ -216,7 +216,9 @@ async def download_artifact_csv(
 
     repo = ArtifactRepository(db)
     artifact = await repo.get_by_id(artifact_id, current_user.organization_id)
-    export_format = ArtifactExportService.default_format(artifact.artifact_type) or "csv"
+    export_format = (
+        ArtifactExportService.default_format(artifact.artifact_type) or "csv"
+    )
 
     svc = ArtifactService(db)
     result = await svc.export_artifact_file(
@@ -315,9 +317,7 @@ async def revise_artifact(
 ) -> ArtifactResponse:
     """Transition artifact from REJECTED → DRAFT for revision."""
     svc = ArtifactService(db)
-    artifact = await svc.revise(
-        artifact_id, current_user.organization_id, current_user
-    )
+    artifact = await svc.revise(artifact_id, current_user.organization_id, current_user)
     return ArtifactResponse.model_validate(artifact)
 
 

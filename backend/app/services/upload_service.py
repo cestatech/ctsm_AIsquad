@@ -31,7 +31,10 @@ from app.models.data_source import DataSourceType
 from app.models.upload import UploadedFile
 from app.models.user import User
 from app.services.data_cut_service import DataCutContext
-from app.repositories.raw_data_repository import RawDatasetRepository, RawFieldRepository
+from app.repositories.raw_data_repository import (
+    RawDatasetRepository,
+    RawFieldRepository,
+)
 from app.repositories.study_repository import StudyRepository
 from app.repositories.upload_repository import UploadRepository
 from app.services.audit_service import AuditService
@@ -52,7 +55,7 @@ _PARSEABLE_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 _MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
-_MAX_PROFILE_ROWS = 10_000        # cap profiling scan to avoid OOM
+_MAX_PROFILE_ROWS = 10_000  # cap profiling scan to avoid OOM
 
 
 class UploadService:
@@ -95,7 +98,10 @@ class UploadService:
         if len(content) > _MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail={"code": "FILE_TOO_LARGE", "message": "File exceeds 50 MB limit."},
+                detail={
+                    "code": "FILE_TOO_LARGE",
+                    "message": "File exceeds 50 MB limit.",
+                },
             )
 
         mime_type = file.content_type or "application/octet-stream"
@@ -116,7 +122,9 @@ class UploadService:
             organization_id=actor.organization_id,
         )
 
-        extracted_metadata = self._extract_legacy_metadata(content, mime_type, file.filename or "")
+        extracted_metadata = self._extract_legacy_metadata(
+            content, mime_type, file.filename or ""
+        )
 
         filename = file.filename or ""
         if (
@@ -139,15 +147,14 @@ class UploadService:
             synthetic_version = (
                 await self._count_synthetic_uploads(study_id, actor.organization_id) + 1
             )
-            default_label = data_cut_label or f"Synthetic Data Version {synthetic_version}"
-        else:
             default_label = (
-                data_cut_label
-                or (
-                    "Final Data Cut"
-                    if data_source_type == DataSourceType.LIVE_FINAL
-                    else "Interim Data Cut"
-                )
+                data_cut_label or f"Synthetic Data Version {synthetic_version}"
+            )
+        else:
+            default_label = data_cut_label or (
+                "Final Data Cut"
+                if data_source_type == DataSourceType.LIVE_FINAL
+                else "Interim Data Cut"
             )
 
         record = await self._repo.create(
@@ -192,7 +199,9 @@ class UploadService:
         )
 
         # Parse and profile if it's a structured file
-        if mime_type in _PARSEABLE_MIME_TYPES or (file.filename or "").lower().endswith(".csv"):
+        if mime_type in _PARSEABLE_MIME_TYPES or (file.filename or "").lower().endswith(
+            ".csv"
+        ):
             await self._parse_and_profile(
                 record=record,
                 content=content,
@@ -220,7 +229,10 @@ class UploadService:
             record.upload_status = "PARSED"
 
             # Register UploadedFile node in the CIP graph
-            if record.is_synthetic or record.data_source_type == DataSourceType.SYNTHETIC:
+            if (
+                record.is_synthetic
+                or record.data_source_type == DataSourceType.SYNTHETIC
+            ):
                 ver_match = re.search(r"(\d+)$", record.data_cut_label or "")
                 version_number = int(ver_match.group(1)) if ver_match else 1
                 data_cut = DataCutContext.for_synthetic_upload(
@@ -417,9 +429,7 @@ class UploadService:
             offset=offset,
         )
 
-    async def get_file(
-        self, file_id: UUID, organization_id: UUID
-    ) -> UploadedFile:
+    async def get_file(self, file_id: UUID, organization_id: UUID) -> UploadedFile:
         """Return a single file record; raise 404 if not found."""
         record = await self._repo.get_by_id(file_id, organization_id)
         if record is None:
@@ -462,8 +472,11 @@ class UploadService:
                 col_vals.append(row[col_idx] if col_idx < len(row) else None)
             col_name = header or f"col_{col_idx}"
             columns.append(
-                {"name": col_name, "index": col_idx,
-                 **UploadService._profile_column(col_name, col_vals)}
+                {
+                    "name": col_name,
+                    "index": col_idx,
+                    **UploadService._profile_column(col_name, col_vals),
+                }
             )
         return [{"name": filename, "row_count": len(data_rows), "columns": columns}]
 
@@ -471,8 +484,7 @@ class UploadService:
     def _sanitize_sheet_name(name: str) -> str:
         """Normalize Excel sheet names for stable dataset identifiers."""
         cleaned = "".join(
-            ch if ch.isalnum() or ch in " _-" else "_"
-            for ch in name.strip()
+            ch if ch.isalnum() or ch in " _-" else "_" for ch in name.strip()
         )
         cleaned = cleaned.strip(" _") or "Sheet"
         return cleaned[:100]
@@ -480,6 +492,7 @@ class UploadService:
     @staticmethod
     def _parse_xlsx(content: bytes) -> list[dict]:
         import openpyxl
+
         wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
         sheets = []
         for sheet_name in wb.sheetnames:
@@ -489,19 +502,23 @@ class UploadService:
             if not rows:
                 continue
             headers = [
-                str(h) if h is not None else f"col_{i}"
-                for i, h in enumerate(rows[0])
+                str(h) if h is not None else f"col_{i}" for i, h in enumerate(rows[0])
             ]
             data_rows = rows[1:_MAX_PROFILE_ROWS]
             columns = []
             for col_idx, header in enumerate(headers):
                 col_vals = [
-                    str(row[col_idx]) if (col_idx < len(row) and row[col_idx] is not None) else None
+                    str(row[col_idx])
+                    if (col_idx < len(row) and row[col_idx] is not None)
+                    else None
                     for row in data_rows
                 ]
                 columns.append(
-                    {"name": header, "index": col_idx,
-                     **UploadService._profile_column(header, col_vals)}
+                    {
+                        "name": header,
+                        "index": col_idx,
+                        **UploadService._profile_column(header, col_vals),
+                    }
                 )
             sheets.append(
                 {
@@ -533,7 +550,9 @@ class UploadService:
         if not fields:
             return []
 
-        max_samples = max((len(getattr(f, "sample_values", []) or []) for f in fields), default=0)
+        max_samples = max(
+            (len(getattr(f, "sample_values", []) or []) for f in fields), default=0
+        )
         effective_rows = min(max(row_count, max_samples), max_rows)
         if effective_rows <= 0:
             return []
@@ -573,7 +592,10 @@ class UploadService:
         for candidate in datasets.values():
             if not isinstance(candidate, dict):
                 continue
-            if candidate.get("form_id") == form_id or candidate.get("form_name") == dataset_name:
+            if (
+                candidate.get("form_id") == form_id
+                or candidate.get("form_name") == dataset_name
+            ):
                 sheet = candidate
                 break
         if sheet is None and datasets:
@@ -699,7 +721,10 @@ class UploadService:
                 inferred_type = "number"
             elif all(_try_date(v) for v in probe):
                 inferred_type = "date"
-            elif all(v.strip().lower() in ("true", "false", "yes", "no", "1", "0") for v in probe):
+            elif all(
+                v.strip().lower() in ("true", "false", "yes", "no", "1", "0")
+                for v in probe
+            ):
                 inferred_type = "boolean"
 
         min_val = max_val = None
@@ -720,7 +745,9 @@ class UploadService:
             "max_value": max_val,
         }
 
-    async def _count_synthetic_uploads(self, study_id: UUID, organization_id: UUID) -> int:
+    async def _count_synthetic_uploads(
+        self, study_id: UUID, organization_id: UUID
+    ) -> int:
         """Count prior synthetic uploads for version labeling."""
         items, _ = await self._repo.list_for_study(
             study_id, organization_id, limit=1000, offset=0
@@ -728,7 +755,8 @@ class UploadService:
         return sum(
             1
             for upload in items
-            if upload.data_source_type == DataSourceType.SYNTHETIC or upload.is_synthetic
+            if upload.data_source_type == DataSourceType.SYNTHETIC
+            or upload.is_synthetic
         )
 
     @staticmethod
@@ -778,6 +806,7 @@ def _try_float(v: str) -> float | None:
 
 def _try_date(v: str) -> bool:
     from datetime import datetime as _dt
+
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y%m%d"):
         try:
             _dt.strptime(v.strip(), fmt)

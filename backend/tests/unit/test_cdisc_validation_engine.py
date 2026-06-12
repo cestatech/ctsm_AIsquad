@@ -378,16 +378,22 @@ def _minimal_sdtm_for_define() -> dict:
     return {
         "document_type": "SDTM_DATASET",
         "protocol_number": "PROT-001",
-        "domains": [{
-            "domain": "DM",
-            "domain_label": "Demographics",
-            "class": "Special-Purpose",
-            "variables": [
-                {"variable": "STUDYID", "label": "Study ID", "type": "Char"},
-                {"variable": "USUBJID", "label": "Unique Subject ID", "type": "Char"},
-            ],
-            "observations": [{"STUDYID": "S1", "USUBJID": "S1-001"}],
-        }],
+        "domains": [
+            {
+                "domain": "DM",
+                "domain_label": "Demographics",
+                "class": "Special-Purpose",
+                "variables": [
+                    {"variable": "STUDYID", "label": "Study ID", "type": "Char"},
+                    {
+                        "variable": "USUBJID",
+                        "label": "Unique Subject ID",
+                        "type": "Char",
+                    },
+                ],
+                "observations": [{"STUDYID": "S1", "USUBJID": "S1-001"}],
+            }
+        ],
     }
 
 

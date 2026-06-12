@@ -47,9 +47,13 @@ class DataCutContext:
         return {
             "data_source_type": self.data_source_type.value,
             "data_cut_label": self.data_cut_label,
-            "data_cut_date": self.data_cut_date.isoformat() if self.data_cut_date else None,
+            "data_cut_date": self.data_cut_date.isoformat()
+            if self.data_cut_date
+            else None,
             "is_synthetic": self.is_synthetic,
-            "source_upload_id": str(self.source_upload_id) if self.source_upload_id else None,
+            "source_upload_id": str(self.source_upload_id)
+            if self.source_upload_id
+            else None,
             "synthetic_data_run_id": (
                 str(self.synthetic_data_run_id) if self.synthetic_data_run_id else None
             ),
@@ -88,7 +92,9 @@ class DataCutContext:
             data_source_type=dst,
             data_cut_label=str(source.get("data_cut_label") or "Data Cut"),
             data_cut_date=parsed_date,
-            is_synthetic=bool(source.get("is_synthetic", dst == DataSourceType.SYNTHETIC)),
+            is_synthetic=bool(
+                source.get("is_synthetic", dst == DataSourceType.SYNTHETIC)
+            ),
             study_id=UUID(str(source["study_id"])),
             created_by=UUID(str(source["created_by"])),
             created_at=created_at,
@@ -102,7 +108,9 @@ class DataCutContext:
                 if source.get("synthetic_data_run_id")
                 else None
             ),
-            data_cut_id=UUID(str(source["data_cut_id"])) if source.get("data_cut_id") else None,
+            data_cut_id=UUID(str(source["data_cut_id"]))
+            if source.get("data_cut_id")
+            else None,
             notes=source.get("notes"),
         )
 
@@ -269,7 +277,11 @@ def assert_compatible_data_cuts(
                 ),
             },
         )
-    if upstream.data_cut_id and downstream.data_cut_id and upstream.data_cut_id != downstream.data_cut_id:
+    if (
+        upstream.data_cut_id
+        and downstream.data_cut_id
+        and upstream.data_cut_id != downstream.data_cut_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
@@ -336,9 +348,13 @@ def prepare_pipeline_artifact(
     if data_cut.is_synthetic:
         description = f"SYNTHETIC — {base_description} ({data_cut.data_cut_label})"
     elif data_cut.data_source_type == DataSourceType.LIVE_INTERIM:
-        description = f"Live Interim Data — {base_description} ({data_cut.data_cut_label})"
+        description = (
+            f"Live Interim Data — {base_description} ({data_cut.data_cut_label})"
+        )
     else:
-        description = f"Live Final Data — {base_description} ({data_cut.data_cut_label})"
+        description = (
+            f"Live Final Data — {base_description} ({data_cut.data_cut_label})"
+        )
     enriched = data_cut.embed_in_content(content)
     return name, description, enriched, {"data_cut": data_cut.to_dict()}
 
@@ -400,9 +416,15 @@ class CSRReadinessResult:
                 if self.tlf_artifact_id
                 else []
             ),
-            "sdtm_artifact_id": str(self.sdtm_artifact_id) if self.sdtm_artifact_id else None,
-            "adam_artifact_id": str(self.adam_artifact_id) if self.adam_artifact_id else None,
-            "source_upload_id": str(self.source_upload_id) if self.source_upload_id else None,
+            "sdtm_artifact_id": str(self.sdtm_artifact_id)
+            if self.sdtm_artifact_id
+            else None,
+            "adam_artifact_id": str(self.adam_artifact_id)
+            if self.adam_artifact_id
+            else None,
+            "source_upload_id": str(self.source_upload_id)
+            if self.source_upload_id
+            else None,
             "synthetic_data_run_id": (
                 str(self.synthetic_data_run_id) if self.synthetic_data_run_id else None
             ),

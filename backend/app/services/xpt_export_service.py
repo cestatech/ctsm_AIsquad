@@ -72,7 +72,9 @@ def export_sdtm_domain_xpt(domain: dict) -> bytes:
     observations = domain.get("observations", [])
     df = _observations_to_dataframe(observations, variables)
     if df.empty and not list(df.columns):
-        raise XptExportError(f"SDTM domain {domain_code} has no variables or observations.")
+        raise XptExportError(
+            f"SDTM domain {domain_code} has no variables or observations."
+        )
     return _write_xpt_bytes(df, table_name=domain_code)
 
 
@@ -103,7 +105,9 @@ def export_adam_dataset_xpt(dataset: dict) -> bytes:
     observations = dataset.get("observations", [])
     df = _observations_to_dataframe(observations, variables)
     if df.empty and not list(df.columns):
-        raise XptExportError(f"ADaM dataset {ds_name} has no variables or observations.")
+        raise XptExportError(
+            f"ADaM dataset {ds_name} has no variables or observations."
+        )
     return _write_xpt_bytes(df, table_name=ds_name)
 
 

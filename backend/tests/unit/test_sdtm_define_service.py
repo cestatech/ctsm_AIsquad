@@ -95,7 +95,7 @@ class TestBuildDefineXml:
             ],
         }
         xml = build_define_xml(content)
-        assert '<?xml' in xml
+        assert "<?xml" in xml
         assert "Define" in xml
         assert "DM" in xml
         assert "STUDY-001" in xml

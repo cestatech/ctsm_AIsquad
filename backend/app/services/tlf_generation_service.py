@@ -98,7 +98,8 @@ class TLFGenerationService:
 
         content = self._build_tlf_content(
             study_name=study.name,
-            protocol_number=adam_content.get("protocol_number") or study.protocol_number,
+            protocol_number=adam_content.get("protocol_number")
+            or study.protocol_number,
             adam_content=adam_content,
             source_adam_artifact_id=adam_artifact_id,
         )
@@ -255,32 +256,36 @@ class TLFGenerationService:
         has_adsl = any(d.get("dataset") == "ADSL" for d in datasets)
         tables = []
         if has_adsl:
-            tables.append({
-                "id": "T-01",
-                "title": "Summary of Demographics and Baseline Characteristics",
-                "section": "14.1",
-                "population": "ITT",
+            tables.append(
+                {
+                    "id": "T-01",
+                    "title": "Summary of Demographics and Baseline Characteristics",
+                    "section": "14.1",
+                    "population": "ITT",
+                    "source_dataset": "ADSL",
+                    "key_variables": ["AGE", "SEX", "RACE"],
+                    "row_definition": "Category levels",
+                    "column_definition": "Treatment groups",
+                    "statistical_summary": "n (%) for categorical; Mean (SD) for continuous",
+                    "footnotes": ["ITT population per ADSL.ITTFL=Y"],
+                    "program_name": "t_01_demog.R",
+                }
+            )
+        tables.append(
+            {
+                "id": "T-02",
+                "title": "Summary of Treatment Exposure",
+                "section": "14.2",
+                "population": "Safety",
                 "source_dataset": "ADSL",
-                "key_variables": ["AGE", "SEX", "RACE"],
-                "row_definition": "Category levels",
-                "column_definition": "Treatment groups",
-                "statistical_summary": "n (%) for categorical; Mean (SD) for continuous",
-                "footnotes": ["ITT population per ADSL.ITTFL=Y"],
-                "program_name": "t_01_demog.R",
-            })
-        tables.append({
-            "id": "T-02",
-            "title": "Summary of Treatment Exposure",
-            "section": "14.2",
-            "population": "Safety",
-            "source_dataset": "ADSL",
-            "key_variables": ["TRT01P", "TRT01A"],
-            "row_definition": "Treatment groups",
-            "column_definition": "Statistics",
-            "statistical_summary": "n (%)",
-            "footnotes": [],
-            "program_name": "t_02_exposure.R",
-        })
+                "key_variables": ["TRT01P", "TRT01A"],
+                "row_definition": "Treatment groups",
+                "column_definition": "Statistics",
+                "statistical_summary": "n (%)",
+                "footnotes": [],
+                "program_name": "t_02_exposure.R",
+            }
+        )
 
         content = {
             "document_type": "TLF_SPECIFICATION",

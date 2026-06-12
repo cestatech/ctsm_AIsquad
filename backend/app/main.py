@@ -45,7 +45,9 @@ async def lifespan(app: FastAPI):
             timeout_seconds=settings.AI_JOB_TIMEOUT_SECONDS
         )
         if timed_out:
-            log.warning("Marked %s stale RUNNING generation job(s) as FAILED", timed_out)
+            log.warning(
+                "Marked %s stale RUNNING generation job(s) as FAILED", timed_out
+            )
         await db.commit()
 
         result = await db.execute(

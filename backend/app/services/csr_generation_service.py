@@ -221,9 +221,7 @@ class CSRGenerationService:
         )
         self._assert_tlf_ready(tlf_content, tlf_artifact.name)
 
-        study = await self._study_repo.get(
-            tlf_artifact.study_id, actor.organization_id
-        )
+        study = await self._study_repo.get(tlf_artifact.study_id, actor.organization_id)
         data_cut = extract_data_cut(tlf_artifact.extra_data, tlf_content)
         readiness = await self._evaluate_csr_readiness(
             study.id,
@@ -404,9 +402,7 @@ class CSRGenerationService:
             name=art_name,
             description=art_desc,
             content=content,
-            change_summary=(
-                f"CSR assembly from {len(tlf_ids)} TLF artifact(s)"
-            ),
+            change_summary=(f"CSR assembly from {len(tlf_ids)} TLF artifact(s)"),
             metadata=metadata,
         )
 
@@ -513,9 +509,7 @@ class CSRGenerationService:
             user_agent=user_agent,
         )
 
-        context_ids = [
-            a.id for a in study_artifacts.values() if a is not None
-        ]
+        context_ids = [a.id for a in study_artifacts.values() if a is not None]
         return CSRGenerationResult(
             artifact=artifact,
             ai_decision_id=decision.id,
@@ -631,9 +625,10 @@ class CSRGenerationService:
                 )
             except HTTPException as exc:
                 detail = exc.detail if isinstance(exc.detail, dict) else {}
-                if exc.status_code != status.HTTP_502_BAD_GATEWAY or detail.get(
-                    "code"
-                ) != "AI_PARSE_ERROR":
+                if (
+                    exc.status_code != status.HTTP_502_BAD_GATEWAY
+                    or detail.get("code") != "AI_PARSE_ERROR"
+                ):
                     raise
                 fallback_reason = str(detail.get("message", exc))
                 logger.warning(
@@ -675,10 +670,16 @@ class CSRGenerationService:
         artifacts, _ = await self._artifact_repo.list_by_study(
             study_id, organization_id, limit=200, offset=0
         )
-        protocol = next((a for a in artifacts if a.artifact_type == ArtifactType.PROTOCOL), None)
+        protocol = next(
+            (a for a in artifacts if a.artifact_type == ArtifactType.PROTOCOL), None
+        )
         sap = next((a for a in artifacts if a.artifact_type == ArtifactType.SAP), None)
-        sdtm_candidates = [a for a in artifacts if a.artifact_type == ArtifactType.SDTM_DATASET]
-        adam_candidates = [a for a in artifacts if a.artifact_type == ArtifactType.ADAM_DATASET]
+        sdtm_candidates = [
+            a for a in artifacts if a.artifact_type == ArtifactType.SDTM_DATASET
+        ]
+        adam_candidates = [
+            a for a in artifacts if a.artifact_type == ArtifactType.ADAM_DATASET
+        ]
         tlf_candidates = [a for a in artifacts if a.artifact_type == ArtifactType.TLF]
 
         requirements: list[CSRRequirement] = []
@@ -723,18 +724,24 @@ class CSRGenerationService:
             tlf_art = tlf_candidates[-1]
             tlf_content = await self._load_artifact_content(tlf_art)
 
-        data_cut = extract_data_cut(
-            tlf_art.extra_data if tlf_art else None,
-            tlf_content,
-        ) or extract_data_cut(
-            adam_art.extra_data if adam_art else None,
-            adam_content,
-        ) or extract_data_cut(
-            sdtm_art.extra_data if sdtm_art else None,
-            sdtm_content,
+        data_cut = (
+            extract_data_cut(
+                tlf_art.extra_data if tlf_art else None,
+                tlf_content,
+            )
+            or extract_data_cut(
+                adam_art.extra_data if adam_art else None,
+                adam_content,
+            )
+            or extract_data_cut(
+                sdtm_art.extra_data if sdtm_art else None,
+                sdtm_content,
+            )
         )
 
-        requirements.append(CSRRequirement("protocol", "Protocol artifact", protocol is not None))
+        requirements.append(
+            CSRRequirement("protocol", "Protocol artifact", protocol is not None)
+        )
         requirements.append(CSRRequirement("sap", "SAP artifact", sap is not None))
         requirements.append(
             CSRRequirement(
@@ -782,7 +789,9 @@ class CSRGenerationService:
 
         for req in requirements:
             if not req.met:
-                issues.append(req.label if not req.detail else f"{req.label}: {req.detail}")
+                issues.append(
+                    req.label if not req.detail else f"{req.label}: {req.detail}"
+                )
 
         ready = all(r.met for r in requirements)
         return CSRReadinessResult(
@@ -808,15 +817,21 @@ class CSRGenerationService:
     ) -> dict:
         result: dict = {}
         if readiness.sdtm_artifact_id:
-            art = await self._artifact_repo.get_by_id(readiness.sdtm_artifact_id, organization_id)
+            art = await self._artifact_repo.get_by_id(
+                readiness.sdtm_artifact_id, organization_id
+            )
             result["sdtm_artifact"] = art
             result["sdtm_content"] = await self._load_artifact_content(art)
         if readiness.adam_artifact_id:
-            art = await self._artifact_repo.get_by_id(readiness.adam_artifact_id, organization_id)
+            art = await self._artifact_repo.get_by_id(
+                readiness.adam_artifact_id, organization_id
+            )
             result["adam_artifact"] = art
             result["adam_content"] = await self._load_artifact_content(art)
         if readiness.tlf_artifact_id:
-            art = await self._artifact_repo.get_by_id(readiness.tlf_artifact_id, organization_id)
+            art = await self._artifact_repo.get_by_id(
+                readiness.tlf_artifact_id, organization_id
+            )
             result["tlf_artifact"] = art
             result["tlf_content"] = await self._load_artifact_content(art)
         return result
@@ -833,9 +848,16 @@ class CSRGenerationService:
                 "protocol_number": study.protocol_number,
                 "sponsor": getattr(study, "sponsor", None) or "Sponsor",
             },
-            "synopsis": {"note": "Shell synopsis — populate after upstream artifacts exist."},
+            "synopsis": {
+                "note": "Shell synopsis — populate after upstream artifacts exist."
+            },
             "sections": [
-                {"number": "1", "title": "Title Page", "content_outline": "Shell", "status": "SHELL"}
+                {
+                    "number": "1",
+                    "title": "Title Page",
+                    "content_outline": "Shell",
+                    "status": "SHELL",
+                }
             ],
             "protocol_excerpt": {
                 k: protocol_content.get(k)
@@ -862,18 +884,18 @@ class CSRGenerationService:
     ) -> dict:
         user_prompt = f"""Study: {study.name}
 Protocol: {study.protocol_number}
-Indication: {getattr(study, 'indication', None) or 'Not specified'}
-Phase: {getattr(study, 'phase', None) or 'Not specified'}
-Sponsor: {getattr(study, 'sponsor', None) or 'Not specified'}
+Indication: {getattr(study, "indication", None) or "Not specified"}
+Phase: {getattr(study, "phase", None) or "Not specified"}
+Sponsor: {getattr(study, "sponsor", None) or "Not specified"}
 
 TLF tables:
 {json.dumps(merged_tables[:20], indent=2, default=str)}
 
 Protocol context (excerpt):
-{json.dumps({k: protocol_content.get(k) for k in ('title', 'objectives', 'design') if protocol_content.get(k)}, indent=2, default=str)}
+{json.dumps({k: protocol_content.get(k) for k in ("title", "objectives", "design") if protocol_content.get(k)}, indent=2, default=str)}
 
 SAP context (excerpt):
-{json.dumps({k: sap_content.get(k) for k in ('title', 'primary_endpoint', 'analysis_populations') if sap_content.get(k)}, indent=2, default=str)}
+{json.dumps({k: sap_content.get(k) for k in ("title", "primary_endpoint", "analysis_populations") if sap_content.get(k)}, indent=2, default=str)}
 
 Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12–14."""
 
@@ -933,7 +955,11 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
         adam_content = upstream.get("adam_content", {})
         sdtm_domains = sdtm_content.get("domains", [])
         adam_datasets = adam_content.get("datasets", [])
-        subject_count = sum(len(d.get("observations", [])) for d in sdtm_domains if d.get("domain") == "DM")
+        subject_count = sum(
+            len(d.get("observations", []))
+            for d in sdtm_domains
+            if d.get("domain") == "DM"
+        )
         if not subject_count:
             subject_count = sum(
                 1 for ds in adam_datasets if ds.get("dataset") == "ADSL"
@@ -957,18 +983,29 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
         for table in merged_tables:
             section = str(table.get("section", "14.1")).split(".")[0]
             target = "13" if section in ("13", "14") else "12"
-            if "safety" in table.get("title", "").lower() or "ae" in table.get("title", "").lower():
+            if (
+                "safety" in table.get("title", "").lower()
+                or "ae" in table.get("title", "").lower()
+            ):
                 target = "14"
-            elif "demog" in table.get("title", "").lower() or "disposition" in table.get("title", "").lower():
+            elif (
+                "demog" in table.get("title", "").lower()
+                or "disposition" in table.get("title", "").lower()
+            ):
                 target = "12"
-            elif "efficacy" in table.get("title", "").lower() or "endpoint" in table.get("title", "").lower():
+            elif (
+                "efficacy" in table.get("title", "").lower()
+                or "endpoint" in table.get("title", "").lower()
+            ):
                 target = "13"
-            tlf_by_section.setdefault(target, []).append({
-                "table_id": table.get("id"),
-                "title": table.get("title"),
-                "population": table.get("population"),
-                "key_result": table.get("statistical_summary", ""),
-            })
+            tlf_by_section.setdefault(target, []).append(
+                {
+                    "table_id": table.get("id"),
+                    "title": table.get("title"),
+                    "population": table.get("population"),
+                    "key_result": table.get("statistical_summary", ""),
+                }
+            )
 
         sections = []
         for num, title, outline in _ICH_E3_SECTIONS:
@@ -987,7 +1024,9 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
                     f"{r['table_id']}: {r['title']} ({r.get('key_result', 'see TLF')})"
                     for r in refs
                 )
-                section_entry["content_outline"] = f"{outline}. Integrated TLF evidence: {ref_summary}"
+                section_entry["content_outline"] = (
+                    f"{outline}. Integrated TLF evidence: {ref_summary}"
+                )
                 if num == "12" and subject_count:
                     section_entry["narrative_summary"] = (
                         f"Subject disposition and demographics based on SDTM DM domain "
@@ -1022,7 +1061,9 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
         ]
 
         csr_title = (
-            data_cut.csr_title(study.name) if data_cut else f"{study.name} — Clinical Study Report"
+            data_cut.csr_title(study.name)
+            if data_cut
+            else f"{study.name} — Clinical Study Report"
         )
         content = {
             "document_type": "CSR",
@@ -1071,10 +1112,14 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
             "tlf_integration": tlf_integration,
             "source_tlf_artifact_ids": [str(i) for i in tlf_artifact_ids],
             "source_sdtm_artifact_ids": [
-                str(upstream["sdtm_artifact"].id) if upstream.get("sdtm_artifact") else None
+                str(upstream["sdtm_artifact"].id)
+                if upstream.get("sdtm_artifact")
+                else None
             ],
             "source_adam_artifact_ids": [
-                str(upstream["adam_artifact"].id) if upstream.get("adam_artifact") else None
+                str(upstream["adam_artifact"].id)
+                if upstream.get("adam_artifact")
+                else None
             ],
             "upstream_evidence": {
                 "sdtm_domain_count": len(sdtm_domains),
@@ -1373,7 +1418,9 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
         for section in csr_content.get("sections", []):
             section_id = str(section.get("number", "?"))
             section_decision = section.get("ai_decision_id")
-            decision_id = UUID(str(section_decision)) if section_decision else ai_decision_id
+            decision_id = (
+                UUID(str(section_decision)) if section_decision else ai_decision_id
+            )
             await self._lineage.record_field_lineage(
                 organization_id=actor.organization_id,
                 lineage_type=DataLineageType.DERIVED,

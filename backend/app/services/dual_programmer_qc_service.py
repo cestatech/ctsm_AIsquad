@@ -73,6 +73,7 @@ _WORKFLOW_PROMPTS: dict[StatisticalQCWorkflow, dict[str, str]] = {
     },
 }
 
+
 def _primary_sdtm_template() -> str:
     return """# Primary programmer — Raw to SDTM (deterministic template)
 `%||%` <- function(a, b) if (!is.null(a)) a else b
@@ -396,7 +397,9 @@ class DualProgrammerQCService:
             after_state={
                 "workflow_step": workflow_step.value,
                 "status": status.value,
-                "output_artifact_id": str(output_artifact_id) if output_artifact_id else None,
+                "output_artifact_id": str(output_artifact_id)
+                if output_artifact_id
+                else None,
                 "comparison_status": comparison.get("status"),
             },
             ip_address=ip_address,

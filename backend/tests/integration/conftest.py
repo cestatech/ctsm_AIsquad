@@ -50,9 +50,7 @@ def _bind_background_executors_to_test_db(test_engine) -> AsyncGenerator[None, N
     factory = async_sessionmaker(test_engine, expire_on_commit=False)
     with ExitStack() as stack:
         for module in _BACKGROUND_EXECUTOR_MODULES:
-            stack.enter_context(
-                patch(f"{module}.async_session_factory", factory)
-            )
+            stack.enter_context(patch(f"{module}.async_session_factory", factory))
         yield
 
 

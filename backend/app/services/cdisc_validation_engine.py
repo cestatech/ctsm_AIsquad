@@ -1157,9 +1157,7 @@ def run_define_xpt_cross_validation(
                     )
 
     if xpt_filenames is not None:
-        href_basenames = {
-            h.rsplit("/", 1)[-1].lower() for h in struct.leaf_hrefs
-        }
+        href_basenames = {h.rsplit("/", 1)[-1].lower() for h in struct.leaf_hrefs}
         xpt_basenames = {
             f.rsplit("/", 1)[-1].lower()
             for f in xpt_filenames

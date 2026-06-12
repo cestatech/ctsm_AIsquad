@@ -16,13 +16,15 @@ from app.services.generation_fallback import DUMMY_GENERATION_NOTICE
 
 class TestDeterministicAdam:
     def test_builds_adsl_from_dm_domain(self):
-        sdtm_domains = [{
-            "domain": "DM",
-            "variables": ["STUDYID", "USUBJID", "SUBJID", "AGE"],
-            "observations": [
-                {"STUDYID": "STUDY-1", "USUBJID": "STUDY-1-001", "AGE": "45"},
-            ],
-        }]
+        sdtm_domains = [
+            {
+                "domain": "DM",
+                "variables": ["STUDYID", "USUBJID", "SUBJID", "AGE"],
+                "observations": [
+                    {"STUDYID": "STUDY-1", "USUBJID": "STUDY-1-001", "AGE": "45"},
+                ],
+            }
+        ]
         result = ADAMGenerationService._deterministic_adam(
             protocol_number="STUDY-1",
             sdtm_domains=sdtm_domains,
@@ -60,15 +62,19 @@ class TestDeterministicAdam:
 
 class TestBDSDerivation:
     def test_derives_adlb_from_lb_domain(self):
-        sdtm_domains = [{
-            "domain": "LB",
-            "variables": ["USUBJID", "LBTESTCD", "LBSTRESN"],
-            "observations": [{
-                "USUBJID": "S001",
-                "LBTESTCD": "GLUC",
-                "LBSTRESN": "95",
-            }],
-        }]
+        sdtm_domains = [
+            {
+                "domain": "LB",
+                "variables": ["USUBJID", "LBTESTCD", "LBSTRESN"],
+                "observations": [
+                    {
+                        "USUBJID": "S001",
+                        "LBTESTCD": "GLUC",
+                        "LBSTRESN": "95",
+                    }
+                ],
+            }
+        ]
         adlb = ADAMGenerationService._derive_adlb(sdtm_domains[0])
         assert adlb["dataset"] == "ADLB"
         var_names = {v["variable"] for v in adlb["variables"]}
@@ -111,7 +117,9 @@ class TestBDSDerivation:
     def test_derives_advs_with_bds_variables(self):
         vs_domain = {
             "domain": "VS",
-            "observations": [{"USUBJID": "S001", "VSTESTCD": "SYSBP", "VSSTRESN": "120"}],
+            "observations": [
+                {"USUBJID": "S001", "VSTESTCD": "SYSBP", "VSSTRESN": "120"}
+            ],
         }
         advs = ADAMGenerationService._derive_advs(vs_domain)
         assert advs["dataset"] == "ADVS"
@@ -120,12 +128,14 @@ class TestBDSDerivation:
     def test_derives_adtte_from_ae_domain(self):
         ae_domain = {
             "domain": "AE",
-            "observations": [{
-                "USUBJID": "S001",
-                "AEDECOD": "Nausea",
-                "AESTDY": "5",
-                "AESER": "N",
-            }],
+            "observations": [
+                {
+                    "USUBJID": "S001",
+                    "AEDECOD": "Nausea",
+                    "AESTDY": "5",
+                    "AESER": "N",
+                }
+            ],
         }
         adtte = ADAMGenerationService._derive_adtte(ae_domain, "AE")
         assert adtte["dataset"] == "ADTTE"
@@ -135,11 +145,13 @@ class TestBDSDerivation:
     def test_derives_adtte_from_ds_domain(self):
         ds_domain = {
             "domain": "DS",
-            "observations": [{
-                "USUBJID": "S001",
-                "DSDECOD": "COMPLETED",
-                "DSDY": "180",
-            }],
+            "observations": [
+                {
+                    "USUBJID": "S001",
+                    "DSDECOD": "COMPLETED",
+                    "DSDY": "180",
+                }
+            ],
         }
         adtte = ADAMGenerationService._derive_adtte(ds_domain, "DS")
         assert adtte["dataset"] == "ADTTE"
@@ -168,11 +180,13 @@ class TestBuildAdamContentFallback:
         svc = ADAMGenerationService(AsyncMock())
         svc._client = MagicMock()
         svc._settings = MagicMock(ADAM_IG_VERSION="1.3", pinnacle21_configured=False)
-        sdtm_domains = [{
-            "domain": "DM",
-            "variables": ["USUBJID", "AGE"],
-            "observations": [{"USUBJID": "S001", "AGE": "30"}],
-        }]
+        sdtm_domains = [
+            {
+                "domain": "DM",
+                "variables": ["USUBJID", "AGE"],
+                "observations": [{"USUBJID": "S001", "AGE": "30"}],
+            }
+        ]
         svc._call_claude = AsyncMock(
             side_effect=anthropic.APIError(
                 message="rate limit",
@@ -198,11 +212,13 @@ class TestBuildAdamContentFallback:
         svc = ADAMGenerationService(AsyncMock())
         svc._client = None
         svc._settings = MagicMock(ADAM_IG_VERSION="1.3", pinnacle21_configured=False)
-        sdtm_domains = [{
-            "domain": "DM",
-            "variables": ["USUBJID"],
-            "observations": [{"USUBJID": "S001"}],
-        }]
+        sdtm_domains = [
+            {
+                "domain": "DM",
+                "variables": ["USUBJID"],
+                "observations": [{"USUBJID": "S001"}],
+            }
+        ]
 
         content = await svc._build_adam_content(
             study_name="Study",
@@ -265,11 +281,13 @@ class TestGenerateFromSdtmArtifact:
                 "created_by": str(actor.id),
                 "created_at": "2026-01-01T00:00:00+00:00",
             },
-            "domains": [{
-                "domain": "DM",
-                "variables": ["STUDYID", "USUBJID", "SUBJID", "AGE"],
-                "observations": [{"USUBJID": "S001", "AGE": "30"}],
-            }],
+            "domains": [
+                {
+                    "domain": "DM",
+                    "variables": ["STUDYID", "USUBJID", "SUBJID", "AGE"],
+                    "observations": [{"USUBJID": "S001", "AGE": "30"}],
+                }
+            ],
         }
 
         svc._artifact_repo.get_by_id = AsyncMock(return_value=sdtm_artifact)

@@ -452,7 +452,9 @@ async def create_synthetic_run(
     assumptions = list(run.assumptions) if run.assumptions else []
     return SyntheticDataRunDetailResponse(
         **SyntheticDataRunResponse.model_validate(run).model_dump(),
-        assumptions=[SimulationAssumptionResponse.model_validate(a) for a in assumptions],
+        assumptions=[
+            SimulationAssumptionResponse.model_validate(a) for a in assumptions
+        ],
     )
 
 

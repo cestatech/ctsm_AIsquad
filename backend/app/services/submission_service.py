@@ -94,9 +94,7 @@ class SubmissionService:
         require_admin(actor)
 
         await self._study_repo.get(study_id, actor.organization_id)
-        issues = await self._collect_readiness_issues(
-            study_id, actor.organization_id
-        )
+        issues = await self._collect_readiness_issues(study_id, actor.organization_id)
         if issues:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -107,9 +105,7 @@ class SubmissionService:
                 },
             )
 
-        artifacts = await self._find_required_artifacts(
-            study_id, actor.organization_id
-        )
+        artifacts = await self._find_required_artifacts(study_id, actor.organization_id)
         artifact_ids = [str(a.id) for a in artifacts]
 
         package = await self._submission_repo.create(
@@ -245,14 +241,10 @@ class SubmissionService:
             study_id, organization_id, limit=100, offset=0
         )
 
-    async def get_manifest(
-        self, package_id: UUID, actor: User
-    ) -> SubmissionPackage:
+    async def get_manifest(self, package_id: UUID, actor: User) -> SubmissionPackage:
         """Return package with manifest. Reviewer or Admin."""
         check_permission(actor, Permission.AUDIT_READ)
-        return await self._submission_repo.get_by_id(
-            package_id, actor.organization_id
-        )
+        return await self._submission_repo.get_by_id(package_id, actor.organization_id)
 
     async def build_zip_bytes(self, package_id: UUID, actor: User) -> bytes:
         """Build zip archive of the submission folder. Admin only."""
@@ -370,9 +362,7 @@ class SubmissionService:
                 and a.status in (ArtifactStatus.APPROVED, ArtifactStatus.LOCKED)
             ]
             if matches:
-                result.append(
-                    max(matches, key=lambda a: a.updated_at or a.created_at)
-                )
+                result.append(max(matches, key=lambda a: a.updated_at or a.created_at))
         return result
 
     async def _assemble_package(
@@ -392,9 +382,7 @@ class SubmissionService:
 
         def _store(logical_path: str, data: bytes, *, grade: str) -> None:
             self._storage.put_bytes(f"{storage_prefix}/{logical_path}", data)
-            files_manifest.append(
-                self._file_entry(logical_path, data, grade=grade)
-            )
+            files_manifest.append(self._file_entry(logical_path, data, grade=grade))
 
         files_manifest: list[dict] = []
 

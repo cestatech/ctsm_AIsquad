@@ -89,7 +89,9 @@ class Settings(BaseSettings):
                     parsed = json.loads(stripped)
                     origins = [str(item) for item in parsed]
                 except json.JSONDecodeError:
-                    origins = [part.strip() for part in stripped.split(",") if part.strip()]
+                    origins = [
+                        part.strip() for part in stripped.split(",") if part.strip()
+                    ]
             else:
                 origins = [part.strip() for part in stripped.split(",") if part.strip()]
         else:

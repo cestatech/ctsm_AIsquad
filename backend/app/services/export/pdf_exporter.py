@@ -53,11 +53,7 @@ def _styles():
 
 def _escape(text: Any) -> str:
     value = str(text or "")
-    return (
-        value.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _paragraphs_from_value(value: Any, style) -> list:
@@ -90,8 +86,7 @@ def _paragraphs_from_value(value: Any, style) -> list:
         for key, nested in value.items():
             blocks.append(
                 Paragraph(
-                    f"<b>{_escape(_heading_text(str(key)))}:</b> "
-                    f"{_escape(nested)}",
+                    f"<b>{_escape(_heading_text(str(key)))}:</b> {_escape(nested)}",
                     style,
                 )
             )
@@ -113,14 +108,16 @@ def _table_from_rows(
     data = [headers] + rows
     table = Table(data, repeatRows=1)
     table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ])
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
     )
     return table
 
@@ -316,7 +313,12 @@ def export_pdf(
                     )
                     story.append(Spacer(1, 0.08 * inch))
         else:
-            skip_keys = {"document_type", "csv_files", "datasets", "primary_csv_filename"}
+            skip_keys = {
+                "document_type",
+                "csv_files",
+                "datasets",
+                "primary_csv_filename",
+            }
             for key, value in content.items():
                 if key in skip_keys or value in (None, "", [], {}):
                     continue

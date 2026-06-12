@@ -63,9 +63,7 @@ class GraphEventWriter:
             if existing is not None:
                 return existing
 
-        actor_id = (
-            str(actor_user_id) if actor_user_id else actor_agent_id
-        )
+        actor_id = str(actor_user_id) if actor_user_id else actor_agent_id
 
         payload: dict = {
             "schema_version": GRAPH_EVENT_SCHEMA_VERSION,
@@ -110,9 +108,7 @@ class GraphEventWriter:
         target_node_id: UUID,
         edge_type: str,
     ) -> str:
-        raw = (
-            f"edge:{organization_id}:{source_node_id}:{target_node_id}:{edge_type}"
-        )
+        raw = f"edge:{organization_id}:{source_node_id}:{target_node_id}:{edge_type}"
         if len(raw) <= 128:
             return raw
         digest = hashlib.sha256(raw.encode()).hexdigest()

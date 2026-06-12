@@ -74,10 +74,7 @@ def materialize_input_fixtures(input_payload: dict, workspace: Path) -> Path:
         lines = [",".join(headers)]
         for row in observations:
             lines.append(
-                ",".join(
-                    str(row.get(h, "")).replace(",", " ")
-                    for h in headers
-                )
+                ",".join(str(row.get(h, "")).replace(",", " ") for h in headers)
             )
         (input_dir / f"{code.lower()}.csv").write_text("\n".join(lines) + "\n")
 
@@ -88,7 +85,7 @@ def materialize_input_fixtures(input_payload: dict, workspace: Path) -> Path:
             (input_dir / f"{name}_spec.csv").write_text(
                 "variable,derivation\n"
                 + "\n".join(
-                    f"{v.get('variable','')},{v.get('derivation','')}"
+                    f"{v.get('variable', '')},{v.get('derivation', '')}"
                     for v in variables
                 )
                 + "\n"
@@ -162,8 +159,12 @@ def normalize_r_program(program: str) -> str:
             continue
         if re.match(r"^# Set up directories\s*$", stripped):
             continue
-        line = line.replace('"/input_spec.json"', 'file.path(INPUT_DIR, "input_spec.json")')
-        line = line.replace("'/input_spec.json'", 'file.path(INPUT_DIR, "input_spec.json")')
+        line = line.replace(
+            '"/input_spec.json"', 'file.path(INPUT_DIR, "input_spec.json")'
+        )
+        line = line.replace(
+            "'/input_spec.json'", 'file.path(INPUT_DIR, "input_spec.json")'
+        )
         for name in ("dm.csv", "adsl.csv", "ex.csv", "t_demog.csv"):
             line = line.replace(f'"/{name}"', f'file.path(INPUT_DIR, "{name}")')
             line = line.replace(f"'/{name}'", f'file.path(INPUT_DIR, "{name}")')
@@ -301,7 +302,9 @@ def _normalize_col(name: str) -> str:
 def _sort_rows(headers: list[str], rows: list[list[str]]) -> list[list[str]]:
     if not rows:
         return rows
-    key_cols = [i for i, h in enumerate(headers) if h in {"USUBJID", "STUDYID", "SUBJID"}]
+    key_cols = [
+        i for i, h in enumerate(headers) if h in {"USUBJID", "STUDYID", "SUBJID"}
+    ]
     if not key_cols:
         key_cols = list(range(min(2, len(headers))))
     width = len(headers)
@@ -343,12 +346,14 @@ def compare_csv_files_semantic(primary: Path, qc: Path) -> dict:
                 p_val = p_map.get(col, "")
                 q_val = q_map.get(col, "")
                 if p_val != q_val:
-                    value_diffs.append({
-                        "row": idx + 1,
-                        "column": col,
-                        "primary": p_val,
-                        "qc": q_val,
-                    })
+                    value_diffs.append(
+                        {
+                            "row": idx + 1,
+                            "column": col,
+                            "primary": p_val,
+                            "qc": q_val,
+                        }
+                    )
                     if len(value_diffs) >= 20:
                         break
             if len(value_diffs) >= 20:
@@ -362,7 +367,9 @@ def compare_csv_files_semantic(primary: Path, qc: Path) -> dict:
         elif not row_count_match:
             suggested_cause = "Row count differs — check sort keys or filtering logic."
         elif value_diffs:
-            suggested_cause = "Value differences after normalization — check derivations."
+            suggested_cause = (
+                "Value differences after normalization — check derivations."
+            )
 
     return {
         "status": "MATCH" if matched else "MISMATCH",
@@ -384,9 +391,7 @@ def compare_csv_files_semantic(primary: Path, qc: Path) -> dict:
 
 def compare_output_directories(primary_dir: Path, qc_dir: Path) -> dict:
     """Compare CSV outputs from primary and QC runs using semantic equivalence."""
-    primary_files = {
-        f.name: f for f in primary_dir.glob("*.csv") if f.is_file()
-    }
+    primary_files = {f.name: f for f in primary_dir.glob("*.csv") if f.is_file()}
     qc_files = {f.name: f for f in qc_dir.glob("*.csv") if f.is_file()}
 
     all_names = sorted(set(primary_files) | set(qc_files))
@@ -398,13 +403,15 @@ def compare_output_directories(primary_dir: Path, qc_dir: Path) -> dict:
         q_file = qc_files.get(name)
         if p_file is None or q_file is None:
             all_match = False
-            file_results.append({
-                "file": name,
-                "status": "MISSING",
-                "primary_present": p_file is not None,
-                "qc_present": q_file is not None,
-                "suggested_root_cause": "Output file missing from one program run.",
-            })
+            file_results.append(
+                {
+                    "file": name,
+                    "status": "MISSING",
+                    "primary_present": p_file is not None,
+                    "qc_present": q_file is not None,
+                    "suggested_root_cause": "Output file missing from one program run.",
+                }
+            )
             continue
 
         result = compare_csv_files_semantic(p_file, q_file)

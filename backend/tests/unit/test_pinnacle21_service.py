@@ -101,7 +101,9 @@ class TestPinnacle21Service:
             new_callable=AsyncMock,
             side_effect=httpx.HTTPStatusError(
                 "Service unavailable",
-                request=httpx.Request("POST", "https://api.pinnacle21.test/v1/validate"),
+                request=httpx.Request(
+                    "POST", "https://api.pinnacle21.test/v1/validate"
+                ),
                 response=httpx.Response(503),
             ),
         ):

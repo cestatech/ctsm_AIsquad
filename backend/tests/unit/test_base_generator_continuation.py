@@ -80,9 +80,7 @@ async def test_continuation_replays_partial_and_ends_with_user_turn():
         ]
     )
 
-    await gen._call_claude(
-        system_prompt="sys", user_prompt="user prompt", model_id="m"
-    )
+    await gen._call_claude(system_prompt="sys", user_prompt="user prompt", model_id="m")
 
     # The second call resumes by replaying the accumulated (whitespace-trimmed)
     # text as an assistant turn, then a trailing user "continue" message — the
@@ -106,9 +104,7 @@ async def test_raises_when_still_truncated_after_budget():
     )
 
     with pytest.raises(ValueError, match="still truncated"):
-        await gen._call_claude(
-            system_prompt="sys", user_prompt="user", model_id="m"
-        )
+        await gen._call_claude(system_prompt="sys", user_prompt="user", model_id="m")
 
     # One initial call plus MAX_CONTINUATION_ROUNDS continuations.
     assert (

@@ -24,9 +24,7 @@ def _mock_downstream_impact(monkeypatch):
     async def _empty_impact(self, node_id, organization_id, *, max_depth=10):
         return GapImpactReport(node_id=node_id, impacted_nodes=[])
 
-    monkeypatch.setattr(
-        ImpactAnalysisService, "get_downstream_impact", _empty_impact
-    )
+    monkeypatch.setattr(ImpactAnalysisService, "get_downstream_impact", _empty_impact)
 
 
 # ---------------------------------------------------------------------------

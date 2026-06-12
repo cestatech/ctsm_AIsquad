@@ -19,7 +19,11 @@ from app.api.deps import get_current_user, get_db
 from app.models.artifact import ArtifactType
 from app.models.user import User
 from app.repositories.artifact_repository import ArtifactRepository
-from app.schemas.tlf import ListingFigureCatalog, ListingFigureEntry, TLFGenerationResponse
+from app.schemas.tlf import (
+    ListingFigureCatalog,
+    ListingFigureEntry,
+    TLFGenerationResponse,
+)
 from app.services.artifact_service import ArtifactService
 from app.services.listing_figure_catalog_service import ListingFigureCatalogService
 from app.services.tlf_generation_service import TLFGenerationService

@@ -48,7 +48,9 @@ FORM_ID_MAP = {
 }
 
 
-def _primary_endpoint_hint(brief: dict[str, Any] | None, protocol: dict[str, Any] | None) -> str:
+def _primary_endpoint_hint(
+    brief: dict[str, Any] | None, protocol: dict[str, Any] | None
+) -> str:
     if brief:
         eps = (brief.get("endpoints") or {}).get("primary") or []
         if eps and isinstance(eps[0], dict):
@@ -310,48 +312,56 @@ def build_edc_content(
         assessments = []
         for field in fields:
             if visit["visit_id"] in field["visit_ids"]:
-                assessments.append({
-                    "assessment_id": f"{visit['visit_id']}_{field['field_id']}",
-                    "field_id": field["field_id"],
-                    "form_id": field["form_id"],
-                    "label": field["label"],
-                })
-        schedule_of_assessments.append({
-            "visit_id": visit["visit_id"],
-            "visit_label": visit["label"],
-            "assessments": assessments,
-        })
+                assessments.append(
+                    {
+                        "assessment_id": f"{visit['visit_id']}_{field['field_id']}",
+                        "field_id": field["field_id"],
+                        "form_id": field["form_id"],
+                        "label": field["label"],
+                    }
+                )
+        schedule_of_assessments.append(
+            {
+                "visit_id": visit["visit_id"],
+                "visit_label": visit["label"],
+                "assessments": assessments,
+            }
+        )
 
     forms = []
     for form_name in DEFAULT_FORMS:
         form_id = FORM_ID_MAP[form_name]
         form_fields = [f for f in fields if f["form_id"] == form_id]
-        forms.append({
-            "form_id": form_id,
-            "form_name": form_name,
-            "visit_ids": _visit_ids_for_form(form_name),
-            "status": "DRAFT",
-            "fields": [
-                {
-                    "field_id": f["field_id"],
-                    "label": f["label"],
-                    "type": f["data_type"],
-                    "required": f["required"],
-                }
-                for f in form_fields
-            ],
-        })
+        forms.append(
+            {
+                "form_id": form_id,
+                "form_name": form_name,
+                "visit_ids": _visit_ids_for_form(form_name),
+                "status": "DRAFT",
+                "fields": [
+                    {
+                        "field_id": f["field_id"],
+                        "label": f["label"],
+                        "type": f["data_type"],
+                        "required": f["required"],
+                    }
+                    for f in form_fields
+                ],
+            }
+        )
 
     edit_checks = []
     for field in fields:
         for check in field.get("edit_checks") or []:
-            edit_checks.append({
-                "check_id": f"EC_{field['field_id']}_{check[:12].upper().replace(' ', '_')}",
-                "field_id": field["field_id"],
-                "form_id": field["form_id"],
-                "rule": check,
-                "severity": "ERROR",
-            })
+            edit_checks.append(
+                {
+                    "check_id": f"EC_{field['field_id']}_{check[:12].upper().replace(' ', '_')}",
+                    "field_id": field["field_id"],
+                    "form_id": field["form_id"],
+                    "rule": check,
+                    "severity": "ERROR",
+                }
+            )
 
     controlled_terminology = []
     seen_ct: set[str] = set()
@@ -359,22 +369,32 @@ def build_edc_content(
         ct = field.get("controlled_terminology")
         if ct and ct not in seen_ct:
             seen_ct.add(ct)
-            controlled_terminology.append({
-                "codelist_id": ct,
-                "name": ct,
-                "used_by_fields": [f["field_id"] for f in fields if f.get("controlled_terminology") == ct],
-            })
+            controlled_terminology.append(
+                {
+                    "codelist_id": ct,
+                    "name": ct,
+                    "used_by_fields": [
+                        f["field_id"]
+                        for f in fields
+                        if f.get("controlled_terminology") == ct
+                    ],
+                }
+            )
 
     mock_screens = []
     for form in forms:
-        mock_screens.append({
-            "screen_id": f"MOCK_{form['form_id']}",
-            "form_id": form["form_id"],
-            "form_name": form["form_name"],
-            "visit_ids": form["visit_ids"],
-            "field_ids": [f["field_id"] for f in fields if f["form_id"] == form["form_id"]],
-            "preview_subject": "SUBJ-001",
-        })
+        mock_screens.append(
+            {
+                "screen_id": f"MOCK_{form['form_id']}",
+                "form_id": form["form_id"],
+                "form_name": form["form_name"],
+                "visit_ids": form["visit_ids"],
+                "field_ids": [
+                    f["field_id"] for f in fields if f["form_id"] == form["form_id"]
+                ],
+                "preview_subject": "SUBJ-001",
+            }
+        )
 
     return {
         "document_type": "EDC_CRF",

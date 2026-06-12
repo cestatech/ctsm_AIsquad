@@ -104,7 +104,11 @@ class TestMaterializeSdtmDomains:
                     "domain_label": "Demographics",
                     "variables": ["STUDYID", "DOMAIN", "USUBJID", "AGE"],
                     "column_transforms": [
-                        {"source_column": "AGE", "target_variable": "AGE", "transform": "direct"}
+                        {
+                            "source_column": "AGE",
+                            "target_variable": "AGE",
+                            "transform": "direct",
+                        }
                     ],
                 }
             ],
@@ -136,9 +140,7 @@ class TestBuildSdtmUserPrompt:
             {"column_name": "AGE", "sdtm_variable": "DM.AGE"},
             {"column_name": "SEX", "sdtm_variable": "DM.SEX"},
         ]
-        rows = [
-            {"AGE": "30", "SEX": "M", "IGNORED": "x"} for _ in range(20)
-        ]
+        rows = [{"AGE": "30", "SEX": "M", "IGNORED": "x"} for _ in range(20)]
         prompt = SDTMGenerationService._build_sdtm_user_prompt(
             study_name="Study",
             protocol_number="PROT-001",

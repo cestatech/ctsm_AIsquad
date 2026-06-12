@@ -10,10 +10,12 @@ class TestPreflightValidation:
     def test_catches_missing_usubjid(self):
         result = preflight_input_validation(
             {
-                "domains": [{
-                    "domain": "DM",
-                    "observations": [{"AGE": "45"}],
-                }],
+                "domains": [
+                    {
+                        "domain": "DM",
+                        "observations": [{"AGE": "45"}],
+                    }
+                ],
             },
             StatisticalQCWorkflow.RAW_TO_SDTM,
         )
@@ -23,12 +25,14 @@ class TestPreflightValidation:
     def test_passes_with_required_columns(self):
         result = preflight_input_validation(
             {
-                "domains": [{
-                    "domain": "DM",
-                    "observations": [
-                        {"STUDYID": "S1", "USUBJID": "S1-001", "AGE": "45"},
-                    ],
-                }],
+                "domains": [
+                    {
+                        "domain": "DM",
+                        "observations": [
+                            {"STUDYID": "S1", "USUBJID": "S1-001", "AGE": "45"},
+                        ],
+                    }
+                ],
             },
             StatisticalQCWorkflow.RAW_TO_SDTM,
         )

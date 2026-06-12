@@ -36,24 +36,28 @@ async def _seed_approved_pipeline_artifacts(
             {
                 "document_type": "SDTM_DATASET",
                 "protocol_number": i_study.protocol_number,
-                "domains": [{
-                    "domain": "DM",
-                    "domain_label": "Demographics",
-                    "class": "Special-Purpose",
-                    "variables": ["STUDYID", "USUBJID"],
-                    "observations": [{"STUDYID": "S1", "USUBJID": "S1-001"}],
-                }],
+                "domains": [
+                    {
+                        "domain": "DM",
+                        "domain_label": "Demographics",
+                        "class": "Special-Purpose",
+                        "variables": ["STUDYID", "USUBJID"],
+                        "observations": [{"STUDYID": "S1", "USUBJID": "S1-001"}],
+                    }
+                ],
             },
         ),
         (
             ArtifactType.ADAM_DATASET,
             "ADaM Package",
             {
-                "datasets": [{
-                    "dataset": "ADSL",
-                    "variables": [{"variable": "USUBJID"}],
-                    "observations": [],
-                }],
+                "datasets": [
+                    {
+                        "dataset": "ADSL",
+                        "variables": [{"variable": "USUBJID"}],
+                        "observations": [],
+                    }
+                ],
             },
         ),
         (

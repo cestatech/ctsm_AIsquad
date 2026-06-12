@@ -104,13 +104,17 @@ class ContextGraphService:
             organization_id=organization_id,
             study_id=study_id,
             event_type="NODE_CREATED" if created else "NODE_UPDATED",
-            action=GraphWorkflowAction.CREATED if created else GraphWorkflowAction.UPDATED,
+            action=GraphWorkflowAction.CREATED
+            if created
+            else GraphWorkflowAction.UPDATED,
             entity_type=external_type,
             entity_id=external_id,
             actor_type=(
                 GraphActorType.USER
                 if actor
-                else GraphActorType.AI_AGENT if actor_agent_id else GraphActorType.SYSTEM
+                else GraphActorType.AI_AGENT
+                if actor_agent_id
+                else GraphActorType.SYSTEM
             ),
             actor_user_id=actor.id if actor else None,
             actor_agent_id=actor_agent_id,
@@ -182,13 +186,17 @@ class ContextGraphService:
             organization_id=organization_id,
             study_id=study_id,
             event_type="EDGE_CREATED" if created else "EDGE_UPDATED",
-            action=GraphWorkflowAction.LINKED if created else GraphWorkflowAction.UPDATED,
+            action=GraphWorkflowAction.LINKED
+            if created
+            else GraphWorkflowAction.UPDATED,
             entity_type="graph_edge",
             entity_id=edge.id,
             actor_type=(
                 GraphActorType.USER
                 if actor
-                else GraphActorType.AI_AGENT if actor_agent_id else GraphActorType.SYSTEM
+                else GraphActorType.AI_AGENT
+                if actor_agent_id
+                else GraphActorType.SYSTEM
             ),
             actor_user_id=actor.id if actor else None,
             actor_agent_id=actor_agent_id,
@@ -469,7 +477,9 @@ class ContextGraphService:
         but don't create new graph structure.
         """
         action = self._map_event_type_to_action(event_type)
-        entity_type = payload.get("entity_type") or payload.get("context_type") or "system"
+        entity_type = (
+            payload.get("entity_type") or payload.get("context_type") or "system"
+        )
         entity_id_raw = payload.get("entity_id") or payload.get("override_id")
         entity_id = UUID(str(entity_id_raw)) if entity_id_raw else None
 
@@ -483,7 +493,9 @@ class ContextGraphService:
             actor_type=(
                 GraphActorType.USER
                 if actor_user_id
-                else GraphActorType.AI_AGENT if actor_agent_id else GraphActorType.SYSTEM
+                else GraphActorType.AI_AGENT
+                if actor_agent_id
+                else GraphActorType.SYSTEM
             ),
             actor_user_id=actor_user_id,
             actor_agent_id=actor_agent_id,
@@ -538,9 +550,7 @@ class ContextGraphService:
             offset=offset,
         )
 
-    async def get_study_summary(
-        self, organization_id: UUID, study_id: UUID
-    ) -> dict:
+    async def get_study_summary(self, organization_id: UUID, study_id: UUID) -> dict:
         node_count = await self._repo.count_nodes_for_study(organization_id, study_id)
         edge_count = await self._repo.count_edges_for_study(organization_id, study_id)
         nodes_by_type = await self._repo.count_nodes_by_type(organization_id, study_id)
@@ -601,9 +611,7 @@ class ContextGraphService:
         )
         downstream = lineage["downstream"]
         node_ids = {
-            UUID(e["target_node_id"])
-            for e in downstream
-            if e.get("target_node_id")
+            UUID(e["target_node_id"]) for e in downstream if e.get("target_node_id")
         }
         affected_nodes = []
         for nid in node_ids:
@@ -739,21 +747,23 @@ class ContextGraphService:
                 decision = await ai_svc.get_decision(decision_id, organization_id)
             except Exception:
                 return
-            ai_decisions.append({
-                "id": decision.id,
-                "agent_name": decision.agent_name,
-                "decision_type": decision.decision_type,
-                "reasoning": decision.reasoning,
-                "confidence": decision.confidence,
-                "status": (
-                    decision.status.value
-                    if hasattr(decision.status, "value")
-                    else str(decision.status)
-                ),
-                "link_source": link_source,
-                "edge_type": edge_type,
-                "edge_id": edge_id,
-            })
+            ai_decisions.append(
+                {
+                    "id": decision.id,
+                    "agent_name": decision.agent_name,
+                    "decision_type": decision.decision_type,
+                    "reasoning": decision.reasoning,
+                    "confidence": decision.confidence,
+                    "status": (
+                        decision.status.value
+                        if hasattr(decision.status, "value")
+                        else str(decision.status)
+                    ),
+                    "link_source": link_source,
+                    "edge_type": edge_type,
+                    "edge_id": edge_id,
+                }
+            )
 
         props = node.properties or {}
         raw_decision_id = props.get("ai_decision_id")

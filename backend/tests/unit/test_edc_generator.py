@@ -15,7 +15,9 @@ from app.services.generators.edc_generator import EDCGenerator
 PREDIABETES_BRIEF = {
     "study_overview": {"indication": "Prediabetes", "phase": "Phase II"},
     "endpoints": {
-        "primary": [{"name": "Change in HbA1c from baseline to Week 12", "timepoint": "Week 12"}],
+        "primary": [
+            {"name": "Change in HbA1c from baseline to Week 12", "timepoint": "Week 12"}
+        ],
     },
     "safety": {"monitoring_approach": "Baseline, Week 4, Week 8, and Week 12"},
 }

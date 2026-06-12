@@ -118,7 +118,9 @@ def build_adrg_filename(protocol_number: str | None, study_name: str | None) -> 
     return f"adrg_{slug}.docx"
 
 
-def build_adam_define_filename(protocol_number: str | None, study_name: str | None) -> str:
+def build_adam_define_filename(
+    protocol_number: str | None, study_name: str | None
+) -> str:
     """Return a safe ADaM define.xml download filename."""
     base = protocol_number or study_name or "study"
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(base)).strip("_").lower() or "study"

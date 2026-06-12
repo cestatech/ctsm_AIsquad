@@ -165,7 +165,9 @@ class Pinnacle21Service:
 
         repo = ArtifactRepository(db or self._db)
         artifacts, _ = await repo.list_by_study(study_id, org_id, limit=100, offset=0)
-        sdtm_arts = [a for a in artifacts if a.artifact_type == ArtifactType.SDTM_DATASET]
+        sdtm_arts = [
+            a for a in artifacts if a.artifact_type == ArtifactType.SDTM_DATASET
+        ]
         all_findings: list[P21Finding] = []
         for art in sdtm_arts:
             findings = await self.validate_sdtm_dataset(

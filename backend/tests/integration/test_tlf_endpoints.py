@@ -52,11 +52,13 @@ async def _create_tlf_artifact(
 ) -> Artifact:
     content = {
         "document_type": "TLF_SPECIFICATION",
-        "tables": [{
-            "title": "Demographics",
-            "columns": [{"key": "parameter", "label": "Parameter"}],
-            "rows": [{"parameter": "Age"}],
-        }],
+        "tables": [
+            {
+                "title": "Demographics",
+                "columns": [{"key": "parameter", "label": "Parameter"}],
+                "rows": [{"parameter": "Age"}],
+            }
+        ],
     }
     artifact = Artifact(
         id=uuid4(),

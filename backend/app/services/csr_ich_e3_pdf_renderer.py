@@ -35,11 +35,7 @@ ICH_E3_SECTION_ORDER = [
 
 def _escape(text: Any) -> str:
     value = str(text or "")
-    return (
-        value.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _styles() -> dict[str, ParagraphStyle]:
@@ -112,7 +108,9 @@ def _build_synopsis_table(synopsis: dict, styles: dict) -> Table | None:
     return table
 
 
-def _build_tlf_reference_table(tlf_integration: list[dict], styles: dict) -> Table | None:
+def _build_tlf_reference_table(
+    tlf_integration: list[dict], styles: dict
+) -> Table | None:
     if not tlf_integration:
         return None
     rows = [["Table ID", "CSR Section", "Note"]]
@@ -213,9 +211,7 @@ def render_ich_e3_csr_pdf(
     for num, default_title in ICH_E3_SECTION_ORDER[2:]:
         section = sections_by_number.get(num, {})
         section_title = section.get("title", default_title)
-        story.append(
-            Paragraph(f"{num}. {_escape(section_title)}", styles["heading"])
-        )
+        story.append(Paragraph(f"{num}. {_escape(section_title)}", styles["heading"]))
         text = _section_text(section)
         if text:
             for para in text.split("\n\n"):
@@ -239,7 +235,7 @@ def render_ich_e3_csr_pdf(
                 rtitle = ref.get("title", "")
                 story.append(
                     Paragraph(
-                        f"• Table { _escape(tid) }: {_escape(rtitle)} (see tlf/*.rtf)",
+                        f"• Table {_escape(tid)}: {_escape(rtitle)} (see tlf/*.rtf)",
                         styles["small"],
                     )
                 )

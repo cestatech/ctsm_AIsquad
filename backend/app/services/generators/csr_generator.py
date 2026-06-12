@@ -210,10 +210,13 @@ Write 2–5 paragraphs of submission-ready prose for this section."""
         study_name = context.get("study_name", "the study")
         protocol = context.get("protocol_number", "the protocol")
         tables = context.get("tlf_tables") or []
-        table_refs = ", ".join(
-            f"{t.get('table_id') or t.get('id')}: {t.get('title', 'TLF output')}"
-            for t in tables[:4]
-        ) or "available TLF outputs"
+        table_refs = (
+            ", ".join(
+                f"{t.get('table_id') or t.get('id')}: {t.get('title', 'TLF output')}"
+                for t in tables[:4]
+            )
+            or "available TLF outputs"
+        )
 
         protocol_excerpt = context.get("protocol_excerpt") or {}
         sap_excerpt = context.get("sap_excerpt") or {}
@@ -224,7 +227,9 @@ Write 2–5 paragraphs of submission-ready prose for this section."""
         )
         objectives = protocol_excerpt.get("objectives_primary") or []
         objective_text = (
-            "; ".join(objectives) if objectives else "the study objectives defined in the protocol"
+            "; ".join(objectives)
+            if objectives
+            else "the study objectives defined in the protocol"
         )
         instructions = context.get("instructions")
         instruction_note = (

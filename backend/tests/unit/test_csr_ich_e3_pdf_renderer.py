@@ -60,11 +60,13 @@ class TestCsrIchE3PdfRenderer:
 
     def test_renders_multiple_ich_e3_sections_without_error(self):
         content = _csr_content()
-        content["sections"].append({
-            "number": "15",
-            "title": "Discussion and Overall Conclusions",
-            "prose": "The benefit-risk profile supports the study conclusions.",
-        })
+        content["sections"].append(
+            {
+                "number": "15",
+                "title": "Discussion and Overall Conclusions",
+                "prose": "The benefit-risk profile supports the study conclusions.",
+            }
+        )
         pdf = render_ich_e3_csr_pdf(content, study_name="Demo Study")
         assert pdf[:4] == b"%PDF"
         assert len(pdf) > 2000

@@ -10,7 +10,10 @@ import pytest
 
 from app.models.artifact import ArtifactType
 from app.services.export.artifact_export_service import ArtifactExportService
-from app.services.export.csv_exporter import export_adam_dataset_csv, export_sdtm_domain_csv
+from app.services.export.csv_exporter import (
+    export_adam_dataset_csv,
+    export_sdtm_domain_csv,
+)
 from app.services.export.docx_exporter import export_docx
 from app.services.export.pdf_exporter import export_pdf
 from app.services.export.zip_exporter import export_adam_zip, export_sdtm_zip

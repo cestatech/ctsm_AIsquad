@@ -7,7 +7,10 @@ from app.services.upload_service import UploadService
 
 class TestSanitizeSheetName:
     def test_strips_and_replaces_invalid_chars(self):
-        assert UploadService._sanitize_sheet_name("  Demographics/Data  ") == "Demographics_Data"
+        assert (
+            UploadService._sanitize_sheet_name("  Demographics/Data  ")
+            == "Demographics_Data"
+        )
 
     def test_empty_becomes_sheet(self):
         assert UploadService._sanitize_sheet_name("///") == "Sheet"

@@ -13,7 +13,17 @@ from typing import TYPE_CHECKING
 
 from datetime import date
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -122,18 +132,14 @@ class RawField(UUIDMixin, TimestampMixin, Base):
     inferred_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="string"
     )
-    sample_values: Mapped[list] = mapped_column(
-        JSONB, nullable=False, default=list
-    )
+    sample_values: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     missing_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     distinct_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     min_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     max_value: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Mapping state
-    mapped_ecrf_field_id: Mapped[str | None] = mapped_column(
-        String(200), nullable=True
-    )
+    mapped_ecrf_field_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     mapped_sdtm_variable_id: Mapped[str | None] = mapped_column(
         String(200), nullable=True
     )
@@ -180,9 +186,7 @@ class FieldMappingVersion(UUIDMixin, Base):
         index=True,
     )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    mapped_ecrf_field_id: Mapped[str | None] = mapped_column(
-        String(200), nullable=True
-    )
+    mapped_ecrf_field_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     mapped_sdtm_variable_id: Mapped[str | None] = mapped_column(
         String(200), nullable=True
     )
@@ -207,9 +211,7 @@ class FieldMappingVersion(UUIDMixin, Base):
     raw_field: Mapped["RawField"] = relationship(
         "RawField", back_populates="mapping_versions"
     )
-    changed_by: Mapped["User"] = relationship(
-        "User", foreign_keys=[changed_by_id]
-    )
+    changed_by: Mapped["User"] = relationship("User", foreign_keys=[changed_by_id])
     approved_by: Mapped["User | None"] = relationship(
         "User", foreign_keys=[approved_by_id]
     )

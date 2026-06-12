@@ -32,7 +32,10 @@ def _make_artifact(status=ArtifactStatus.DRAFT, created_by_id=None, org_id=None)
     artifact.created_by_id = created_by_id or uuid4()
     artifact.current_version_id = uuid4()
     artifact.current_version_number = 1
-    artifact.to_audit_dict.return_value = {"id": str(artifact.id), "status": status.value}
+    artifact.to_audit_dict.return_value = {
+        "id": str(artifact.id),
+        "status": status.value,
+    }
     return artifact
 
 

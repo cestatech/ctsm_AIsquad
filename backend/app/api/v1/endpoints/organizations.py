@@ -47,7 +47,10 @@ async def update_my_organization(
 
     org = await repo.get_by_id(current_user.organization_id)
     if org is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "NOT_FOUND", "message": "Organization not found."})
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": "Organization not found."},
+        )
     before = org.to_audit_dict()
 
     update_fields = body.model_dump(exclude_none=True)

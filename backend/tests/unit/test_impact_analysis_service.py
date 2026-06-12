@@ -39,8 +39,12 @@ async def test_three_hop_chain_returns_all_downstream_nodes():
         side_effect=lambda node_id, _org: {
             n0: _node(node_id=n0, label="Objective", node_type=GraphNodeType.OBJECTIVE),
             n1: _node(node_id=n1, label="Endpoint", node_type=GraphNodeType.ENDPOINT),
-            n2: _node(node_id=n2, label="eCRF Field", node_type=GraphNodeType.ECR_FIELD),
-            n3: _node(node_id=n3, label="SDTM Variable", node_type=GraphNodeType.SDTM_VARIABLE),
+            n2: _node(
+                node_id=n2, label="eCRF Field", node_type=GraphNodeType.ECR_FIELD
+            ),
+            n3: _node(
+                node_id=n3, label="SDTM Variable", node_type=GraphNodeType.SDTM_VARIABLE
+            ),
         }[node_id]
     )
     svc._graph.get_neighbors = AsyncMock(

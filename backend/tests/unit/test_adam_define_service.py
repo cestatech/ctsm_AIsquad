@@ -82,7 +82,7 @@ def _rich_adam_content() -> dict:
 class TestBuildAdamDefineXml:
     def test_builds_xml_with_analysis_datasets(self):
         xml = build_adam_define_xml(_rich_adam_content())
-        assert '<?xml' in xml
+        assert "<?xml" in xml
         assert "AnalysisDatasets" in xml
         assert "ADSL" in xml
         assert "STUDY-001" in xml

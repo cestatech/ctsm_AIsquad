@@ -41,7 +41,10 @@ CDISC_CT_CODELISTS: dict[str, dict] = {
             ("BLACK", "Black or African American"),
             ("ASIAN", "Asian"),
             ("AMERICAN INDIAN OR ALASKA NATIVE", "American Indian or Alaska Native"),
-            ("NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER", "Native Hawaiian or Other Pacific Islander"),
+            (
+                "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER",
+                "Native Hawaiian or Other Pacific Islander",
+            ),
             ("OTHER", "Other"),
             ("MULTIPLE", "Multiple"),
             ("NOT REPORTED", "Not Reported"),
@@ -114,9 +117,9 @@ def build_define_xml(content: dict) -> str:
     study_el = ET.SubElement(root, "Study", attrib={"OID": f"ST.{study_id}"})
     globals_el = ET.SubElement(study_el, "GlobalVariables")
     ET.SubElement(globals_el, "StudyName").text = str(study_name)
-    ET.SubElement(globals_el, "StudyDescription").text = (
-        f"SDTM IG {ig_version} dataset definitions"
-    )
+    ET.SubElement(
+        globals_el, "StudyDescription"
+    ).text = f"SDTM IG {ig_version} dataset definitions"
     ET.SubElement(globals_el, "ProtocolName").text = str(study_id)
 
     mdv = ET.SubElement(

@@ -59,7 +59,9 @@ def validate_define_xml_structure(define_xml: str) -> DefineXmlValidationResult:
     try:
         root = ET.fromstring(_strip_xml_declaration(define_xml))
     except ET.ParseError as exc:
-        return DefineXmlValidationResult(valid=False, issues=[f"XML parse error: {exc}"])
+        return DefineXmlValidationResult(
+            valid=False, issues=[f"XML parse error: {exc}"]
+        )
 
     if not root.tag.endswith("ODM"):
         issues.append("Root element must be ODM.")

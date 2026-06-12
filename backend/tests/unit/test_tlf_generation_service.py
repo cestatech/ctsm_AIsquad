@@ -58,11 +58,13 @@ async def test_register_cip_links_creates_adam_to_tlf_edge():
         adam_artifact=adam_artifact,
         tlf_artifact=tlf_artifact,
         tlf_content={
-            "tables": [{
-                "id": "T-01",
-                "title": "Demographics",
-                "source_dataset": "ADSL",
-            }],
+            "tables": [
+                {
+                    "id": "T-01",
+                    "title": "Demographics",
+                    "source_dataset": "ADSL",
+                }
+            ],
         },
         adam_content={"source_sdtm_artifact_ids": [str(sdtm_id)]},
         actor=actor,

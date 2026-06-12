@@ -23,7 +23,10 @@ from app.core.permissions import Permission, check_permission
 from app.models.audit import AuditAction
 from app.models.raw_data import RawField
 from app.models.user import User
-from app.repositories.raw_data_repository import RawDatasetRepository, RawFieldRepository
+from app.repositories.raw_data_repository import (
+    RawDatasetRepository,
+    RawFieldRepository,
+)
 from app.schemas.raw_data import (
     ApplyMappingSuggestionsRequest,
     FieldMappingSuggestion,
@@ -82,7 +85,11 @@ _RULE_MAP: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"^sbp|sysbp", re.I), "SYSBP", "VS.SYSBP"),
     (re.compile(r"^dbp|diabp", re.I), "DIABP", "VS.DIABP"),
     (re.compile(r"^hr$|heart.?rate", re.I), "HR", "VS.HR"),
-    (re.compile(r"hba1c|glucose|ldl|hdl|triglycer|creatinine|alt|ast", re.I), "LBORRES", "LB.LBORRES"),
+    (
+        re.compile(r"hba1c|glucose|ldl|hdl|triglycer|creatinine|alt|ast", re.I),
+        "LBORRES",
+        "LB.LBORRES",
+    ),
     (re.compile(r"ae|adverse", re.I), "AETERM", "AE.AETERM"),
     (re.compile(r"visit|sv", re.I), "VISIT", "SV.VISIT"),
     (re.compile(r"siteid|site", re.I), "SITEID", "DM.SITEID"),
@@ -243,7 +250,8 @@ class MappingSuggestionService:
                 field_id=item.field_id,
                 mapped_ecrf_field_id=item.mapped_ecrf_field_id,
                 mapped_sdtm_variable_id=item.mapped_sdtm_variable_id,
-                notes=item.notes or f"Applied from AI suggestion (decision {body.ai_decision_id})",
+                notes=item.notes
+                or f"Applied from AI suggestion (decision {body.ai_decision_id})",
                 actor=actor,
                 ip_address=ip_address,
                 user_agent=user_agent,
@@ -279,7 +287,8 @@ class MappingSuggestionService:
                 fallback_batches += 1
 
         avg_conf = (
-            sum(s.get("confidence", 0.8) for s in all_suggestions) / len(all_suggestions)
+            sum(s.get("confidence", 0.8) for s in all_suggestions)
+            / len(all_suggestions)
             if all_suggestions
             else 0.0
         )

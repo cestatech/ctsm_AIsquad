@@ -119,7 +119,11 @@ class AuditLog(UUIDMixin, Base):
         nullable=True,
     )
     action: Mapped[AuditAction] = mapped_column(
-        Enum(AuditAction, name="audit_action", values_callable=lambda e: [m.value for m in e]),
+        Enum(
+            AuditAction,
+            name="audit_action",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     resource_type: Mapped[str] = mapped_column(String(100), nullable=False)

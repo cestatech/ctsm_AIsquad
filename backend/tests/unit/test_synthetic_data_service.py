@@ -76,7 +76,10 @@ class TestSyntheticDataServiceDataset:
         study = _make_study()
         d1 = svc._generate_dataset(study, 5, 99, None, None, None)
         d2 = svc._generate_dataset(study, 5, 99, None, None, None)
-        assert d1["datasets"]["demographics"]["rows"] == d2["datasets"]["demographics"]["rows"]
+        assert (
+            d1["datasets"]["demographics"]["rows"]
+            == d2["datasets"]["demographics"]["rows"]
+        )
 
     def test_build_assumptions_includes_seed_and_n(self):
         svc = SyntheticDataService(MagicMock())

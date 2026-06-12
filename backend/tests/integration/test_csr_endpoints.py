@@ -80,9 +80,7 @@ async def _tlf_artifact_id(
     from tests.integration.test_tlf_endpoints import _adam_artifact_id
 
     await _ensure_protocol_and_sap(idb, i_study, i_org, i_admin)
-    adam_id = await _adam_artifact_id(
-        iclient, idb, i_study, i_org, i_admin, admin_tok
-    )
+    adam_id = await _adam_artifact_id(iclient, idb, i_study, i_org, i_admin, admin_tok)
     gen = await iclient.post(
         f"/api/v1/tlf/artifacts/{adam_id}/generate-tlf",
         headers={"Authorization": f"Bearer {admin_tok}"},
@@ -116,7 +114,9 @@ class TestCSREndpoints:
         assert data["sap_artifact_count"] >= 1
         assert data["ready"] is True
         assert any(a["artifact_id"] == tlf_id for a in data["tlf_artifacts"])
-        assert any(r["key"] == "sdtm" and r["met"] for r in data.get("requirements", []))
+        assert any(
+            r["key"] == "sdtm" and r["met"] for r in data.get("requirements", [])
+        )
 
     async def test_generate_csr_from_tlf(
         self,

@@ -96,11 +96,7 @@ class ArtifactExportService:
         artifact_metadata: dict | None = None,
     ) -> str:
         """Build a descriptive, type-specific download filename."""
-        if (
-            artifact_type == ArtifactType.OTHER
-            and export_format == "csv"
-            and content
-        ):
+        if artifact_type == ArtifactType.OTHER and export_format == "csv" and content:
             primary = content.get("primary_csv_filename")
             if isinstance(primary, str) and primary.strip():
                 return _safe_basename(primary)
@@ -180,9 +176,7 @@ class ArtifactExportService:
                 )
         elif export_format == "xml":
             if artifact_type != ArtifactType.SDTM_DATASET:
-                raise ValueError(
-                    "XML export is only supported for SDTM datasets."
-                )
+                raise ValueError("XML export is only supported for SDTM datasets.")
             body = build_define_xml(content).encode("utf-8")
         elif export_format == "csv":
             if artifact_type == ArtifactType.OTHER:

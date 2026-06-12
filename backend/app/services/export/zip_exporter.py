@@ -5,7 +5,10 @@ from __future__ import annotations
 import io
 import zipfile
 
-from app.services.export.csv_exporter import export_adam_dataset_csv, export_sdtm_domain_csv
+from app.services.export.csv_exporter import (
+    export_adam_dataset_csv,
+    export_sdtm_domain_csv,
+)
 
 
 def _add_to_zip(archive: zipfile.ZipFile, path: str, body: str) -> None:

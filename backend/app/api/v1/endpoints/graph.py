@@ -47,11 +47,15 @@ from app.services.traceability_service import TraceabilityService
 router = APIRouter()
 
 
-@router.get("/events", response_model=GraphEventListResponse, summary="List graph events")
+@router.get(
+    "/events", response_model=GraphEventListResponse, summary="List graph events"
+)
 async def list_graph_events(
     study_id: UUID | None = Query(None),
     actor_user_id: UUID | None = Query(None),
-    action: str | None = Query(None, description="Workflow action filter (e.g. mapped)"),
+    action: str | None = Query(
+        None, description="Workflow action filter (e.g. mapped)"
+    ),
     entity_type: str | None = Query(None),
     event_type: str | None = Query(None),
     page: int = Query(1, ge=1),
@@ -100,8 +104,7 @@ async def get_study_graph_summary(
         event_count=summary["event_count"],
         nodes_by_type=summary["nodes_by_type"],
         recent_events=[
-            GraphEventResponse.model_validate(e)
-            for e in summary["recent_events"]
+            GraphEventResponse.model_validate(e) for e in summary["recent_events"]
         ],
     )
 

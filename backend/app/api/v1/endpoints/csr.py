@@ -216,9 +216,7 @@ async def _collect_adam_dataset_inventory(
         content = version.content or {}
         for ds in content.get("datasets", []):
             observations = ds.get("observations")
-            record_count = (
-                len(observations) if isinstance(observations, list) else None
-            )
+            record_count = len(observations) if isinstance(observations, list) else None
             inventory.append(
                 {
                     "name": ds.get("dataset") or ds.get("name") or "—",

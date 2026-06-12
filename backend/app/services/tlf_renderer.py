@@ -31,7 +31,9 @@ class TLFRenderer:
         figures = self._as_list(tlf_content.get("figures"))
 
         if not tables and not listings and not figures:
-            parts.append(self._paragraph("No TLF tables, listings, or figures were provided."))
+            parts.append(
+                self._paragraph("No TLF tables, listings, or figures were provided.")
+            )
 
         for table in tables:
             parts.append(self._render_table(table))
@@ -47,7 +49,12 @@ class TLFRenderer:
         if not isinstance(table, dict):
             return self._paragraph(str(table))
 
-        title = table.get("title") or table.get("name") or table.get("id") or "Untitled Table"
+        title = (
+            table.get("title")
+            or table.get("name")
+            or table.get("id")
+            or "Untitled Table"
+        )
         rows = self._as_list(table.get("rows") or table.get("data"))
         columns = self._normalize_columns(table.get("columns"), rows)
         parts = [
@@ -60,16 +67,23 @@ class TLFRenderer:
             parts.append(self._paragraph(f"Population: {table['population']}"))
 
         if columns:
-            parts.append(self._table_row(
-                [column["label"] for column in columns],
-                [column["align"] for column in columns],
-                header=True,
-            ))
-            for row in rows:
-                parts.append(self._table_row(
-                    [self._value_for_column(row, column["key"]) for column in columns],
+            parts.append(
+                self._table_row(
+                    [column["label"] for column in columns],
                     [column["align"] for column in columns],
-                ))
+                    header=True,
+                )
+            )
+            for row in rows:
+                parts.append(
+                    self._table_row(
+                        [
+                            self._value_for_column(row, column["key"])
+                            for column in columns
+                        ],
+                        [column["align"] for column in columns],
+                    )
+                )
         else:
             metadata = self._metadata_lines(
                 table,
@@ -95,7 +109,12 @@ class TLFRenderer:
         if not isinstance(listing, dict):
             return self._paragraph(str(listing), bold=False)
 
-        title = listing.get("title") or listing.get("name") or listing.get("id") or "Untitled Listing"
+        title = (
+            listing.get("title")
+            or listing.get("name")
+            or listing.get("id")
+            or "Untitled Listing"
+        )
         parts = [self._paragraph(str(title), bold=True, size=24)]
         text = listing.get("text") or listing.get("content") or listing.get("body")
         lines = self._as_list(listing.get("lines"))
@@ -115,25 +134,42 @@ class TLFRenderer:
             parts.append(self._paragraph(rendered, font="courier"))
 
         if not text and not lines and not rows:
-            parts.extend(self._paragraph(line) for line in self._metadata_lines(listing, ["description"]))
+            parts.extend(
+                self._paragraph(line)
+                for line in self._metadata_lines(listing, ["description"])
+            )
         parts.append(self._paragraph(""))
         return "\n".join(parts)
 
     def _render_figure(self, figure: Any) -> str:
         if isinstance(figure, dict):
-            title = figure.get("title") or figure.get("name") or figure.get("id") or "Untitled Figure"
+            title = (
+                figure.get("title")
+                or figure.get("name")
+                or figure.get("id")
+                or "Untitled Figure"
+            )
         else:
             title = str(figure)
-        return "\n".join([
-            self._paragraph(str(title), bold=True, size=24),
-            self._paragraph("[Figure placeholder: chart rendering is out of scope]", align="center"),
-            self._paragraph(""),
-        ])
+        return "\n".join(
+            [
+                self._paragraph(str(title), bold=True, size=24),
+                self._paragraph(
+                    "[Figure placeholder: chart rendering is out of scope]",
+                    align="center",
+                ),
+                self._paragraph(""),
+            ]
+        )
 
-    def _table_row(self, values: list[Any], alignments: list[str], header: bool = False) -> str:
+    def _table_row(
+        self, values: list[Any], alignments: list[str], header: bool = False
+    ) -> str:
         width = 9000
         col_width = max(1000, width // max(1, len(values)))
-        cell_defs = "".join(rf"\cellx{col_width * (idx + 1)}" for idx in range(len(values)))
+        cell_defs = "".join(
+            rf"\cellx{col_width * (idx + 1)}" for idx in range(len(values))
+        )
         cells = []
         for value, align in zip(values, alignments, strict=False):
             prefix = r"\qc " if header else f"{self._rtf_alignment(align)} "
@@ -143,11 +179,15 @@ class TLFRenderer:
             cells.append(rf"\intbl {prefix}{content}\cell")
         return rf"\trowd\trgaph108\trleft0{cell_defs}" + "".join(cells) + r"\row"
 
-    def _normalize_columns(self, raw_columns: Any, rows: list[Any]) -> list[dict[str, str]]:
+    def _normalize_columns(
+        self, raw_columns: Any, rows: list[Any]
+    ) -> list[dict[str, str]]:
         columns = []
         for index, column in enumerate(self._as_list(raw_columns)):
             if isinstance(column, dict):
-                key = str(column.get("key") or column.get("name") or column.get("id") or index)
+                key = str(
+                    column.get("key") or column.get("name") or column.get("id") or index
+                )
                 label = str(column.get("label") or column.get("title") or key)
                 align = str(column.get("align") or column.get("alignment") or "left")
             else:
@@ -161,7 +201,10 @@ class TLFRenderer:
 
         first_row = rows[0]
         if isinstance(first_row, dict):
-            return [{"key": str(key), "label": str(key), "align": "left"} for key in first_row.keys()]
+            return [
+                {"key": str(key), "label": str(key), "align": "left"}
+                for key in first_row.keys()
+            ]
         if isinstance(first_row, list):
             return [
                 {"key": str(index), "label": f"Column {index + 1}", "align": "left"}

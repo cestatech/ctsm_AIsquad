@@ -21,9 +21,7 @@ class TestAssertTlfReady:
         assert exc.value.detail["code"] == "TLF_NOT_READY"
 
     def test_passes_with_tables(self):
-        CSRGenerationService._assert_tlf_ready(
-            {"tables": [{"id": "T-01"}]}, "Test TLF"
-        )
+        CSRGenerationService._assert_tlf_ready({"tables": [{"id": "T-01"}]}, "Test TLF")
 
 
 class TestDeterministicCsr:
@@ -53,10 +51,12 @@ class TestDeterministicCsr:
         svc = CSRGenerationService(MagicMock())
         upstream = {
             "sdtm_content": {
-                "domains": [{
-                    "domain": "DM",
-                    "observations": [{"USUBJID": "S1-001"}, {"USUBJID": "S1-002"}],
-                }],
+                "domains": [
+                    {
+                        "domain": "DM",
+                        "observations": [{"USUBJID": "S1-001"}, {"USUBJID": "S1-002"}],
+                    }
+                ],
             },
             "adam_content": {"datasets": [{"dataset": "ADSL"}]},
         }
@@ -90,9 +90,11 @@ class TestDeterministicCsr:
         assert content["ectd_module_5"]["folder_structure"]
 
     def test_merge_tlf_tables_deduplicates(self):
-        merged = CSRGenerationService._merge_tlf_tables([
-            {"tables": [{"id": "T-01", "title": "A"}]},
-            {"tables": [{"id": "T-01", "title": "A duplicate"}, {"id": "T-02"}]},
-        ])
+        merged = CSRGenerationService._merge_tlf_tables(
+            [
+                {"tables": [{"id": "T-01", "title": "A"}]},
+                {"tables": [{"id": "T-01", "title": "A duplicate"}, {"id": "T-02"}]},
+            ]
+        )
         assert len(merged) == 2
         assert merged[0]["id"] == "T-01"

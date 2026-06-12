@@ -126,7 +126,9 @@ class TestFieldMapping:
         assert datasets.status_code == 200
         items = datasets.json()["items"]
         if not items:
-            pytest.skip("No datasets parsed — CSV parsing may not have run in test mode")
+            pytest.skip(
+                "No datasets parsed — CSV parsing may not have run in test mode"
+            )
         dataset_id = items[0]["id"]
 
         fields = await iclient.get(
@@ -188,7 +190,10 @@ class TestFieldMapping:
 
         await iclient.put(
             f"/api/v1/raw-data/fields/{field_id}/mapping",
-            json={"mapped_ecrf_field_id": "TREATMENT", "mapped_sdtm_variable_id": "CM.CMTRT"},
+            json={
+                "mapped_ecrf_field_id": "TREATMENT",
+                "mapped_sdtm_variable_id": "CM.CMTRT",
+            },
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
 

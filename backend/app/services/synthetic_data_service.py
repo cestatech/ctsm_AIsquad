@@ -513,7 +513,9 @@ class SyntheticDataService:
                 )
             )
         if sap_content:
-            pop = (sap_content.get("analysis_populations") or {}).get("ITT", "ITT population")
+            pop = (sap_content.get("analysis_populations") or {}).get(
+                "ITT", "ITT population"
+            )
             assumptions.append(
                 SimulationAssumption(
                     organization_id=study.organization_id,
@@ -572,9 +574,7 @@ class SyntheticDataService:
         if not columns or not rows:
             raise ValueError("Synthetic dataset has no exportable rows.")
 
-        slug = "".join(
-            c if c.isalnum() or c in "-_" else "_" for c in artifact_name
-        )
+        slug = "".join(c if c.isalnum() or c in "-_" else "_" for c in artifact_name)
         filename = f"{slug}_{domain_name}.csv"
         return filename, cls._rows_to_csv(columns, rows)
 
@@ -590,7 +590,9 @@ class SyntheticDataService:
         rng = random.Random(random_seed)
         arms = ["Placebo", "Active"]
         if protocol_content:
-            arms_raw = (protocol_content.get("study_design") or {}).get("treatment_arms")
+            arms_raw = (protocol_content.get("study_design") or {}).get(
+                "treatment_arms"
+            )
             if isinstance(arms_raw, list) and arms_raw:
                 arms = [str(a) for a in arms_raw[:2]] or arms
 
@@ -598,32 +600,52 @@ class SyntheticDataService:
         for i in range(1, target_n + 1):
             arm = arms[i % len(arms)]
             hba1c_bl = round(rng.uniform(5.7, 6.4), 2)
-            hba1c_w12 = round(hba1c_bl - rng.uniform(0.1, 0.6) if arm == "Active" else hba1c_bl + rng.uniform(0, 0.2), 2)
-            subjects.append({
-                "SUBJECT_ID": f"{study.protocol_number}-{i:03d}",
-                "SITE_ID": f"{rng.randint(1, 10):03d}",
-                "ARM": arm,
-                "SEX": rng.choice(["M", "F"]),
-                "AGE": rng.randint(30, 75),
-                "RACE": rng.choice(["White", "Black", "Asian", "Other"]),
-                "ETHNICITY": rng.choice(["Hispanic", "Not Hispanic"]),
-                "BMI": round(rng.uniform(22, 35), 1),
-                "HBA1C_BL": hba1c_bl,
-                "HBA1C_W12": hba1c_w12,
-                "FASTING_GLUCOSE_BL": rng.randint(100, 125),
-                "SYSBP": rng.randint(110, 140),
-                "DIABP": rng.randint(70, 90),
-                "HR": rng.randint(60, 90),
-                "AE_FLAG": rng.choice(["Y", "N"]),
-                "COMPLIANCE_PERCENT": rng.randint(80, 100),
-                "ENDPOINT_DELTA_HBA1C": round(hba1c_w12 - hba1c_bl, 2),
-            })
+            hba1c_w12 = round(
+                hba1c_bl - rng.uniform(0.1, 0.6)
+                if arm == "Active"
+                else hba1c_bl + rng.uniform(0, 0.2),
+                2,
+            )
+            subjects.append(
+                {
+                    "SUBJECT_ID": f"{study.protocol_number}-{i:03d}",
+                    "SITE_ID": f"{rng.randint(1, 10):03d}",
+                    "ARM": arm,
+                    "SEX": rng.choice(["M", "F"]),
+                    "AGE": rng.randint(30, 75),
+                    "RACE": rng.choice(["White", "Black", "Asian", "Other"]),
+                    "ETHNICITY": rng.choice(["Hispanic", "Not Hispanic"]),
+                    "BMI": round(rng.uniform(22, 35), 1),
+                    "HBA1C_BL": hba1c_bl,
+                    "HBA1C_W12": hba1c_w12,
+                    "FASTING_GLUCOSE_BL": rng.randint(100, 125),
+                    "SYSBP": rng.randint(110, 140),
+                    "DIABP": rng.randint(70, 90),
+                    "HR": rng.randint(60, 90),
+                    "AE_FLAG": rng.choice(["Y", "N"]),
+                    "COMPLIANCE_PERCENT": rng.randint(80, 100),
+                    "ENDPOINT_DELTA_HBA1C": round(hba1c_w12 - hba1c_bl, 2),
+                }
+            )
 
         columns = [
-            "SUBJECT_ID", "SITE_ID", "ARM", "SEX", "AGE", "RACE",
-            "ETHNICITY", "BMI", "HBA1C_BL", "HBA1C_W12",
-            "FASTING_GLUCOSE_BL", "SYSBP", "DIABP", "HR",
-            "AE_FLAG", "COMPLIANCE_PERCENT", "ENDPOINT_DELTA_HBA1C",
+            "SUBJECT_ID",
+            "SITE_ID",
+            "ARM",
+            "SEX",
+            "AGE",
+            "RACE",
+            "ETHNICITY",
+            "BMI",
+            "HBA1C_BL",
+            "HBA1C_W12",
+            "FASTING_GLUCOSE_BL",
+            "SYSBP",
+            "DIABP",
+            "HR",
+            "AE_FLAG",
+            "COMPLIANCE_PERCENT",
+            "ENDPOINT_DELTA_HBA1C",
         ]
         csv_filename = f"{study.protocol_number}_synthetic_demographics.csv"
         csv_body = self._rows_to_csv(columns, subjects)

@@ -19,7 +19,7 @@ class TestSyntheticUploadDetection:
         )
 
     def test_detects_synthetic_from_content_marker(self):
-        content = b'label,document_type\nSYNTHETIC,RAW_CLINICAL_DATA\n'
+        content = b"label,document_type\nSYNTHETIC,RAW_CLINICAL_DATA\n"
         assert UploadService._detect_synthetic_upload(
             content,
             "text/csv",

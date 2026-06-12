@@ -51,8 +51,7 @@ class TestGraphEventsEndpoints:
         assert "items" in data
         assert data["total"] >= 1
         assert any(
-            item["payload"].get("entity_type") == "artifact"
-            for item in data["items"]
+            item["payload"].get("entity_type") == "artifact" for item in data["items"]
         )
 
     async def test_study_summary_returns_counts(

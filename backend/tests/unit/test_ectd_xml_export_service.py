@@ -103,9 +103,10 @@ class TestEctdXmlExportService:
             index_md5 = zf.read("index-md5.txt")
         assert sorted(names) == ["index-md5.txt", "index.xml"]
         # The MD5 recorded in the archive matches the index.xml actually shipped.
-        assert index_md5.decode().splitlines()[0].split()[0] == hashlib.md5(
-            index_xml
-        ).hexdigest()
+        assert (
+            index_md5.decode().splitlines()[0].split()[0]
+            == hashlib.md5(index_xml).hexdigest()
+        )
 
     def test_manifest_json_entry_excluded_from_backbone(self):
         manifest = _sample_manifest()

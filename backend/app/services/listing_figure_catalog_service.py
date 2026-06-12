@@ -176,10 +176,16 @@ class ListingFigureCatalogService:
                 node.id, organization_id, direction="both"
             )
             for edge in [*neighbors["outgoing"], *neighbors["incoming"]]:
-                if edge.source_node_id == node.id and edge.target_node_id == tlf_node.id:
+                if (
+                    edge.source_node_id == node.id
+                    and edge.target_node_id == tlf_node.id
+                ):
                     sap_ids.add(sap_id)
                     trace_edges.append(edge)
-                elif edge.target_node_id == node.id and edge.source_node_id == tlf_node.id:
+                elif (
+                    edge.target_node_id == node.id
+                    and edge.source_node_id == tlf_node.id
+                ):
                     sap_ids.add(sap_id)
                     trace_edges.append(edge)
         return sap_ids
@@ -230,7 +236,9 @@ def _build_entries_from_trace(
     return _sort_entries(entries)
 
 
-def _entries_from_edge_properties(trace_edges: list[GraphEdge]) -> list[ListingFigureEntry]:
+def _entries_from_edge_properties(
+    trace_edges: list[GraphEdge],
+) -> list[ListingFigureEntry]:
     entries: list[ListingFigureEntry] = []
     for edge in trace_edges:
         props = edge.properties or {}
@@ -298,7 +306,10 @@ def _infer_section(output: dict, section_labels: dict[str, str]) -> str:
 
 
 def _sort_entries(entries: list[ListingFigureEntry]) -> list[ListingFigureEntry]:
-    return sorted(entries, key=lambda entry: (_section_sort_key(entry.sap_section), entry.tlf_index))
+    return sorted(
+        entries,
+        key=lambda entry: (_section_sort_key(entry.sap_section), entry.tlf_index),
+    )
 
 
 def _section_sort_key(section: str) -> tuple[int, ...]:

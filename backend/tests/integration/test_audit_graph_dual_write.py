@@ -10,9 +10,7 @@ from app.models.study import Study
 _CSV = b"subject_id,age\nS001,45\nS002,52\n"
 
 
-async def _field_id_from_upload(
-    iclient: AsyncClient, study_id, admin_tok: str
-) -> str:
+async def _field_id_from_upload(iclient: AsyncClient, study_id, admin_tok: str) -> str:
     upload = await iclient.post(
         f"/api/v1/studies/{study_id}/uploads",
         files={"file": ("dual_write.csv", _CSV, "text/csv")},

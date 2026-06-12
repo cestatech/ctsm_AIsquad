@@ -100,18 +100,20 @@ async def _create_sdtm_artifact(
         await idb.flush()
         content = {
             "document_type": "SDTM_DATASET",
-            "domains": [{
-                "domain": "DM",
-                "variables": ["STUDYID", "USUBJID", "SUBJID", "AGE"],
-                "observations": [
-                    {
-                        "STUDYID": "STUDY-1",
-                        "USUBJID": "STUDY-1-001",
-                        "SUBJID": "001",
-                        "AGE": "45",
-                    }
-                ],
-            }],
+            "domains": [
+                {
+                    "domain": "DM",
+                    "variables": ["STUDYID", "USUBJID", "SUBJID", "AGE"],
+                    "observations": [
+                        {
+                            "STUDYID": "STUDY-1",
+                            "USUBJID": "STUDY-1-001",
+                            "SUBJID": "001",
+                            "AGE": "45",
+                        }
+                    ],
+                }
+            ],
         }
         content_hash = hashlib.sha256(
             json.dumps(content, sort_keys=True).encode()
@@ -167,12 +169,8 @@ class TestADAMReadiness:
         i_admin,
         admin_tok: str,
     ):
-        study_id = await _create_study(
-            iclient, admin_tok, name="ADaM Readiness Study"
-        )
-        await _create_sdtm_artifact(
-            iclient, idb, study_id, i_org, i_admin, admin_tok
-        )
+        study_id = await _create_study(iclient, admin_tok, name="ADaM Readiness Study")
+        await _create_sdtm_artifact(iclient, idb, study_id, i_org, i_admin, admin_tok)
         resp = await iclient.get(
             f"/api/v1/adam/studies/{study_id}/adam-readiness",
             headers={"Authorization": f"Bearer {admin_tok}"},
@@ -226,9 +224,7 @@ class TestADAMGeneration:
         study_id = await _create_study(
             iclient, admin_tok, name="ADaM Full Study Generation"
         )
-        await _create_sdtm_artifact(
-            iclient, idb, study_id, i_org, i_admin, admin_tok
-        )
+        await _create_sdtm_artifact(iclient, idb, study_id, i_org, i_admin, admin_tok)
         resp = await iclient.post(
             f"/api/v1/adam/studies/{study_id}/generate-adam",
             headers={"Authorization": f"Bearer {admin_tok}"},

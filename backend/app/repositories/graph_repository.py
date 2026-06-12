@@ -419,9 +419,7 @@ class GraphRepository:
         )
         return list(result.scalars().all()), total
 
-    async def count_nodes_for_study(
-        self, organization_id: UUID, study_id: UUID
-    ) -> int:
+    async def count_nodes_for_study(self, organization_id: UUID, study_id: UUID) -> int:
         result = await self._db.execute(
             select(func.count())
             .select_from(GraphNode)
@@ -433,9 +431,7 @@ class GraphRepository:
         )
         return result.scalar_one()
 
-    async def count_edges_for_study(
-        self, organization_id: UUID, study_id: UUID
-    ) -> int:
+    async def count_edges_for_study(self, organization_id: UUID, study_id: UUID) -> int:
         result = await self._db.execute(
             select(func.count())
             .select_from(GraphEdge)

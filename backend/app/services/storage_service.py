@@ -31,8 +31,7 @@ def create_storage_backend(settings: Settings | None = None) -> StorageBackend:
         )
 
     raise ConfigurationError(
-        f"Unknown STORAGE_BACKEND '{backend}'. "
-        "Expected one of: filesystem, azure."
+        f"Unknown STORAGE_BACKEND '{backend}'. Expected one of: filesystem, azure."
     )
 
 

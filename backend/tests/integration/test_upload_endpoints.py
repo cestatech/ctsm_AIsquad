@@ -35,7 +35,11 @@ class TestUploadFile:
         assert data["mime_type"] == "text/csv"
         assert data["file_size_bytes"] == len(csv_content)
         assert data["study_id"] == str(i_study.id)
-        assert data["extracted_metadata"]["columns"] == ["subject_id", "age", "treatment"]
+        assert data["extracted_metadata"]["columns"] == [
+            "subject_id",
+            "age",
+            "treatment",
+        ]
         assert data["extracted_metadata"]["row_count"] == 2
 
     async def test_contributor_can_upload(

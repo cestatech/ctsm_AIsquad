@@ -53,9 +53,7 @@ class MappingService:
     # Read
     # ------------------------------------------------------------------
 
-    async def get_dataset(
-        self, dataset_id: UUID, organization_id: UUID
-    ) -> RawDataset:
+    async def get_dataset(self, dataset_id: UUID, organization_id: UUID) -> RawDataset:
         ds = await self._ds_repo.get(dataset_id, organization_id)
         if ds is None:
             raise HTTPException(
@@ -64,9 +62,7 @@ class MappingService:
             )
         return ds
 
-    async def get_field(
-        self, field_id: UUID, organization_id: UUID
-    ) -> RawField:
+    async def get_field(self, field_id: UUID, organization_id: UUID) -> RawField:
         field = await self._field_repo.get(field_id, organization_id)
         if field is None:
             raise HTTPException(
@@ -332,7 +328,9 @@ class MappingService:
 
         field.mapping_status = "REJECTED"
 
-        versions = await self._version_repo.list_for_field(field.id, actor.organization_id)
+        versions = await self._version_repo.list_for_field(
+            field.id, actor.organization_id
+        )
         if versions:
             latest = versions[-1]
             latest.mapping_status = "REJECTED"
@@ -401,34 +399,36 @@ class MappingService:
 
         return approved, len(pending)
 
-    async def export_mappings_csv(
-        self, dataset_id: UUID, organization_id: UUID
-    ) -> str:
+    async def export_mappings_csv(self, dataset_id: UUID, organization_id: UUID) -> str:
         """Export all field mappings for a dataset as CSV."""
         dataset = await self.get_dataset(dataset_id, organization_id)
         fields = await self._field_repo.list_for_dataset(dataset_id, organization_id)
 
         buffer = io.StringIO()
         writer = csv.writer(buffer)
-        writer.writerow([
-            "dataset_name",
-            "column_name",
-            "inferred_type",
-            "mapped_ecrf_field_id",
-            "mapped_sdtm_variable_id",
-            "mapping_status",
-            "mapping_version",
-        ])
+        writer.writerow(
+            [
+                "dataset_name",
+                "column_name",
+                "inferred_type",
+                "mapped_ecrf_field_id",
+                "mapped_sdtm_variable_id",
+                "mapping_status",
+                "mapping_version",
+            ]
+        )
         for field in fields:
-            writer.writerow([
-                dataset.dataset_name,
-                field.column_name,
-                field.inferred_type,
-                field.mapped_ecrf_field_id or "",
-                field.mapped_sdtm_variable_id or "",
-                field.mapping_status,
-                field.mapping_version,
-            ])
+            writer.writerow(
+                [
+                    dataset.dataset_name,
+                    field.column_name,
+                    field.inferred_type,
+                    field.mapped_ecrf_field_id or "",
+                    field.mapped_sdtm_variable_id or "",
+                    field.mapping_status,
+                    field.mapping_version,
+                ]
+            )
         return buffer.getvalue()
 
     async def validate_mapping(
@@ -440,8 +440,7 @@ class MappingService:
 
         total = len(fields)
         mapped = sum(
-            1 for f in fields
-            if f.mapped_ecrf_field_id or f.mapped_sdtm_variable_id
+            1 for f in fields if f.mapped_ecrf_field_id or f.mapped_sdtm_variable_id
         )
         approved = sum(1 for f in fields if f.mapping_status == "APPROVED")
         pending = sum(1 for f in fields if f.mapping_status == "PENDING_APPROVAL")

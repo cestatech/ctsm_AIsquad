@@ -35,7 +35,9 @@ def _protocol_excerpt(protocol_content: dict) -> dict[str, Any]:
     if isinstance(objectives, dict):
         for item in objectives.get("primary", [])[:3]:
             if isinstance(item, dict):
-                primary.append(str(item.get("description") or item.get("title") or item))
+                primary.append(
+                    str(item.get("description") or item.get("title") or item)
+                )
             else:
                 primary.append(str(item))
     elif isinstance(objectives, list):

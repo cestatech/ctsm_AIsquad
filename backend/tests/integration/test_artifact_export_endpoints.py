@@ -65,7 +65,9 @@ async def _create_artifact(
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestArtifactExportEndpoints:
-    async def test_export_requires_auth(self, iclient: AsyncClient, i_artifact: Artifact):
+    async def test_export_requires_auth(
+        self, iclient: AsyncClient, i_artifact: Artifact
+    ):
         resp = await iclient.get(
             f"/api/v1/artifacts/{i_artifact.id}/export?format=docx"
         )

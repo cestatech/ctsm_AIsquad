@@ -845,7 +845,7 @@ class IntakeService:
             return {
                 "message": (
                     f"Hello! I'm your TrialGenesis intake specialist. I'll guide you "
-                    f"through nine clinical domains for \"{study_name}\". "
+                    f'through nine clinical domains for "{study_name}". '
                     f"{_DOMAIN_QUESTIONS['STUDY_OVERVIEW']}"
                 ),
                 "domain": "STUDY_OVERVIEW",
@@ -932,11 +932,13 @@ class IntakeService:
                 "estimated_sample_size": None,
             },
             "endpoints": {
-                "primary": [{
-                    "name": domain_answers.get("ENDPOINTS", "TBD"),
-                    "timepoint": "TBD",
-                    "instrument": None,
-                }],
+                "primary": [
+                    {
+                        "name": domain_answers.get("ENDPOINTS", "TBD"),
+                        "timepoint": "TBD",
+                        "instrument": None,
+                    }
+                ],
                 "secondary": [],
                 "safety": [],
             },
@@ -1043,9 +1045,7 @@ class IntakeService:
             )
         elif domain and domain in _DOMAIN_ORDER:
             if domain != parsed.get("domain"):
-                message = (
-                    f"Thank you for that information. {_DOMAIN_QUESTIONS[domain]}"
-                )
+                message = f"Thank you for that information. {_DOMAIN_QUESTIONS[domain]}"
             else:
                 message = parsed.get("message", _DOMAIN_QUESTIONS[domain])
         else:

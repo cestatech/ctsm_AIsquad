@@ -64,9 +64,9 @@ def build_adam_define_xml(content: dict) -> str:
     study_el = ET.SubElement(root, "Study", attrib={"OID": f"ST.{study_id}"})
     globals_el = ET.SubElement(study_el, "GlobalVariables")
     ET.SubElement(globals_el, "StudyName").text = str(study_name)
-    ET.SubElement(globals_el, "StudyDescription").text = (
-        f"ADaM IG {ig_version} analysis dataset definitions"
-    )
+    ET.SubElement(
+        globals_el, "StudyDescription"
+    ).text = f"ADaM IG {ig_version} analysis dataset definitions"
     ET.SubElement(globals_el, "ProtocolName").text = str(study_id)
 
     mdv = ET.SubElement(
@@ -144,9 +144,7 @@ def build_adam_define_xml(content: dict) -> str:
             item_ref_attrs: dict[str, str] = {
                 "ItemOID": item_oid,
                 "Mandatory": (
-                    "Yes"
-                    if normalized["name"] in {"STUDYID", "USUBJID"}
-                    else "No"
+                    "Yes" if normalized["name"] in {"STUDYID", "USUBJID"} else "No"
                 ),
                 "OrderNumber": str(order),
             }

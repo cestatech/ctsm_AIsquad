@@ -33,9 +33,21 @@ def _fixture_csr_content() -> dict:
 
 def _fixture_adam_datasets() -> list[dict]:
     return [
-        {"name": "ADSL", "label": "Subject Level Analysis Dataset", "record_count": 480},
-        {"name": "ADAE", "label": "Adverse Events Analysis Dataset", "record_count": 1322},
-        {"name": "ADBP", "label": "Blood Pressure Analysis Dataset", "record_count": None},
+        {
+            "name": "ADSL",
+            "label": "Subject Level Analysis Dataset",
+            "record_count": 480,
+        },
+        {
+            "name": "ADAE",
+            "label": "Adverse Events Analysis Dataset",
+            "record_count": 1322,
+        },
+        {
+            "name": "ADBP",
+            "label": "Blood Pressure Analysis Dataset",
+            "record_count": None,
+        },
     ]
 
 

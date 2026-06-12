@@ -26,9 +26,7 @@ class AzureBlobStorageBackend(StorageBackend):
         if client is not None:
             self._client = client
         elif connection_string:
-            self._client = BlobServiceClient.from_connection_string(
-                connection_string
-            )
+            self._client = BlobServiceClient.from_connection_string(connection_string)
         elif account_name and sas_token:
             account_url = f"https://{account_name}.blob.core.windows.net"
             self._client = BlobServiceClient(

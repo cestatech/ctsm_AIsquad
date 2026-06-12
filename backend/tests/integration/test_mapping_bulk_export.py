@@ -14,9 +14,7 @@ from app.models.study import Study
 _CSV = b"subject_id,age,treatment\nS001,45,A\nS002,52,B\n"
 
 
-async def _upload_dataset_id(
-    iclient: AsyncClient, study_id, admin_tok: str
-) -> str:
+async def _upload_dataset_id(iclient: AsyncClient, study_id, admin_tok: str) -> str:
     upload = await iclient.post(
         f"/api/v1/studies/{study_id}/uploads",
         files={"file": ("bulk_map.csv", _CSV, "text/csv")},
@@ -128,9 +126,7 @@ class TestBulkRejectMappings:
             f"/api/v1/raw-data/datasets/{dataset_id}/fields",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
-        rejected_fields = [
-            f for f in fields.json() if f["id"] in mapping_ids
-        ]
+        rejected_fields = [f for f in fields.json() if f["id"] in mapping_ids]
         assert all(f["mapping_status"] == "REJECTED" for f in rejected_fields)
 
         mapping_uuids = [UUID(field_id) for field_id in mapping_ids]

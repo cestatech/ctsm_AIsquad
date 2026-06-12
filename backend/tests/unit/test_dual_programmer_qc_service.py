@@ -40,10 +40,12 @@ class TestDualProgrammerQC:
                 study_id=uuid4(),
                 actor=actor,
                 input_payload={
-                    "domains": [{
-                        "domain": "DM",
-                        "observations": [{"STUDYID": "S1", "USUBJID": "S1-001"}],
-                    }],
+                    "domains": [
+                        {
+                            "domain": "DM",
+                            "observations": [{"STUDYID": "S1", "USUBJID": "S1-001"}],
+                        }
+                    ],
                 },
                 output_artifact_id=uuid4(),
             )

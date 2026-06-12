@@ -139,7 +139,9 @@ class BaseGenerator(ABC):
                 content=content,
             )
 
-            reasoning = self._build_detailed_reasoning(job=job, study=study, content=content)
+            reasoning = self._build_detailed_reasoning(
+                job=job, study=study, content=content
+            )
 
             # CIP: complete decision
             await self._ai_decision_svc.complete_decision(
@@ -615,7 +617,9 @@ class BaseGenerator(ABC):
                 continue
 
         detail = str(last_error) if last_error else "no JSON object found"
-        raise ValueError(f"Could not parse JSON from response: {detail}") from last_error
+        raise ValueError(
+            f"Could not parse JSON from response: {detail}"
+        ) from last_error
 
     # ------------------------------------------------------------------
     # Job status helpers

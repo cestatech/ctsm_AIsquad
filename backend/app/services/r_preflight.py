@@ -75,7 +75,9 @@ def preflight_input_validation(
         domains = input_payload.get("domains", [])
         if not domains:
             errors.append("No SDTM domains provided for ADaM derivation.")
-        dm = next((d for d in domains if str(d.get("domain", "")).upper() == "DM"), None)
+        dm = next(
+            (d for d in domains if str(d.get("domain", "")).upper() == "DM"), None
+        )
         if dm is None:
             warnings.append("DM domain not found — ADSL derivation may fail.")
 

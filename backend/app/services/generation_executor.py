@@ -116,13 +116,9 @@ async def execute_generation_job(job_id: UUID, organization_id: UUID) -> None:
                         select(GenerationJob).where(GenerationJob.id == job_id)
                     )
                     failed_job = err_result.scalar_one_or_none()
-                    if (
-                        failed_job
-                        and failed_job.status
-                        not in (
-                            GenerationJobStatus.COMPLETED,
-                            GenerationJobStatus.CANCELLED,
-                        )
+                    if failed_job and failed_job.status not in (
+                        GenerationJobStatus.COMPLETED,
+                        GenerationJobStatus.CANCELLED,
                     ):
                         failed_job.status = GenerationJobStatus.FAILED
                         failed_job.error_message = str(exc)[:2000]

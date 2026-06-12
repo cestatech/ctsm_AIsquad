@@ -26,7 +26,9 @@ def _fmt(value: Any) -> str:
         for item in value:
             if isinstance(item, dict):
                 parts.append(
-                    ", ".join(f"{k}: {_fmt(v)}" for k, v in item.items() if v is not None)
+                    ", ".join(
+                        f"{k}: {_fmt(v)}" for k, v in item.items() if v is not None
+                    )
                 )
             else:
                 parts.append(str(item))
@@ -127,12 +129,16 @@ def _protocol_reasoning(
     comparator = _fmt(design.get("comparator"))
     duration = _fmt(design.get("treatment_duration"))
     sample_size = _fmt(population.get("estimated_sample_size"))
-    inclusion = _fmt(population.get("inclusion_criteria") or population.get("description"))
+    inclusion = _fmt(
+        population.get("inclusion_criteria") or population.get("description")
+    )
     exclusion = _fmt(population.get("exclusion_criteria"))
 
     primary_eps = endpoints.get("primary") or []
     primary_ep = primary_eps[0] if primary_eps else {}
-    primary_name = _fmt(primary_ep.get("name") if isinstance(primary_ep, dict) else primary_ep)
+    primary_name = _fmt(
+        primary_ep.get("name") if isinstance(primary_ep, dict) else primary_ep
+    )
     primary_timepoint = _fmt(
         primary_ep.get("timepoint") if isinstance(primary_ep, dict) else None
     )
@@ -152,7 +158,11 @@ def _protocol_reasoning(
             f"the intake Study Brief specified these characteristics in study_overview. "
             f"Study design was set to {design_type} with {blinding} blinding and "
             f"{randomization} randomization"
-            + (f", using {comparator} as comparator" if comparator != "not specified in intake" else "")
+            + (
+                f", using {comparator} as comparator"
+                if comparator != "not specified in intake"
+                else ""
+            )
             + (f", over {duration}" if duration != "not specified in intake" else "")
             + (
                 f", targeting {sample_size} subjects"
@@ -363,10 +373,19 @@ def _missing_inputs_note(brief: dict[str, Any]) -> str:
     missing: list[str] = []
     checks = [
         ("study_design.design_type", brief.get("study_design", {}).get("design_type")),
-        ("population.inclusion_criteria", brief.get("population", {}).get("inclusion_criteria")),
+        (
+            "population.inclusion_criteria",
+            brief.get("population", {}).get("inclusion_criteria"),
+        ),
         ("endpoints.primary", brief.get("endpoints", {}).get("primary")),
-        ("safety.monitoring_approach", brief.get("safety", {}).get("monitoring_approach")),
-        ("statistical.primary_analysis_method", brief.get("statistical", {}).get("primary_analysis_method")),
+        (
+            "safety.monitoring_approach",
+            brief.get("safety", {}).get("monitoring_approach"),
+        ),
+        (
+            "statistical.primary_analysis_method",
+            brief.get("statistical", {}).get("primary_analysis_method"),
+        ),
     ]
     for path, value in checks:
         if value in (None, "", [], "TBD", "not specified in intake"):
