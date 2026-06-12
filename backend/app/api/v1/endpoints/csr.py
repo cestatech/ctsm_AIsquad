@@ -28,6 +28,8 @@ from app.schemas.csr import (
     CSRGenerationRequest,
     CSRGenerationResponse,
     CSRRequirementResponse,
+    CSRSectionProseResponse,
+    CSRSectionRegenerateRequest,
     StudyCSRReadinessResponse,
 )
 from app.services.audit_service import AuditService
@@ -158,6 +160,38 @@ async def generate_csr_from_tlf(
         study_id=result.artifact.study_id,
         source_tlf_artifact_ids=result.source_tlf_artifact_ids,
         source_study_artifact_ids=result.source_study_artifact_ids,
+    )
+
+
+@router.post(
+    "/artifacts/{artifact_id}/sections/{section_id}/regenerate",
+    response_model=CSRSectionProseResponse,
+    summary="Regenerate prose for a single CSR section",
+)
+async def regenerate_csr_section(
+    artifact_id: UUID,
+    section_id: str,
+    request: Request,
+    body: CSRSectionRegenerateRequest | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CSRSectionProseResponse:
+    """Re-generate ICH E3 prose for one CSR section without rebuilding the full report."""
+    svc = CSRGenerationService(db)
+    opts = body or CSRSectionRegenerateRequest()
+    prose, ai_decision_id = await svc.regenerate_section_prose(
+        csr_artifact_id=artifact_id,
+        section_id=section_id,
+        actor=current_user,
+        instructions=opts.instructions,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return CSRSectionProseResponse(
+        section_id=section_id,
+        prose=prose,
+        ai_decision_id=ai_decision_id,
     )
 
 

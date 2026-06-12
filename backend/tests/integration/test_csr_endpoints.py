@@ -146,6 +146,26 @@ class TestCSREndpoints:
         assert artifact.status_code == 200
         assert artifact.json()["artifact_type"] == "CSR"
 
+        exported = await iclient.get(
+            f"/api/v1/artifacts/{data['artifact_id']}/export/json",
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert exported.status_code == 200
+        sections = exported.json()["content"].get("sections", [])
+        assert sections
+        assert all(section.get("prose") for section in sections)
+
+        regen = await iclient.post(
+            f"/api/v1/csr/artifacts/{data['artifact_id']}/sections/13/regenerate",
+            json={"instructions": "Highlight primary endpoint results."},
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+        assert regen.status_code == 200
+        regen_data = regen.json()
+        assert regen_data["section_id"] == "13"
+        assert regen_data["prose"]
+        assert regen_data["ai_decision_id"]
+
     async def test_generate_study_csr(
         self,
         iclient: AsyncClient,

@@ -55,3 +55,13 @@ class ReviewersGuideResponse(BaseModel):
     filename: str
     media_type: str = "application/pdf"
     content: bytes
+
+
+class CSRSectionRegenerateRequest(BaseModel):
+    instructions: str | None = None
+
+
+class CSRSectionProseResponse(BaseModel):
+    section_id: str
+    prose: str
+    ai_decision_id: UUID

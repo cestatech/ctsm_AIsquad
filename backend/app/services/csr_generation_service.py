@@ -39,6 +39,8 @@ from app.services.data_cut_service import (
     extract_data_cut,
     prepare_pipeline_artifact,
 )
+from app.services.csr_prose_service import assemble_context
+from app.services.generators.csr_generator import CSRGenerator
 from app.services.validation_service import ValidationService
 
 _CSR_BLOCKED_MESSAGE = (
@@ -47,6 +49,7 @@ _CSR_BLOCKED_MESSAGE = (
 )
 
 _AGENT_NAME = "csr-generation-agent"
+_PROSE_AGENT_NAME = "csr-prose-generator"
 _MODEL_ID = "claude-sonnet-4-20250514"
 
 _SYSTEM_PROMPT = """You are a senior medical writer assembling an ICH E3 Clinical Study Report (CSR).
@@ -350,6 +353,24 @@ class CSRGenerationService:
             data_cut=data_cut,
             generate_shell=generate_shell,
         )
+        if not generate_shell:
+            protocol_content: dict = {}
+            sap_content: dict = {}
+            protocol = study_artifacts.get("PROTOCOL")
+            sap = study_artifacts.get("SAP")
+            if protocol:
+                protocol_content = await self._load_artifact_content(protocol)
+            if sap:
+                sap_content = await self._load_artifact_content(sap)
+            content = await self._enrich_sections_with_prose(
+                actor=actor,
+                study=study,
+                content=content,
+                merged_tables=merged_tables,
+                protocol_content=protocol_content,
+                sap_content=sap_content,
+                tlf_contents=tlf_contents,
+            )
 
         if generate_shell:
             art_name = f"{study.name} — CSR Shell"
@@ -417,6 +438,13 @@ class CSRGenerationService:
                 csr_artifact=artifact,
                 csr_content=content,
                 study_artifacts=study_artifacts,
+                actor=actor,
+                ai_decision_id=decision.id,
+            )
+            await self._record_section_prose_lineage(
+                tlf_artifact=tlf_art,
+                csr_artifact=artifact,
+                csr_content=content,
                 actor=actor,
                 ai_decision_id=decision.id,
             )
@@ -573,22 +601,6 @@ class CSRGenerationService:
                     "message": _CSR_BLOCKED_MESSAGE,
                 },
             )
-
-        if self._client:
-            try:
-                return await self._call_claude(
-                    study=study,
-                    merged_tables=merged_tables,
-                    protocol_content=protocol_content,
-                    sap_content=sap_content,
-                    tlf_artifact_ids=tlf_artifact_ids,
-                    upstream=upstream,
-                    data_cut=data_cut,
-                )
-            except HTTPException:
-                raise
-            except Exception:
-                pass
 
         return self._deterministic_csr(
             study=study,
@@ -1045,6 +1057,291 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
                     },
                 )
         return content
+
+    async def regenerate_section_prose(
+        self,
+        csr_artifact_id: UUID,
+        section_id: str,
+        actor: User,
+        instructions: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> tuple[str, UUID]:
+        """Regenerate prose for a single CSR section without rebuilding the full CSR."""
+        check_permission(actor, Permission.ARTIFACT_CREATE)
+
+        artifact = await self._artifact_repo.get_by_id(
+            csr_artifact_id, actor.organization_id
+        )
+        if artifact.artifact_type != ArtifactType.CSR:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "NOT_CSR", "message": "Artifact must be CSR."},
+            )
+
+        content = await self._load_artifact_content(artifact)
+        section = self._find_section(content, section_id)
+        if section is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "code": "SECTION_NOT_FOUND",
+                    "message": f"CSR section '{section_id}' not found.",
+                },
+            )
+
+        study = await self._study_repo.get(artifact.study_id, actor.organization_id)
+        study_artifacts = await self._load_study_context_artifacts(
+            artifact.study_id, actor.organization_id
+        )
+        protocol_content: dict = {}
+        sap_content: dict = {}
+        if study_artifacts.get("PROTOCOL"):
+            protocol_content = await self._load_artifact_content(
+                study_artifacts["PROTOCOL"]
+            )
+        if study_artifacts.get("SAP"):
+            sap_content = await self._load_artifact_content(study_artifacts["SAP"])
+
+        tlf_contents: list[dict] = []
+        tlf_artifacts: list[Artifact] = []
+        for raw_id in content.get("source_tlf_artifact_ids", []):
+            try:
+                tlf_id = UUID(str(raw_id))
+            except ValueError:
+                continue
+            try:
+                tlf_art = await self._artifact_repo.get_by_id(
+                    tlf_id, actor.organization_id
+                )
+            except HTTPException:
+                continue
+            if tlf_art.artifact_type != ArtifactType.TLF:
+                continue
+            tlf_artifacts.append(tlf_art)
+            tlf_contents.append(await self._load_artifact_content(tlf_art))
+
+        merged_tables = self._merge_tlf_tables(tlf_contents)
+        prose, decision_id = await self._generate_section_prose(
+            actor=actor,
+            study=study,
+            section=section,
+            merged_tables=merged_tables,
+            protocol_content=protocol_content,
+            sap_content=sap_content,
+            tlf_content=tlf_contents[0] if tlf_contents else {},
+            instructions=instructions,
+        )
+
+        section["prose"] = prose
+        section["ai_decision_id"] = str(decision_id)
+        section["status"] = "DRAFT"
+        content["sections"] = [
+            section if str(s.get("number")) == str(section_id) else s
+            for s in content.get("sections", [])
+        ]
+
+        await self._artifact_svc.update_artifact_content(
+            csr_artifact_id,
+            actor.organization_id,
+            actor,
+            content,
+            change_summary=f"Regenerated CSR Section {section_id} prose",
+        )
+
+        if tlf_artifacts:
+            tlf_node = await self._graph.find_node_for_domain_record(
+                tlf_artifacts[0].id, "tlf_artifact", actor.organization_id
+            ) or await self._graph.find_node_for_domain_record(
+                tlf_artifacts[0].id, "artifact", actor.organization_id
+            )
+            csr_node = await self._graph.find_node_for_domain_record(
+                artifact.id, "csr_artifact", actor.organization_id
+            )
+            await self._lineage.record_field_lineage(
+                organization_id=actor.organization_id,
+                lineage_type=DataLineageType.DERIVED,
+                source_type="tlf_artifact",
+                source_id=tlf_artifacts[0].id,
+                source_field=section_id,
+                target_type="csr_section",
+                target_id=artifact.id,
+                target_field=section_id,
+                target_domain=section.get("title", f"Section {section_id}"),
+                transformation_logic=(
+                    f"Regenerated CSR Section {section_id} prose from TLF package"
+                ),
+                is_ai_generated=True,
+                ai_decision_id=decision_id,
+                study_id=artifact.study_id,
+                created_by=actor,
+                source_graph_node_id=tlf_node.id if tlf_node else None,
+                target_graph_node_id=csr_node.id if csr_node else None,
+            )
+
+        await self._audit.log(
+            action=AuditAction.AI_GENERATION_COMPLETED,
+            resource_type="csr_section",
+            organization_id=actor.organization_id,
+            actor_user_id=actor.id,
+            resource_id=artifact.id,
+            after_state={
+                "artifact_id": str(artifact.id),
+                "section_id": section_id,
+                "ai_decision_id": str(decision_id),
+            },
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        return prose, decision_id
+
+    @staticmethod
+    def _study_context_dict(study) -> dict:
+        return {
+            "name": study.name,
+            "protocol_number": study.protocol_number,
+            "sponsor": getattr(study, "sponsor", None),
+            "phase": str(getattr(study, "phase", None) or ""),
+            "indication": getattr(study, "indication", None),
+        }
+
+    @staticmethod
+    def _find_section(content: dict, section_id: str) -> dict | None:
+        for section in content.get("sections", []):
+            if str(section.get("number")) == str(section_id):
+                return section
+        return None
+
+    async def _enrich_sections_with_prose(
+        self,
+        *,
+        actor: User,
+        study,
+        content: dict,
+        merged_tables: list[dict],
+        protocol_content: dict,
+        sap_content: dict,
+        tlf_contents: list[dict],
+    ) -> dict:
+        enriched: list[dict] = []
+        decision_ids: list[str] = []
+        study_dict = self._study_context_dict(study)
+        tlf_content = tlf_contents[0] if tlf_contents else {}
+
+        for section in content.get("sections", []):
+            section_id = str(section.get("number", ""))
+            prose, decision_id = await self._generate_section_prose(
+                actor=actor,
+                study=study,
+                section=section,
+                merged_tables=merged_tables,
+                protocol_content=protocol_content,
+                sap_content=sap_content,
+                tlf_content=tlf_content,
+            )
+            updated = dict(section)
+            updated["prose"] = prose
+            updated["ai_decision_id"] = str(decision_id)
+            updated["status"] = "DRAFT"
+            if updated.get("content_outline") and not updated.get("narrative_summary"):
+                updated["narrative_summary"] = updated["content_outline"]
+            enriched.append(updated)
+            decision_ids.append(str(decision_id))
+
+        content = dict(content)
+        content["sections"] = enriched
+        content["section_ai_decision_ids"] = decision_ids
+        content["prose_generated"] = True
+        return content
+
+    async def _generate_section_prose(
+        self,
+        *,
+        actor: User,
+        study,
+        section: dict,
+        merged_tables: list[dict],
+        protocol_content: dict,
+        sap_content: dict,
+        tlf_content: dict,
+        instructions: str | None = None,
+    ) -> tuple[str, UUID]:
+        section_id = str(section.get("number", ""))
+        context = assemble_context(
+            section_id=section_id,
+            study=self._study_context_dict(study),
+            protocol_content=protocol_content,
+            sap_content=sap_content,
+            merged_tables=merged_tables,
+            tlf_content=tlf_content,
+            section_entry=section,
+            instructions=instructions,
+        )
+        decision = await self._ai_decision.begin_decision(
+            organization_id=actor.organization_id,
+            agent_name=_PROSE_AGENT_NAME,
+            decision_type="CSR_SECTION_PROSE",
+            study_id=study.id,
+            model_id=_MODEL_ID,
+            input_context={"section_id": section_id, "context": context},
+        )
+        prose = await CSRGenerator.generate_section_prose(
+            section_id,
+            context,
+            api_key=self._settings.ANTHROPIC_API_KEY,
+            model_id=_MODEL_ID,
+        )
+        await self._ai_decision.complete_decision(
+            decision=decision,
+            output={
+                "section_id": section_id,
+                "prose_preview": prose[:500],
+                "prose_length": len(prose),
+            },
+            reasoning=f"Generated ICH E3 prose for CSR Section {section_id}",
+            confidence=0.8,
+        )
+        return prose, decision.id
+
+    async def _record_section_prose_lineage(
+        self,
+        *,
+        tlf_artifact: Artifact,
+        csr_artifact: Artifact,
+        csr_content: dict,
+        actor: User,
+        ai_decision_id: UUID,
+    ) -> None:
+        tlf_node = await self._graph.find_node_for_domain_record(
+            tlf_artifact.id, "tlf_artifact", actor.organization_id
+        )
+        csr_node = await self._graph.find_node_for_domain_record(
+            csr_artifact.id, "csr_artifact", actor.organization_id
+        )
+        for section in csr_content.get("sections", []):
+            section_id = str(section.get("number", "?"))
+            section_decision = section.get("ai_decision_id")
+            decision_id = UUID(str(section_decision)) if section_decision else ai_decision_id
+            await self._lineage.record_field_lineage(
+                organization_id=actor.organization_id,
+                lineage_type=DataLineageType.DERIVED,
+                source_type="tlf_artifact",
+                source_id=tlf_artifact.id,
+                source_field=section_id,
+                target_type="csr_section",
+                target_id=csr_artifact.id,
+                target_field=section_id,
+                target_domain=section.get("title", f"Section {section_id}"),
+                transformation_logic=(
+                    f"CSR Section {section_id} prose derived from TLF package"
+                ),
+                is_ai_generated=True,
+                ai_decision_id=decision_id,
+                study_id=tlf_artifact.study_id,
+                created_by=actor,
+                source_graph_node_id=tlf_node.id if tlf_node else None,
+                target_graph_node_id=csr_node.id if csr_node else None,
+            )
 
     @staticmethod
     def _parse_json(text: str) -> dict:

@@ -2,10 +2,26 @@
 
 from __future__ import annotations
 
+import json
+
+import anthropic
+from anthropic.types import TextBlock
+
 from app.models.artifact import ArtifactType
 from app.models.generation import GenerationJob
 from app.models.study import Study
 from app.services.generators.base_generator import BaseGenerator
+
+_PROSE_SYSTEM = """You are a senior medical writer drafting ICH E3 Clinical Study Report prose.
+
+Write regulatory-ready narrative paragraphs for the requested CSR section only.
+- Use complete sentences and professional medical writing tone
+- Reference TLF tables by ID when provided
+- Do not invent patient-level results not supported by the context
+- Return plain text prose only (no JSON, no markdown headings)
+"""
+
+_DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
 _SYSTEM = """You are a senior medical writer with expertise in ICH E3 Clinical Study Report structure and regulatory submission standards for FDA, EMA, and PMDA.
 
@@ -152,3 +168,124 @@ Return only valid JSON."""
             max_tokens=16000,
         )
         return self._parse_json_response(text)
+
+    @staticmethod
+    async def generate_section_prose(
+        section_id: str,
+        context: dict,
+        *,
+        api_key: str | None = None,
+        model_id: str = _DEFAULT_MODEL,
+    ) -> str:
+        """Generate full ICH E3 prose for one CSR section."""
+        if not api_key:
+            return CSRGenerator._deterministic_section_prose(section_id, context)
+
+        title = context.get("section_title", f"Section {section_id}")
+        user_prompt = f"""Draft ICH E3 CSR Section {section_id}: {title}
+
+Context:
+{json.dumps(context, indent=2, default=str)}
+
+Write 2–5 paragraphs of submission-ready prose for this section."""
+
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        response = await client.messages.create(
+            model=model_id,
+            max_tokens=4000,
+            system=_PROSE_SYSTEM,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        text = ""
+        for block in response.content:
+            if isinstance(block, TextBlock):
+                text += block.text
+        prose = text.strip()
+        return prose or CSRGenerator._deterministic_section_prose(section_id, context)
+
+    @staticmethod
+    def _deterministic_section_prose(section_id: str, context: dict) -> str:
+        """Template prose when AI is unavailable."""
+        title = context.get("section_title", f"Section {section_id}")
+        study_name = context.get("study_name", "the study")
+        protocol = context.get("protocol_number", "the protocol")
+        tables = context.get("tlf_tables") or []
+        table_refs = ", ".join(
+            f"{t.get('table_id') or t.get('id')}: {t.get('title', 'TLF output')}"
+            for t in tables[:4]
+        ) or "available TLF outputs"
+
+        protocol_excerpt = context.get("protocol_excerpt") or {}
+        sap_excerpt = context.get("sap_excerpt") or {}
+        primary_endpoint = (
+            sap_excerpt.get("primary_endpoint")
+            or protocol_excerpt.get("primary_endpoint")
+            or "the prespecified primary endpoint"
+        )
+        objectives = protocol_excerpt.get("objectives_primary") or []
+        objective_text = (
+            "; ".join(objectives) if objectives else "the study objectives defined in the protocol"
+        )
+        instructions = context.get("instructions")
+        instruction_note = (
+            f" Additional author guidance: {instructions}" if instructions else ""
+        )
+
+        templates: dict[str, str] = {
+            "1": (
+                f"This clinical study report presents results for {study_name} "
+                f"(protocol {protocol}). The report follows ICH E3 structure and "
+                f"integrates programmed TLF outputs referenced throughout the document."
+            ),
+            "2": (
+                f"The synopsis summarizes the design, population, and key findings for "
+                f"{study_name}. Objectives included {objective_text}. Efficacy and safety "
+                f"results are integrated from TLF tables {table_refs}."
+            ),
+            "9": (
+                f"Section 9 introduces the clinical background and rationale for {study_name}. "
+                f"The investigational program was conducted under protocol {protocol} to "
+                f"address the objectives described in the approved protocol and SAP."
+            ),
+            "10": (
+                f"The study objectives were {objective_text}. The primary endpoint was "
+                f"{primary_endpoint}, with supporting secondary endpoints and estimands "
+                f"defined in the SAP."
+            ),
+            "11": (
+                f"The investigational plan for {study_name} followed the approved protocol "
+                f"design ({protocol_excerpt.get('design_summary') or 'randomized controlled design'}). "
+                f"Procedures, visit schedules, and analysis populations were executed per the SAP."
+            ),
+            "12": (
+                f"Study patients are summarized using disposition and demographic TLF tables "
+                f"({table_refs}). Subject accountability and baseline characteristics are "
+                f"presented in accordance with ICH E3 expectations for Section 12."
+            ),
+            "13": (
+                f"Efficacy results for the primary endpoint ({primary_endpoint}) are presented "
+                f"in Section 13 using TLF evidence ({table_refs}). Estimand definitions and "
+                f"statistical methods followed the SAP."
+            ),
+            "14": (
+                f"Safety evaluation integrates adverse events, laboratory, and vital sign findings "
+                f"from TLF tables ({table_refs}) together with SDTM/ADaM traceability. Exposure "
+                f"and treatment-emergent events are summarized for the analysis populations."
+            ),
+            "15": (
+                f"The overall discussion integrates efficacy findings related to {primary_endpoint} "
+                f"with the safety profile observed in {study_name}. Benefit-risk conclusions "
+                f"should be finalized by the medical writer prior to regulatory submission."
+            ),
+        }
+
+        base = templates.get(
+            section_id,
+            (
+                f"This section ({title}) for {study_name} is drafted from protocol {protocol} "
+                f"and TLF outputs ({table_refs}) pending medical writer review."
+            ),
+        )
+        if context.get("narrative_summary"):
+            base = f"{base} {context['narrative_summary']}"
+        return f"{base}{instruction_note}"
