@@ -14,6 +14,18 @@ interface EdgeListParams {
   page_size?: number;
 }
 
+export interface ImpactedNode {
+  id: string;
+  node_type: string;
+  name: string;
+  depth: number;
+}
+
+export interface GapImpactReport {
+  node_id: string;
+  impacted_nodes: ImpactedNode[];
+}
+
 export interface TraceabilityGapItem {
   node_id: string;
   node_label: string;
@@ -21,6 +33,7 @@ export interface TraceabilityGapItem {
   stage_index: number;
   missing_link_from: string;
   message: string;
+  impacted_nodes: ImpactedNode[];
 }
 
 export interface TraceabilityGapReport {
@@ -115,13 +128,8 @@ export const graphApi = {
       token,
     }),
 
-  getImpact: (nodeId: string, token: string, maxDepth = 5) =>
-    apiClient.get<{
-      node_id: string;
-      affected_downstream_count: number;
-      affected_nodes: GraphNode[];
-      affected_edges: GraphEdge[];
-    }>(`/graph/${nodeId}/impact`, {
+  getImpact: (nodeId: string, token: string, maxDepth = 10) =>
+    apiClient.get<GapImpactReport>(`/graph/${nodeId}/impact`, {
       params: { max_depth: maxDepth },
       token,
     }),

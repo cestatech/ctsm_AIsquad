@@ -117,16 +117,18 @@ export function GraphRelationshipsPanel({
       {impact && (
         <div className="border-t border-slate-100 pt-3">
           <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
-            Downstream impact ({impact.affected_downstream_count})
+            Downstream impact ({impact.impacted_nodes.length})
           </p>
-          {impact.affected_nodes.length === 0 ? (
+          {impact.impacted_nodes.length === 0 ? (
             <p className="text-[11px] text-slate-300">No downstream dependencies.</p>
           ) : (
             <ul className="space-y-1">
-              {impact.affected_nodes.slice(0, 5).map((n) => (
+              {impact.impacted_nodes.slice(0, 5).map((n) => (
                 <li key={n.id} className="text-[11px] text-slate-600">
-                  {n.label}{" "}
-                  <span className="text-slate-400 font-mono text-[10px]">({n.node_type})</span>
+                  {n.name}{" "}
+                  <span className="text-slate-400 font-mono text-[10px]">
+                    ({n.node_type} · d{n.depth})
+                  </span>
                 </li>
               ))}
             </ul>

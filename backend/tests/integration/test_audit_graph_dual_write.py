@@ -107,5 +107,4 @@ class TestAuditGraphDualWrite:
         assert resp.status_code == 200
         data = resp.json()
         assert data["node_id"] == node["id"]
-        assert "affected_downstream_count" in data
-        assert isinstance(data["affected_nodes"], list)
+        assert isinstance(data["impacted_nodes"], list)

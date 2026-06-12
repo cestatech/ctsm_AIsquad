@@ -11,13 +11,14 @@ through to the final CSR.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.graph import GraphEdge, GraphNode, GraphNodeType
+from app.services.impact_analysis_service import ImpactAnalysisService, ImpactedNode
 
 # Canonical lineage chain in order
 CHAIN: list[GraphNodeType] = [
@@ -41,6 +42,7 @@ class TraceabilityGap:
     stage_index: int
     missing_link_from: str
     message: str
+    impacted_nodes: list[ImpactedNode] = field(default_factory=list)
 
 
 @dataclass
@@ -113,6 +115,13 @@ class TraceabilityService:
                             ),
                         )
                     )
+
+        impact_svc = ImpactAnalysisService(self._db)
+        for gap in gaps:
+            impact = await impact_svc.get_downstream_impact(
+                gap.node_id, organization_id
+            )
+            gap.impacted_nodes = impact.impacted_nodes
 
         nodes_with_gaps = len(gaps)
         coverage = (

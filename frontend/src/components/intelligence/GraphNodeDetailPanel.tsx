@@ -308,8 +308,8 @@ export function GraphNodeDetailPanel({
           <p className="text-[11px] text-slate-400">Analyzing…</p>
         ) : impact ? (
           <p className="text-[11px] text-slate-600">
-            <span className="font-semibold text-slate-900">{impact.affected_downstream_count}</span>{" "}
-            node{impact.affected_downstream_count !== 1 ? "s" : ""} affected downstream
+            <span className="font-semibold text-slate-900">{impact.impacted_nodes.length}</span>{" "}
+            node{impact.impacted_nodes.length !== 1 ? "s" : ""} affected downstream
           </p>
         ) : (
           <p className="text-[11px] text-slate-400">Unavailable</p>

@@ -12,10 +12,21 @@ from uuid import uuid4
 import pytest
 
 from app.models.graph import GraphNodeType
+from app.services.impact_analysis_service import GapImpactReport, ImpactAnalysisService
 from app.services.traceability_service import (
     CHAIN,
     TraceabilityService,
 )
+
+
+@pytest.fixture(autouse=True)
+def _mock_downstream_impact(monkeypatch):
+    async def _empty_impact(self, node_id, organization_id, *, max_depth=10):
+        return GapImpactReport(node_id=node_id, impacted_nodes=[])
+
+    monkeypatch.setattr(
+        ImpactAnalysisService, "get_downstream_impact", _empty_impact
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -36,11 +36,12 @@ from app.schemas.graph_event import (
     GraphEntityRelationshipsResponse,
     GraphEventListResponse,
     GraphEventResponse,
-    GraphImpactResponse,
     GraphNodeContextResponse,
     GraphStudySummaryResponse,
 )
+from app.schemas.traceability import GapImpactReport, ImpactedNode
 from app.services.context_graph_service import ContextGraphService
+from app.services.impact_analysis_service import ImpactAnalysisService
 from app.services.traceability_service import TraceabilityService
 
 router = APIRouter()
@@ -257,6 +258,15 @@ async def get_traceability_gaps(
                 stage_index=g.stage_index,
                 missing_link_from=g.missing_link_from,
                 message=g.message,
+                impacted_nodes=[
+                    ImpactedNode(
+                        id=node.id,
+                        node_type=node.node_type,
+                        name=node.name,
+                        depth=node.depth,
+                    )
+                    for node in g.impacted_nodes
+                ],
             )
             for g in report.gaps
         ],
@@ -360,24 +370,35 @@ async def get_node_context(
 
 @router.get(
     "/{node_id}/impact",
-    response_model=GraphImpactResponse,
+    response_model=GapImpactReport,
     summary="Downstream impact analysis for a node",
 )
 async def get_node_impact(
     node_id: UUID,
-    max_depth: int = Query(5, ge=1, le=10),
+    max_depth: int = Query(10, ge=1, le=10),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> GraphImpactResponse:
-    """Return downstream nodes and edges that would be affected by changes to this node."""
-    svc = ContextGraphService(db)
-    await svc.get_node(node_id, current_user.organization_id)
-    impact = await svc.get_impact_analysis(
+) -> GapImpactReport:
+    """Return downstream nodes affected if this gap node is not remediated."""
+    check_permission(current_user, Permission.ARTIFACT_APPROVE)
+    svc = ImpactAnalysisService(db)
+    impact = await svc.get_downstream_impact(
         node_id=node_id,
         organization_id=current_user.organization_id,
         max_depth=max_depth,
     )
-    return GraphImpactResponse.model_validate(impact)
+    return GapImpactReport(
+        node_id=impact.node_id,
+        impacted_nodes=[
+            ImpactedNode(
+                id=node.id,
+                node_type=node.node_type,
+                name=node.name,
+                depth=node.depth,
+            )
+            for node in impact.impacted_nodes
+        ],
+    )
 
 
 @router.get(

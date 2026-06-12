@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.models.graph import GraphEdgeType, GraphNodeType
+from app.schemas.traceability import ImpactedNode
 
 
 class GraphNodeResponse(BaseModel):
@@ -102,6 +103,7 @@ class TraceabilityGapItem(BaseModel):
     stage_index: int
     missing_link_from: str
     message: str
+    impacted_nodes: list[ImpactedNode] = Field(default_factory=list)
 
 
 class TraceabilityGapResponse(BaseModel):

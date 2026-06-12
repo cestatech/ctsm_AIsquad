@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { useIntelligenceStudy } from "@/hooks/useIntelligenceStudy";
-import { graphApi, type TraceabilityGapReport } from "@/lib/api/graph";
+import { graphApi } from "@/lib/api/graph";
 import { StudyPicker } from "@/components/intelligence/StudyPicker";
 import type { GraphEdge, GraphNode } from "@/types";
 
@@ -104,6 +105,53 @@ export default function TraceabilityMatrixPage() {
                 </div>
                 <div className={`text-2xl font-display font-bold tabular-nums ${gapReport.nodes_with_gaps > 0 ? "text-amber-700" : "text-emerald-700"}`}>
                   {gapReport.chain_coverage_pct}%
+                </div>
+              </div>
+            )}
+
+            {gapReport && gapReport.gaps.length > 0 && (
+              <div className="mb-5 bg-white border border-amber-200 overflow-hidden">
+                <div className="px-5 py-3 border-b border-amber-100 bg-amber-50">
+                  <h2 className="text-sm font-semibold font-display text-amber-900">
+                    Detected gaps
+                  </h2>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    Review downstream impact for each missing upstream link
+                  </p>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {gapReport.gaps.map((gap) => (
+                    <div
+                      key={gap.node_id}
+                      className="px-5 py-3 flex items-start justify-between gap-4"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-900">
+                          {gap.node_label}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {CHAIN_STAGES.find((s) => s.key === gap.node_type)?.label ??
+                            gap.node_type.replace(/_/g, " ")}{" "}
+                          · missing{" "}
+                          {CHAIN_STAGES.find((s) => s.key === gap.missing_link_from)
+                            ?.label ?? gap.missing_link_from.replace(/_/g, " ")}
+                        </p>
+                        <p className="text-[11px] text-amber-700 mt-1">{gap.message}</p>
+                        {gap.impacted_nodes.length > 0 && (
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            {gap.impacted_nodes.length} downstream node
+                            {gap.impacted_nodes.length !== 1 ? "s" : ""} at risk
+                          </p>
+                        )}
+                      </div>
+                      <Link
+                        href={`/intelligence/impact?node=${gap.node_id}&label=${encodeURIComponent(gap.node_label)}${studyId ? `&study=${studyId}` : ""}`}
+                        className="text-xs text-brand-600 hover:text-brand-700 font-medium shrink-0"
+                      >
+                        View impact →
+                      </Link>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

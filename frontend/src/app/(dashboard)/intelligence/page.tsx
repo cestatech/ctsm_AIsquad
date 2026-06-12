@@ -23,6 +23,13 @@ const INTELLIGENCE_SCREENS = [
     alwaysShow: true,
   },
   {
+    href: "/intelligence/impact",
+    title: "Impact Analysis",
+    description: "Downstream nodes at risk when a traceability gap is left unresolved.",
+    badge: null,
+    alwaysShow: true,
+  },
+  {
     href: "/intelligence/decisions",
     title: "AI Decisions",
     description: "Audit and review every AI-generated decision with full provenance: agent, model, reasoning, confidence.",
