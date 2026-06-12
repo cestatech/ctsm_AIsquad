@@ -10,10 +10,28 @@ export interface TLFGenerationResponse {
   source_adam_artifact_ids: string[];
 }
 
+export interface ListingFigureEntry {
+  sap_section: string;
+  output_title: string;
+  output_type: "table" | "listing" | "figure";
+  tlf_index: number;
+  status: string;
+}
+
+export interface ListingFigureCatalog {
+  sap_artifact_id: string | null;
+  entries: ListingFigureEntry[];
+}
+
 export const tlfApi = {
   generateFromAdam: (adamArtifactId: string, token: string) =>
     apiClient.post<TLFGenerationResponse>(
       `/tlf/artifacts/${adamArtifactId}/generate-tlf`,
       { token }
     ),
+
+  getCatalog: (artifactId: string, token: string) =>
+    apiClient.get<ListingFigureCatalog>(`/tlf/artifacts/${artifactId}/catalog`, {
+      token,
+    }),
 };
