@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+from collections.abc import Awaitable
 from functools import lru_cache
+from typing import Any, cast
 from uuid import uuid4
 
 from redis.asyncio import Redis
@@ -76,14 +78,19 @@ class LoginRateLimiter:
 
         token = uuid4().hex
         try:
-            retry_after = await self._redis.eval(
-                _ACQUIRE_SCRIPT,
-                1,
-                self._key(ip_address),
-                str(time.time()),
-                str(self._window_seconds),
-                str(self._max_attempts),
-                token,
+            # redis-py types eval() as `Awaitable[str] | str` because the stub
+            # is shared with the sync client; the asyncio client always awaits.
+            retry_after = await cast(
+                "Awaitable[Any]",
+                self._redis.eval(
+                    _ACQUIRE_SCRIPT,
+                    1,
+                    self._key(ip_address),
+                    str(time.time()),
+                    str(self._window_seconds),
+                    str(self._max_attempts),
+                    token,
+                ),
             )
         except RedisError:
             log.exception("Redis unavailable; allowing login attempt without IP limit")
@@ -98,11 +105,14 @@ class LoginRateLimiter:
         if not ip_address or not token:
             return
         try:
-            await self._redis.eval(
-                _RELEASE_SCRIPT,
-                1,
-                self._key(ip_address),
-                token,
+            await cast(
+                "Awaitable[Any]",
+                self._redis.eval(
+                    _RELEASE_SCRIPT,
+                    1,
+                    self._key(ip_address),
+                    token,
+                ),
             )
         except RedisError:
             log.exception("Redis unavailable while releasing login reservation")
