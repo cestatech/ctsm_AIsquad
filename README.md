@@ -273,7 +273,7 @@ alembic upgrade head
 python -m app.scripts.seed_dev  # optional dev data
 
 # 5. Start backend
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000 --no-proxy-headers
 
 # 6. Start frontend (new terminal)
 cd frontend
@@ -303,6 +303,7 @@ docker compose -f infrastructure/docker-compose.dev.yml up --build
 APP_ENV=development
 APP_SECRET_KEY=your-secret-key-min-32-chars
 APP_ALLOWED_ORIGINS=http://localhost:3000
+# Production example: TRUSTED_PROXIES=10.0.0.0/8,192.168.0.0/16
 
 # Database
 DATABASE_URL=postgresql+asyncpg://celerius:password@localhost:5432/celerius_dev
@@ -397,6 +398,11 @@ docker compose -f infrastructure/docker-compose.dev.yml up
 
 ### Staging / Production
 Deployment via GitHub Actions on push to `main`. See `.github/workflows/deploy.yml`.
+
+Set `TRUSTED_PROXIES` to the comma-separated IP addresses or CIDR ranges of the
+reverse proxies/load balancers that may supply `X-Forwarded-*` headers. Always
+start Uvicorn with `--no-proxy-headers`; the application middleware enforces the
+trusted-proxy policy.
 
 Required secrets in GitHub:
 - `DATABASE_URL` (production)

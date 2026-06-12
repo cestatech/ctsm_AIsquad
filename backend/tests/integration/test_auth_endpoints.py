@@ -10,14 +10,16 @@ from collections import defaultdict
 from uuid import uuid4
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 
 from app.core.exceptions import RateLimitError
+from app.core.proxy_headers import TrustedProxyHeadersMiddleware
 from app.main import app
 from app.models.audit import AuditAction, AuditLog
 from app.models.user import User
 from app.services.login_rate_limiter import get_login_rate_limiter
+
 
 def _unique_slug() -> str:
     return f"auth-test-{uuid4().hex[:8]}"
@@ -248,6 +250,54 @@ class TestLogin:
             )
         )
         assert audit_count == 5
+
+    async def test_trusted_proxy_records_forwarded_client_ip(
+        self, iclient: AsyncClient, idb
+    ):
+        user_agent = f"issue-25-trusted-{uuid4().hex}"
+        proxy_app = TrustedProxyHeadersMiddleware(app, trusted_proxies=["10.0.0.0/8"])
+        transport = ASGITransport(app=proxy_app, client=("10.0.0.5", 1234))
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/api/v1/auth/login",
+                headers={
+                    "X-Forwarded-For": "198.51.100.42, 10.0.0.4",
+                    "User-Agent": user_agent,
+                },
+                json={"email": _unique_email(), "password": "WrongPass999!"},
+            )
+
+        assert response.status_code == 401
+        audit = await idb.scalar(
+            select(AuditLog).where(AuditLog.user_agent == user_agent)
+        )
+        assert audit is not None
+        assert str(audit.ip_address) == "198.51.100.42"
+
+    async def test_untrusted_peer_cannot_spoof_audit_ip(
+        self, iclient: AsyncClient, idb
+    ):
+        user_agent = f"issue-25-untrusted-{uuid4().hex}"
+        proxy_app = TrustedProxyHeadersMiddleware(app, trusted_proxies=["10.0.0.0/8"])
+        transport = ASGITransport(app=proxy_app, client=("203.0.113.8", 1234))
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/api/v1/auth/login",
+                headers={
+                    "X-Forwarded-For": "198.51.100.42",
+                    "User-Agent": user_agent,
+                },
+                json={"email": _unique_email(), "password": "WrongPass999!"},
+            )
+
+        assert response.status_code == 401
+        audit = await idb.scalar(
+            select(AuditLog).where(AuditLog.user_agent == user_agent)
+        )
+        assert audit is not None
+        assert str(audit.ip_address) == "203.0.113.8"
 
 
 # ---------------------------------------------------------------------------

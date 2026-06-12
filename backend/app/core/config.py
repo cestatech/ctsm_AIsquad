@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     APP_SECRET_KEY: str
     APP_ALLOWED_ORIGINS: str = "http://localhost:3000"
     APP_DEBUG: bool = False
+    TRUSTED_PROXIES: str = ""
 
     # Database
     DATABASE_URL: PostgresDsn
@@ -104,6 +105,13 @@ class Settings(BaseSettings):
     def allowed_origins(self) -> list[str]:
         """Normalized CORS allowlist without trailing slashes."""
         return self.parse_origins(self.APP_ALLOWED_ORIGINS)
+
+    @property
+    def trusted_proxies(self) -> list[str]:
+        """Trusted reverse-proxy IP addresses or CIDR ranges."""
+        return [
+            proxy.strip() for proxy in self.TRUSTED_PROXIES.split(",") if proxy.strip()
+        ]
 
     @property
     def is_production(self) -> bool:
