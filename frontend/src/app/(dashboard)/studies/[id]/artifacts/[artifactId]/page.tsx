@@ -17,7 +17,7 @@ import { DataSourceBadge, dataSourceFromContent } from "@/components/data/DataSo
 import { GraphRelationshipsPanel } from "@/components/intelligence/GraphRelationshipsPanel";
 import { StatisticalQCPanel } from "@/components/intelligence/StatisticalQCPanel";
 import { tlfApi } from "@/lib/api/tlf";
-import { csrApi } from "@/lib/api/csr";
+import { csrApi, getCSREditorPath } from "@/lib/api/csr";
 import type { Artifact, ArtifactVersion, Comment } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -108,27 +108,45 @@ function StructuredContentView({ content }: { content: Record<string, unknown> }
   );
 }
 
+const ACTION_BUTTON_CLS = {
+  default: "border border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50",
+  danger: "border border-red-200 text-red-700 hover:border-red-300 hover:bg-red-50",
+  primary: "bg-brand-600 text-white hover:bg-brand-500",
+} as const;
+
 function ActionButton({
   label, variant = "default", onClick, disabled,
 }: {
   label: string;
-  variant?: "default" | "danger" | "primary";
+  variant?: keyof typeof ACTION_BUTTON_CLS;
   onClick: () => void;
   disabled?: boolean;
 }) {
-  const cls = {
-    default: "border border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50",
-    danger: "border border-red-200 text-red-700 hover:border-red-300 hover:bg-red-50",
-    primary: "bg-brand-600 text-white hover:bg-brand-500",
-  }[variant];
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`text-sm font-medium px-4 py-2 transition-colors disabled:opacity-50 ${cls}`}
+      className={`text-sm font-medium px-4 py-2 transition-colors disabled:opacity-50 ${ACTION_BUTTON_CLS[variant]}`}
     >
       {label}
     </button>
+  );
+}
+
+function ActionLink({
+  label, href, variant = "default",
+}: {
+  label: string;
+  href: string;
+  variant?: keyof typeof ACTION_BUTTON_CLS;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center text-sm font-medium px-4 py-2 transition-colors ${ACTION_BUTTON_CLS[variant]}`}
+    >
+      {label}
+    </Link>
   );
 }
 
@@ -422,7 +440,17 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
         />
       );
     }
-    if (a.status === "DRAFT" && perms.canEditArtifact) {
+    if (a.artifact_type === "CSR") {
+      actions.push(
+        <ActionLink
+          key="csr-editor"
+          href={getCSREditorPath(studyId, a.id)}
+          label={perms.canEditArtifact ? "Section Editor" : "View Sections"}
+          variant="primary"
+        />
+      );
+    }
+    if (a.status === "DRAFT" && perms.canEditArtifact && a.artifact_type !== "CSR") {
       actions.push(
         <ActionButton
           key="edit"
@@ -607,6 +635,14 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
             <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
               <h2 className="font-display font-semibold text-slate-900 text-sm">Content</h2>
               <div className="flex items-center gap-3">
+                {artifact.artifact_type === "CSR" ? (
+                  <Link
+                    href={getCSREditorPath(studyId, artifactId)}
+                    className="text-[11px] text-brand-600 hover:text-brand-700 font-medium"
+                  >
+                    {perms.canEditArtifact ? "Open section editor →" : "View sections →"}
+                  </Link>
+                ) : null}
                 {versions && (
                   <div className="flex border border-slate-200 overflow-hidden">
                     <button
@@ -649,9 +685,11 @@ export default function ArtifactDetailPage({ params }: { params: { id: string; a
               })() : (
                 <div className="text-center py-4">
                   <p className="text-xs text-slate-400 italic mb-2">
-                    {artifact.status === "DRAFT" && perms.canEditArtifact
-                      ? "Click \"Edit Content\" to load and modify the content."
-                      : ""}
+                    {artifact.artifact_type === "CSR"
+                      ? "Open the section editor to view and edit ICH E3 prose."
+                      : artifact.status === "DRAFT" && perms.canEditArtifact
+                        ? "Click \"Edit Content\" to load and modify the content."
+                        : ""}
                   </p>
                   <button
                     onClick={async () => {

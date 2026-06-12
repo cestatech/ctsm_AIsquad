@@ -184,7 +184,9 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
                             ? `/studies/${studyId}/sdtm/${a.id}`
                             : a.artifact_type === "TLF"
                               ? `/studies/${studyId}/tlf/${a.id}/catalog`
-                              : `/studies/${studyId}/artifacts/${a.id}`
+                              : a.artifact_type === "CSR"
+                                ? `/studies/${studyId}/csr/${a.id}/edit`
+                                : `/studies/${studyId}/artifacts/${a.id}`
                         }
                         className="font-medium text-slate-900 hover:text-brand-700 transition-colors"
                       >
