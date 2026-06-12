@@ -15,6 +15,7 @@ from app.core.exceptions import (
     RateLimitError,
     WorkflowError,
 )
+from app.core.proxy_headers import TrustedProxyHeadersMiddleware
 
 settings = get_settings()
 
@@ -77,6 +78,12 @@ app = FastAPI(
     redoc_url="/redoc" if not settings.is_production else None,
     openapi_url="/openapi.json" if not settings.is_production else None,
     lifespan=lifespan,
+)
+
+# Resolve forwarded client details only from explicitly trusted proxy networks.
+app.add_middleware(
+    TrustedProxyHeadersMiddleware,
+    trusted_proxies=settings.trusted_proxies,
 )
 
 # CORS — never wildcard in production

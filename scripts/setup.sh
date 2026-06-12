@@ -53,7 +53,7 @@ cd ..
 echo ""
 echo "==> Setup complete!"
 echo ""
-echo "Start backend:   cd backend && uvicorn app.main:app --reload --port 8000"
+echo "Start backend:   cd backend && uvicorn app.main:app --reload --port 8000 --no-proxy-headers"
 echo "Start frontend:  cd frontend && pnpm dev"
 echo "API docs:        http://localhost:8000/docs"
 echo "Frontend:        http://localhost:3000"
