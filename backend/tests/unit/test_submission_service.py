@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -12,6 +11,8 @@ from fastapi import HTTPException
 
 from app.models.artifact import ArtifactStatus, ArtifactType
 from app.models.submission import SubmissionPackageStatus
+from app.services.storage.filesystem import FilesystemStorageBackend
+from app.services.storage_service import StorageService
 from app.services.submission_service import SubmissionService
 
 
@@ -103,9 +104,8 @@ class TestSubmissionReadiness:
 class TestManifestGeneration:
     async def test_assemble_writes_manifest_with_checksums(self, tmp_path):
         db = AsyncMock()
-        svc = SubmissionService(db)
-        svc._settings = MagicMock(STORAGE_LOCAL_PATH=str(tmp_path))
-
+        storage = StorageService(FilesystemStorageBackend(tmp_path))
+        svc = SubmissionService(db, storage=storage)
         org_id = uuid4()
         study_id = uuid4()
         package = MagicMock()
@@ -178,9 +178,8 @@ class TestManifestGeneration:
         assert csr_entries and csr_entries[0]["grade"] == "placeholder"
         tlf_entries = [f for f in manifest["files"] if f["path"].startswith("tlf/")]
         assert tlf_entries and tlf_entries[0]["grade"] == "generated"
-        assert Path(local_path).exists()
-        manifest_file = Path(local_path) / "manifest.json"
-        loaded = json.loads(manifest_file.read_text())
+        assert storage.exists(f"{local_path}/manifest.json")
+        loaded = json.loads(storage.get(f"{local_path}/manifest.json").decode())
         assert loaded["package_id"] == str(package.id)
 
 
@@ -188,9 +187,8 @@ class TestManifestGeneration:
 class TestAssembleSubmissionPackage:
     async def test_assemble_transitions_to_ready(self, tmp_path):
         db = AsyncMock()
-        svc = SubmissionService(db)
-        svc._settings = MagicMock(STORAGE_LOCAL_PATH=str(tmp_path))
-
+        storage = StorageService(FilesystemStorageBackend(tmp_path))
+        svc = SubmissionService(db, storage=storage)
         org_id = uuid4()
         study_id = uuid4()
         user_id = uuid4()

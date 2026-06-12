@@ -45,13 +45,11 @@ class Settings(BaseSettings):
     AUTH_LOCKOUT_MINUTES: int = 15
 
     # Storage
-    STORAGE_BACKEND: Literal["filesystem", "s3", "azure"] = "filesystem"
+    STORAGE_BACKEND: Literal["filesystem", "azure"] = "filesystem"
     STORAGE_LOCAL_PATH: str = "/tmp/celerius-storage"
-    AWS_S3_BUCKET: str = ""
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "us-east-1"
     AZURE_STORAGE_CONNECTION_STRING: str = ""
+    AZURE_STORAGE_ACCOUNT_NAME: str = ""
+    AZURE_STORAGE_SAS_TOKEN: str = ""
     AZURE_CONTAINER_NAME: str = ""
 
     # Email

@@ -173,7 +173,7 @@ Percentages reflect **functional completeness** toward each phase Definition of 
 
 - Real CSR PDF and Reviewer's Guide authoring
 - Full eCTD XML export
-- S3/Azure storage backend
+- Azure storage backend
 - Pinnacle 21 production validation
 
 ---

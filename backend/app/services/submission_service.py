@@ -9,14 +9,12 @@ import json
 import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.permissions import Permission, check_permission, require_admin
 from app.models.artifact import Artifact, ArtifactStatus, ArtifactType
 from app.models.audit import AuditAction
@@ -32,6 +30,7 @@ from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
 from app.services.context_graph_service import ContextGraphService
 from app.services.sdtm_define_service import build_define_xml
+from app.services.storage_service import StorageService, get_storage_service
 from app.services.tlf_renderer import TLFRenderer
 
 _REQUIRED_TYPES = (
@@ -53,9 +52,13 @@ class SubmissionReadiness:
 class SubmissionService:
     """Assemble and export regulatory submission packages."""
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        storage: StorageService | None = None,
+    ) -> None:
         self._db = db
-        self._settings = get_settings()
+        self._storage = storage or get_storage_service()
         self._study_repo = StudyRepository(db)
         self._artifact_repo = ArtifactRepository(db)
         self._submission_repo = SubmissionRepository(db)
@@ -270,26 +273,38 @@ class SubmissionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={
                     "code": "PACKAGE_FILES_MISSING",
-                    "message": "Package files not found on disk.",
+                    "message": "Package files not found in storage.",
                 },
             )
 
-        root = Path(package.local_path)
-        if not root.exists():
+        manifest = package.manifest or {}
+        files = manifest.get("files", [])
+        if not files:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={
                     "code": "PACKAGE_FILES_MISSING",
-                    "message": "Package directory does not exist.",
+                    "message": "Package manifest has no files.",
                 },
             )
 
+        prefix = StorageService.normalize_path(package.local_path).rstrip("/")
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            for file_path in sorted(root.rglob("*")):
-                if file_path.is_file():
-                    arcname = file_path.relative_to(root).as_posix()
-                    zf.write(file_path, arcname)
+            for entry in files:
+                logical_path = entry.get("path")
+                if not logical_path:
+                    continue
+                storage_key = f"{prefix}/{logical_path}"
+                if not self._storage.exists(storage_key):
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail={
+                            "code": "PACKAGE_FILES_MISSING",
+                            "message": f"Missing package file: {logical_path}",
+                        },
+                    )
+                zf.writestr(logical_path, self._storage.get(storage_key))
         return buffer.getvalue()
 
     async def _collect_readiness_issues(
@@ -370,23 +385,16 @@ class SubmissionService:
         study = await self._study_repo.get(package.study_id, organization_id)
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         folder_name = f"submission_{package.study_id}_{timestamp}"
-        root = (
-            Path(self._settings.STORAGE_LOCAL_PATH)
-            / "org"
-            / str(organization_id)
-            / "submissions"
-            / str(package.id)
-            / folder_name
+        storage_prefix = StorageService.ensure_org_prefix(
+            f"submissions/{package.id}/{folder_name}",
+            organization_id,
         )
-        root.mkdir(parents=True, exist_ok=True)
 
-        m5_datasets = root / "m5" / "datasets"
-        sdtm_dir = m5_datasets / "sdtm"
-        adam_dir = m5_datasets / "adam"
-        sdtm_dir.mkdir(parents=True, exist_ok=True)
-        adam_dir.mkdir(parents=True, exist_ok=True)
-        (root / "csr").mkdir(parents=True, exist_ok=True)
-        (root / "tlf").mkdir(parents=True, exist_ok=True)
+        def _store(logical_path: str, data: bytes, *, grade: str) -> None:
+            self._storage.put_bytes(f"{storage_prefix}/{logical_path}", data)
+            files_manifest.append(
+                self._file_entry(logical_path, data, grade=grade)
+            )
 
         files_manifest: list[dict] = []
 
@@ -394,68 +402,43 @@ class SubmissionService:
             content = await self._load_artifact_content(art)
             if art.artifact_type == ArtifactType.SDTM_DATASET:
                 define_xml = build_define_xml(content)
-                define_path = root / "m5" / "define.xml"
-                define_path.write_text(define_xml, encoding="utf-8")
-                files_manifest.append(
-                    self._file_entry(
-                        define_path, root, "m5/define.xml", grade="generated"
-                    )
-                )
+                _store("m5/define.xml", define_xml.encode("utf-8"), grade="generated")
                 for domain in content.get("domains", []):
                     domain_code = domain.get("domain", "UNK")
-                    csv_path = sdtm_dir / f"{domain_code}.csv"
-                    self._write_domain_csv(csv_path, domain)
-                    files_manifest.append(
-                        self._file_entry(
-                            csv_path,
-                            root,
-                            f"m5/datasets/sdtm/{domain_code}.csv",
-                            grade="generated",
-                        )
+                    logical_path = f"m5/datasets/sdtm/{domain_code}.csv"
+                    _store(
+                        logical_path,
+                        self._render_domain_csv(domain),
+                        grade="generated",
                     )
             elif art.artifact_type == ArtifactType.ADAM_DATASET:
                 for ds in content.get("datasets", []):
                     ds_name = ds.get("dataset", "UNK")
-                    csv_path = adam_dir / f"{ds_name}.csv"
-                    self._write_adam_csv(csv_path, ds)
-                    files_manifest.append(
-                        self._file_entry(
-                            csv_path,
-                            root,
-                            f"m5/datasets/adam/{ds_name}.csv",
-                            grade="generated",
-                        )
+                    logical_path = f"m5/datasets/adam/{ds_name}.csv"
+                    _store(
+                        logical_path,
+                        self._render_adam_csv(ds),
+                        grade="generated",
                     )
             elif art.artifact_type == ArtifactType.TLF:
-                tlf_path = root / "tlf" / f"{art.id}.rtf"
-                tlf_path.write_bytes(TLFRenderer().render_to_rtf(content))
-                files_manifest.append(
-                    self._file_entry(
-                        tlf_path, root, f"tlf/{art.id}.rtf", grade="generated"
-                    )
+                logical_path = f"tlf/{art.id}.rtf"
+                _store(
+                    logical_path,
+                    TLFRenderer().render_to_rtf(content),
+                    grade="generated",
                 )
             elif art.artifact_type == ArtifactType.CSR:
-                csr_path = root / "csr" / f"{art.id}.pdf"
-                csr_path.write_bytes(
-                    self._build_csr_placeholder(content, art.name, study.name)
-                )
-                files_manifest.append(
-                    self._file_entry(
-                        csr_path, root, f"csr/{art.id}.pdf", grade="placeholder"
-                    )
+                logical_path = f"csr/{art.id}.pdf"
+                _store(
+                    logical_path,
+                    self._build_csr_placeholder(content, art.name, study.name),
+                    grade="placeholder",
                 )
 
-        reviewers_path = root / "m5" / "reviewers-guide.pdf"
-        reviewers_path.write_bytes(
-            b"%PDF-1.4\n% Reviewer's Guide placeholder - populate before submission.\n"
-        )
-        files_manifest.append(
-            self._file_entry(
-                reviewers_path,
-                root,
-                "m5/reviewers-guide.pdf",
-                grade="placeholder",
-            )
+        _store(
+            "m5/reviewers-guide.pdf",
+            b"%PDF-1.4\n% Reviewer's Guide placeholder - populate before submission.\n",
+            grade="placeholder",
         )
 
         manifest = {
@@ -475,16 +458,16 @@ class SubmissionService:
             },
             "files": files_manifest,
         }
-        manifest_path = root / "manifest.json"
         manifest_json = json.dumps(manifest, indent=2)
-        manifest_path.write_text(manifest_json, encoding="utf-8")
+        manifest_bytes = manifest_json.encode("utf-8")
         files_manifest.append(
-            self._file_entry(manifest_path, root, "manifest.json", grade="generated")
+            self._file_entry("manifest.json", manifest_bytes, grade="generated")
         )
         manifest["files"] = files_manifest
+        self._storage.put_bytes(f"{storage_prefix}/manifest.json", manifest_bytes)
 
         package_checksum = hashlib.sha256(manifest_json.encode()).hexdigest()
-        return manifest, str(root), package_checksum
+        return manifest, storage_prefix, package_checksum
 
     async def _load_artifact_content(self, artifact: Artifact) -> dict:
         version = await self._artifact_repo.get_version(artifact.current_version_id)
@@ -492,13 +475,11 @@ class SubmissionService:
 
     @staticmethod
     def _file_entry(
-        path: Path,
-        root: Path,
         logical_path: str,
+        data: bytes,
         *,
         grade: str = "generated",
     ) -> dict:
-        data = path.read_bytes()
         return {
             "path": logical_path,
             "size_bytes": len(data),
@@ -507,40 +488,37 @@ class SubmissionService:
         }
 
     @staticmethod
-    def _write_domain_csv(path: Path, domain: dict) -> None:
+    def _render_domain_csv(domain: dict) -> bytes:
         observations = domain.get("observations", [])
         variables = domain.get("variables", [])
         if not observations:
-            path.write_text("", encoding="utf-8")
-            return
+            return b""
+        buffer = io.StringIO()
         if observations and isinstance(observations[0], dict):
             fieldnames = variables or list(observations[0].keys())
         else:
             fieldnames = variables
-        with path.open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
-            writer.writeheader()
-            for row in observations:
-                if isinstance(row, dict):
-                    writer.writerow(row)
+        writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in observations:
+            if isinstance(row, dict):
+                writer.writerow(row)
+        return buffer.getvalue().encode("utf-8")
 
     @staticmethod
-    def _write_adam_csv(path: Path, dataset: dict) -> None:
+    def _render_adam_csv(dataset: dict) -> bytes:
         observations = dataset.get("observations", [])
         variables = [v.get("variable") for v in dataset.get("variables", [])]
         if not observations:
-            path.write_text(
-                f"# ADaM dataset {dataset.get('dataset', 'UNK')} - specification only\n",
-                encoding="utf-8",
-            )
-            return
-        with path.open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(
-                fh, fieldnames=variables, extrasaction="ignore"
-            )
-            writer.writeheader()
-            for row in observations:
-                writer.writerow(row)
+            return (
+                f"# ADaM dataset {dataset.get('dataset', 'UNK')} - specification only\n"
+            ).encode("utf-8")
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=variables, extrasaction="ignore")
+        writer.writeheader()
+        for row in observations:
+            writer.writerow(row)
+        return buffer.getvalue().encode("utf-8")
 
     @staticmethod
     def _build_csr_placeholder(content: dict, name: str, study_name: str) -> bytes:
