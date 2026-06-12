@@ -15,6 +15,7 @@ import io
 import json
 import re
 import uuid
+import zipfile
 from pathlib import Path
 from uuid import UUID
 
@@ -42,18 +43,36 @@ from app.services.context_graph_service import ContextGraphService
 from app.services.intelligence_service import DataLineageService
 from app.services.storage_service import StorageService, get_storage_service
 
-_ALLOWED_MIME_TYPES = {
-    "text/csv",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/pdf",
-    "text/plain",
-}
 _PARSEABLE_MIME_TYPES = {
     "text/csv",
     "application/vnd.ms-excel",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
+_EXTENSION_MIME_TYPES = {
+    ".csv": {
+        "canonical": "text/csv",
+        "declared": {"text/csv", "application/vnd.ms-excel"},
+    },
+    ".xls": {
+        "canonical": "application/vnd.ms-excel",
+        "declared": {"application/vnd.ms-excel"},
+    },
+    ".xlsx": {
+        "canonical": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "declared": {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        },
+    },
+    ".pdf": {
+        "canonical": "application/pdf",
+        "declared": {"application/pdf"},
+    },
+    ".txt": {
+        "canonical": "text/plain",
+        "declared": {"text/plain"},
+    },
+}
+_OLE2_SIGNATURE = bytes.fromhex("D0CF11E0A1B11AE1")
 _MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 _MAX_PROFILE_ROWS = 10_000  # cap profiling scan to avoid OOM
 
@@ -104,15 +123,11 @@ class UploadService:
                 },
             )
 
-        mime_type = file.content_type or "application/octet-stream"
-        if mime_type not in _ALLOWED_MIME_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail={
-                    "code": "UNSUPPORTED_MEDIA_TYPE",
-                    "message": f"File type '{mime_type}' is not allowed. Supported: CSV, XLSX, PDF, TXT.",
-                },
-            )
+        mime_type = self._validate_upload_type(
+            content=content,
+            filename=file.filename or "",
+            declared_mime_type=file.content_type,
+        )
 
         file_hash = hashlib.sha256(content).hexdigest()
         stored_filename = f"{uuid.uuid4()}_{file.filename or 'upload'}"
@@ -122,9 +137,7 @@ class UploadService:
             organization_id=actor.organization_id,
         )
 
-        extracted_metadata = self._extract_legacy_metadata(
-            content, mime_type, file.filename or ""
-        )
+        extracted_metadata = self._extract_legacy_metadata(content, mime_type)
 
         filename = file.filename or ""
         if (
@@ -199,9 +212,7 @@ class UploadService:
         )
 
         # Parse and profile if it's a structured file
-        if mime_type in _PARSEABLE_MIME_TYPES or (file.filename or "").lower().endswith(
-            ".csv"
-        ):
+        if mime_type in _PARSEABLE_MIME_TYPES:
             await self._parse_and_profile(
                 record=record,
                 content=content,
@@ -444,15 +455,82 @@ class UploadService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _validate_upload_type(
+        *,
+        content: bytes,
+        filename: str,
+        declared_mime_type: str | None,
+    ) -> str:
+        """Require file extension, declared MIME, and detected content to agree."""
+        extension = Path(filename).suffix.lower()
+        spec = _EXTENSION_MIME_TYPES.get(extension)
+        if spec is None:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail={
+                    "code": "UNSUPPORTED_MEDIA_TYPE",
+                    "message": "Unsupported file extension. Supported: CSV, XLS, XLSX, PDF, TXT.",
+                },
+            )
+
+        declared = (
+            (declared_mime_type or "application/octet-stream")
+            .split(";", 1)[0]
+            .strip()
+            .lower()
+        )
+        if declared not in spec["declared"] or not UploadService._content_matches_type(
+            content, extension
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "FILE_TYPE_MISMATCH",
+                    "message": (
+                        "File extension, declared Content-Type, and detected content "
+                        "must agree."
+                    ),
+                },
+            )
+        return str(spec["canonical"])
+
+    @staticmethod
+    def _content_matches_type(content: bytes, extension: str) -> bool:
+        if extension in {".csv", ".txt"}:
+            return UploadService._is_text_content(content)
+        if extension == ".pdf":
+            return content[:1024].lstrip().startswith(b"%PDF-")
+        if extension == ".xls":
+            return content.startswith(_OLE2_SIGNATURE)
+        if extension == ".xlsx":
+            try:
+                with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                    names = set(archive.namelist())
+                    return {
+                        "[Content_Types].xml",
+                        "xl/workbook.xml",
+                    }.issubset(names)
+            except (OSError, zipfile.BadZipFile):
+                return False
+        return False
+
+    @staticmethod
+    def _is_text_content(content: bytes) -> bool:
+        try:
+            text = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return False
+        return all(char in "\t\n\r" or char.isprintable() for char in text)
+
+    @staticmethod
     def _parse_file(content: bytes, mime_type: str, filename: str) -> list[dict]:
         """Return a list of sheet dicts, each with name, row_count, and columns."""
-        fn_lower = filename.lower()
-        if mime_type == "text/csv" or fn_lower.endswith(".csv"):
+        if mime_type == "text/csv":
             return UploadService._parse_csv(content, filename)
         if mime_type in (
             "application/vnd.ms-excel",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ) or fn_lower.endswith((".xlsx", ".xls")):
+        ):
             return UploadService._parse_xlsx(content)
         return []
 
@@ -764,7 +842,7 @@ class UploadService:
         """Infer synthetic provenance from export filename or embedded markers."""
         if "synthetic" in filename.lower():
             return True
-        if mime_type in _PARSEABLE_MIME_TYPES or filename.lower().endswith(".csv"):
+        if mime_type in _PARSEABLE_MIME_TYPES:
             try:
                 sample = content[:8192].decode("utf-8", errors="replace")
                 if "SYNTHETIC" in sample:
@@ -779,9 +857,9 @@ class UploadService:
         return False
 
     @staticmethod
-    def _extract_legacy_metadata(content: bytes, mime_type: str, filename: str) -> dict:
+    def _extract_legacy_metadata(content: bytes, mime_type: str) -> dict:
         """Backward-compatible metadata for the extracted_metadata column."""
-        if mime_type == "text/csv" or filename.lower().endswith(".csv"):
+        if mime_type == "text/csv":
             try:
                 text = content.decode("utf-8", errors="replace")
                 reader = csv.reader(io.StringIO(text))
