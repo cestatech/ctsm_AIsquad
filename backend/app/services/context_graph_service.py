@@ -520,6 +520,13 @@ class ContextGraphService:
             "MEMBER_ADDED": GraphWorkflowAction.LINKED,
             "MEMBER_REMOVED": GraphWorkflowAction.UPDATED,
             "USER_LOGIN": GraphWorkflowAction.REVIEWED,
+            "ARTIFACT_CREATED": GraphWorkflowAction.CREATED,
+            "ARTIFACT_UPDATED": GraphWorkflowAction.UPDATED,
+            "ARTIFACT_SUBMITTED": GraphWorkflowAction.SUBMITTED,
+            "ARTIFACT_APPROVED": GraphWorkflowAction.APPROVED,
+            "ARTIFACT_REJECTED": GraphWorkflowAction.REJECTED,
+            "ARTIFACT_LOCKED": GraphWorkflowAction.LOCKED,
+            "ARTIFACT_AMENDED": GraphWorkflowAction.UPDATED,
             "ARTIFACT_EXPORTED": GraphWorkflowAction.REVIEWED,
         }
         return mapping.get(event_type, GraphWorkflowAction.UPDATED)

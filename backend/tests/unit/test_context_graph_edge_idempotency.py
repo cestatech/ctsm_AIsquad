@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.graph import GraphEdgeType
+from app.models.graph import GraphEdgeType, GraphNodeType
 from app.repositories.graph_repository import GraphRepository
 from app.services.context_graph_service import (
     ContextGraphService,
@@ -114,3 +114,34 @@ class TestGraphRepositoryEdgeIdempotency:
         assert created is False
         repo.find_edge.assert_not_called()
         db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+class TestGraphRepositoryNodeUpsert:
+    async def test_existing_node_preserves_richer_properties(self):
+        db = AsyncMock()
+        repo = GraphRepository(db)
+        existing = MagicMock()
+        existing.properties = {"label": "SYNTHETIC", "status": "DRAFT"}
+        repo.find_node_by_external = AsyncMock(return_value=existing)
+        study_id = uuid4()
+
+        node, created = await repo.upsert_node_for_domain_record(
+            organization_id=uuid4(),
+            study_id=study_id,
+            node_type=GraphNodeType.PROTOCOL,
+            external_id=uuid4(),
+            external_type="artifact",
+            label="Protocol",
+            properties={"status": "IN_REVIEW", "current_version_number": 2},
+        )
+
+        assert created is False
+        assert node is existing
+        assert existing.study_id == str(study_id)
+        assert existing.node_type == GraphNodeType.PROTOCOL
+        assert existing.properties == {
+            "label": "SYNTHETIC",
+            "status": "IN_REVIEW",
+            "current_version_number": 2,
+        }

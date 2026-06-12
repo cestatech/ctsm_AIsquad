@@ -113,6 +113,8 @@ class TestArtifactServiceSubmit:
         svc._repo.get_by_id = AsyncMock(return_value=artifact)
         svc._audit.log = AsyncMock()
         svc._notify.create = AsyncMock()
+        svc.register_artifact_in_graph = AsyncMock(return_value=MagicMock())
+        svc._emit_artifact_event = AsyncMock()
 
         before = datetime.now(UTC)
         result = await svc.submit_for_review(artifact.id, org_id, contributor)
@@ -120,6 +122,23 @@ class TestArtifactServiceSubmit:
         assert result.status == ArtifactStatus.IN_REVIEW
         assert artifact.updated_at >= before
         svc._notify.create.assert_called_once()
+        svc.register_artifact_in_graph.assert_awaited_once_with(
+            artifact, actor=contributor
+        )
+
+
+class TestArtifactGraphNodeType:
+    def test_maps_supported_artifact_types_to_specific_nodes(self):
+        from app.models.artifact import ArtifactType
+        from app.models.graph import GraphNodeType
+        from app.services.artifact_service import artifact_graph_node_type
+
+        assert artifact_graph_node_type(ArtifactType.PROTOCOL) == GraphNodeType.PROTOCOL
+        assert (
+            artifact_graph_node_type(ArtifactType.SUBMISSION_PACKAGE)
+            == GraphNodeType.SUBMISSION_PACKAGE
+        )
+        assert artifact_graph_node_type(ArtifactType.ICF) == GraphNodeType.ARTIFACT
 
 
 @pytest.mark.asyncio

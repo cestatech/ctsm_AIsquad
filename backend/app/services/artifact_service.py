@@ -16,6 +16,7 @@ from app.core.exceptions import ArtifactLockedError, WorkflowError
 from app.core.permissions import Permission, check_permission
 from app.models.artifact import Artifact, ArtifactStatus, ArtifactType, ArtifactVersion
 from app.models.audit import AuditAction
+from app.models.graph import GraphEdgeType, GraphNode, GraphNodeType
 from app.models.user import Role, User
 from app.models.notification import NotificationType
 from app.repositories.artifact_repository import ArtifactRepository
@@ -27,6 +28,20 @@ from app.services.export.artifact_export_service import (
     ExportResult,
 )
 from app.services.notification_service import NotificationService
+
+
+def artifact_graph_node_type(artifact_type: ArtifactType) -> GraphNodeType:
+    """Map an artifact to its most specific Context Graph node type."""
+    mapping = {
+        ArtifactType.PROTOCOL: GraphNodeType.PROTOCOL,
+        ArtifactType.EDC_CRF: GraphNodeType.ECR_FORM,
+        ArtifactType.SDTM_DATASET: GraphNodeType.SDTM_DOMAIN,
+        ArtifactType.ADAM_DATASET: GraphNodeType.ADAM_DATASET,
+        ArtifactType.TLF: GraphNodeType.TLF,
+        ArtifactType.CSR: GraphNodeType.CSR_SECTION,
+        ArtifactType.SUBMISSION_PACKAGE: GraphNodeType.SUBMISSION_PACKAGE,
+    }
+    return mapping.get(artifact_type, GraphNodeType.ARTIFACT)
 
 
 class ArtifactService:
@@ -89,6 +104,7 @@ class ArtifactService:
 
         artifact.current_version_id = version.id
         artifact.current_version_number = 1
+        artifact.updated_at = datetime.now(UTC)
 
         await self._audit.log(
             action=AuditAction.ARTIFACT_CREATED,
@@ -97,6 +113,13 @@ class ArtifactService:
             actor_user_id=user.id,
             resource_id=artifact.id,
             after_state=artifact.to_audit_dict(),
+        )
+        node = await self.register_artifact_in_graph(artifact, actor=user)
+        await self._emit_artifact_event(
+            artifact,
+            node,
+            event_type="ARTIFACT_CREATED",
+            actor=user,
         )
 
         return artifact
@@ -152,6 +175,7 @@ class ArtifactService:
 
         artifact.current_version_id = version.id
         artifact.current_version_number = new_version_number
+        artifact.updated_at = datetime.now(UTC)
 
         await self._audit.log(
             action=AuditAction.ARTIFACT_UPDATED,
@@ -162,8 +186,82 @@ class ArtifactService:
             before_state=before_state,
             after_state=artifact.to_audit_dict(),
         )
+        node = await self.register_artifact_in_graph(artifact, actor=user)
+        await self._emit_artifact_event(
+            artifact,
+            node,
+            event_type="ARTIFACT_UPDATED",
+            actor=user,
+            extra={
+                "artifact_version_id": str(version.id),
+                "change_summary": change_summary,
+            },
+        )
 
         return artifact
+
+    async def register_artifact_in_graph(
+        self,
+        artifact: Artifact,
+        actor: User | None = None,
+    ) -> GraphNode:
+        """Idempotently register an artifact, its version, and owning study."""
+        study = await self._study_repo.get(artifact.study_id, artifact.organization_id)
+        artifact_node, _ = await self._graph.register_domain_record(
+            organization_id=artifact.organization_id,
+            node_type=artifact_graph_node_type(artifact.artifact_type),
+            external_id=artifact.id,
+            external_type="artifact",
+            label=artifact.name,
+            study_id=artifact.study_id,
+            description=artifact.description,
+            properties={
+                "artifact_type": artifact.artifact_type.value,
+                "status": artifact.status.value,
+                "current_version_number": artifact.current_version_number,
+            },
+            actor=actor,
+        )
+        study_node, _ = await self._graph.register_domain_record(
+            organization_id=artifact.organization_id,
+            node_type=GraphNodeType.STUDY,
+            external_id=study.id,
+            external_type="study",
+            label=f"{study.protocol_number}: {study.name}",
+            study_id=study.id,
+            description=study.description,
+            actor=actor,
+        )
+        await self._graph.create_relationship(
+            organization_id=artifact.organization_id,
+            source_node_id=artifact_node.id,
+            target_node_id=study_node.id,
+            edge_type=GraphEdgeType.PART_OF,
+            study_id=artifact.study_id,
+            actor=actor,
+        )
+
+        if artifact.current_version_id:
+            version_node, _ = await self._graph.register_domain_record(
+                organization_id=artifact.organization_id,
+                node_type=GraphNodeType.ARTIFACT,
+                external_id=artifact.current_version_id,
+                external_type="artifact_version",
+                label=f"{artifact.name} v{artifact.current_version_number}",
+                study_id=artifact.study_id,
+                properties={"version_number": artifact.current_version_number},
+                actor=actor,
+            )
+            await self._graph.create_relationship(
+                organization_id=artifact.organization_id,
+                source_node_id=version_node.id,
+                target_node_id=artifact_node.id,
+                edge_type=GraphEdgeType.PART_OF,
+                study_id=artifact.study_id,
+                actor=actor,
+            )
+
+        return artifact_node
 
     async def submit_for_review(
         self,
@@ -485,8 +583,45 @@ class ArtifactService:
             after_state=artifact.to_audit_dict(),
             extra_data=metadata or {},
         )
+        node = await self.register_artifact_in_graph(artifact, actor=user)
+        await self._emit_artifact_event(
+            artifact,
+            node,
+            event_type=audit_action.name,
+            actor=user,
+            extra=metadata,
+        )
 
         return artifact
+
+    async def _emit_artifact_event(
+        self,
+        artifact: Artifact,
+        node: GraphNode,
+        *,
+        event_type: str,
+        actor: User | None,
+        extra: dict | None = None,
+    ) -> None:
+        await self._graph.emit_event(
+            organization_id=artifact.organization_id,
+            study_id=artifact.study_id,
+            event_type=event_type,
+            node_id=node.id,
+            actor_user_id=actor.id if actor else None,
+            payload={
+                "entity_type": "artifact",
+                "entity_id": str(artifact.id),
+                "artifact_type": artifact.artifact_type.value,
+                "status": artifact.status.value,
+                "current_version_id": (
+                    str(artifact.current_version_id)
+                    if artifact.current_version_id
+                    else None
+                ),
+                **(extra or {}),
+            },
+        )
 
     async def _create_approval_record(
         self,

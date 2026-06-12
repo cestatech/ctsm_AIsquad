@@ -527,15 +527,9 @@ class BaseGenerator(ABC):
 
     def _primary_graph_node_type(self) -> GraphNodeType:
         """Map artifact type to the most specific context graph node type."""
-        mapping: dict[ArtifactType, GraphNodeType] = {
-            ArtifactType.PROTOCOL: GraphNodeType.PROTOCOL,
-            ArtifactType.EDC_CRF: GraphNodeType.ECR_FORM,
-            ArtifactType.SDTM_DATASET: GraphNodeType.SDTM_DOMAIN,
-            ArtifactType.ADAM_DATASET: GraphNodeType.ADAM_DATASET,
-            ArtifactType.TLF: GraphNodeType.TLF,
-            ArtifactType.CSR: GraphNodeType.CSR_SECTION,
-        }
-        return mapping.get(self.ARTIFACT_TYPE, GraphNodeType.ARTIFACT)
+        from app.services.artifact_service import artifact_graph_node_type
+
+        return artifact_graph_node_type(self.ARTIFACT_TYPE)
 
     def _graph_event_type(self) -> str | None:
         """Context graph event emitted when generation completes."""

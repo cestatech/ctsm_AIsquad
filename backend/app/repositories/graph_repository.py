@@ -122,11 +122,14 @@ class GraphRepository:
             external_id, external_type, organization_id
         )
         if existing is not None:
+            if study_id is not None:
+                existing.study_id = str(study_id)
+            existing.node_type = node_type
             existing.label = label
             if description is not None:
                 existing.description = description
             if properties is not None:
-                existing.properties = properties
+                existing.properties = {**(existing.properties or {}), **properties}
             await self._db.flush()
             return existing, False
 
