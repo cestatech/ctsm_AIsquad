@@ -7,14 +7,12 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import httpx
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.models.artifact import Artifact, ArtifactType
+from app.models.artifact import ArtifactType
 from app.models.intelligence import ValidationEvidenceStatus
 from app.models.user import User
-from app.models.validation import ValidationRun
 from app.repositories.artifact_repository import ArtifactRepository
 from app.services.intelligence_service import (
     AIDecisionService,

@@ -181,7 +181,7 @@ class ArtifactExportService:
         elif export_format == "xml":
             if artifact_type != ArtifactType.SDTM_DATASET:
                 raise ValueError(
-                    f"XML export is only supported for SDTM datasets."
+                    "XML export is only supported for SDTM datasets."
                 )
             body = build_define_xml(content).encode("utf-8")
         elif export_format == "csv":

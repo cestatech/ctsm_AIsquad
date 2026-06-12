@@ -7,7 +7,6 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.artifact import ArtifactType
 from app.services.tlf_generation_service import TLFGenerationService
 
 

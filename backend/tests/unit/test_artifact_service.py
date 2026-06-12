@@ -10,7 +10,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.core.exceptions import WorkflowError
-from app.models.artifact import ArtifactStatus, ArtifactType
+from app.models.artifact import ArtifactStatus
 from app.models.audit import AuditAction
 from app.models.user import Role
 from app.services.artifact_service import ArtifactService

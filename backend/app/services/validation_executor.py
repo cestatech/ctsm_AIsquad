@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.db.session import async_session_factory
-from app.models.artifact import Artifact, ArtifactType, ArtifactVersion
+from app.models.artifact import ArtifactType, ArtifactVersion
 from app.models.intelligence import ValidationEvidenceStatus
 from app.models.validation import ValidationRun, ValidationStatus
 from app.services.cdisc_validation_engine import run_cdisc_validation
