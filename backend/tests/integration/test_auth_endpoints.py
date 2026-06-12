@@ -6,11 +6,18 @@ database via the shared test engine (session-scoped fixtures).
 
 from __future__ import annotations
 
+from collections import defaultdict
 from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
 
+from app.core.exceptions import RateLimitError
+from app.main import app
+from app.models.audit import AuditAction, AuditLog
+from app.models.user import User
+from app.services.login_rate_limiter import get_login_rate_limiter
 
 def _unique_slug() -> str:
     return f"auth-test-{uuid4().hex[:8]}"
@@ -18,6 +25,25 @@ def _unique_slug() -> str:
 
 def _unique_email() -> str:
     return f"auth-{uuid4().hex[:8]}@example.com"
+
+
+class _InMemoryLoginRateLimiter:
+    def __init__(self, max_attempts: int = 5) -> None:
+        self._max_attempts = max_attempts
+        self._reservations: dict[str, set[str]] = defaultdict(set)
+
+    async def acquire(self, ip_address: str | None) -> str | None:
+        if not ip_address:
+            return None
+        if len(self._reservations[ip_address]) >= self._max_attempts:
+            raise RateLimitError(retry_after_seconds=900)
+        token = uuid4().hex
+        self._reservations[ip_address].add(token)
+        return token
+
+    async def release(self, ip_address: str | None, token: str | None) -> None:
+        if ip_address and token:
+            self._reservations[ip_address].discard(token)
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +186,68 @@ class TestLogin:
             json={"email": "someone@test.com"},
         )
         assert resp.status_code == 422
+
+    async def test_failed_logins_are_limited_per_ip_across_emails(
+        self, iclient: AsyncClient, idb
+    ):
+        limiter = _InMemoryLoginRateLimiter()
+        previous = app.dependency_overrides[get_login_rate_limiter]
+        app.dependency_overrides[get_login_rate_limiter] = lambda: limiter
+        try:
+            for _ in range(5):
+                resp = await iclient.post(
+                    "/api/v1/auth/login",
+                    json={"email": _unique_email(), "password": "WrongPass999!"},
+                )
+                assert resp.status_code == 401
+
+            limited = await iclient.post(
+                "/api/v1/auth/login",
+                json={"email": _unique_email(), "password": "WrongPass999!"},
+            )
+        finally:
+            app.dependency_overrides[get_login_rate_limiter] = previous
+
+        assert limited.status_code == 429
+        assert limited.headers["Retry-After"] == "900"
+
+        audit_count = await idb.scalar(
+            select(func.count(AuditLog.id)).where(
+                AuditLog.action == AuditAction.USER_LOGIN_FAILED,
+                AuditLog.resource_type == "authentication",
+            )
+        )
+        assert audit_count >= 5
+
+    async def test_account_lockout_and_failed_login_audits_persist(
+        self, iclient: AsyncClient, idb
+    ):
+        creds = await self._register_user(iclient)
+
+        for _ in range(5):
+            resp = await iclient.post(
+                "/api/v1/auth/login",
+                json={"email": creds["email"], "password": "WrongPass999!"},
+            )
+            assert resp.status_code == 401
+
+        locked = await iclient.post("/api/v1/auth/login", json=creds)
+        assert locked.status_code == 429
+        assert int(locked.headers["Retry-After"]) > 0
+
+        user = await idb.scalar(select(User).where(User.email == creds["email"]))
+        assert user is not None
+        await idb.refresh(user)
+        assert user.failed_login_count == 5
+        assert user.locked_until is not None
+
+        audit_count = await idb.scalar(
+            select(func.count(AuditLog.id)).where(
+                AuditLog.action == AuditAction.USER_LOGIN_FAILED,
+                AuditLog.resource_id == user.id,
+            )
+        )
+        assert audit_count == 5
 
 
 # ---------------------------------------------------------------------------

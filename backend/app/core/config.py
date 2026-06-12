@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # Auth rate limiting
     AUTH_MAX_FAILED_ATTEMPTS: int = 5
     AUTH_LOCKOUT_MINUTES: int = 15
+    AUTH_IP_MAX_FAILED_ATTEMPTS: int = 5
+    AUTH_IP_WINDOW_MINUTES: int = 15
 
     # Storage
     STORAGE_BACKEND: Literal["filesystem", "azure"] = "filesystem"

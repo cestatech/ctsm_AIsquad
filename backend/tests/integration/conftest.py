@@ -31,6 +31,7 @@ from app.models.intake import SponsorIntake, IntakeStatus, StudyBrief
 from app.models.organization import Organization
 from app.models.study import Study, StudyStatus
 from app.models.user import User
+from app.services.login_rate_limiter import get_login_rate_limiter
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +43,14 @@ _BACKGROUND_EXECUTOR_MODULES = (
     "app.services.generation_executor",
     "app.services.submission_executor",
 )
+
+
+class NoopLoginRateLimiter:
+    async def acquire(self, ip_address: str | None) -> None:
+        return None
+
+    async def release(self, ip_address: str | None, token: str | None) -> None:
+        return None
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -77,9 +86,11 @@ async def iclient(test_engine) -> AsyncGenerator[AsyncClient, None]:
                 raise
 
     app.dependency_overrides[get_db] = _override
+    app.dependency_overrides[get_login_rate_limiter] = lambda: NoopLoginRateLimiter()
     async with AsyncClient(app=app, base_url="http://test") as c:
         yield c
     app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(get_login_rate_limiter, None)
 
 
 # ---------------------------------------------------------------------------

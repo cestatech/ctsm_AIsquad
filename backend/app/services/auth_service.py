@@ -79,6 +79,13 @@ class AuthService:
         user = await self._users.get_by_email_any_org(email.lower())
 
         if user is None:
+            await self._audit.log(
+                action=AuditAction.USER_LOGIN_FAILED,
+                resource_type="authentication",
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+            await self._db.commit()
             raise AuthenticationError("Invalid email or password.")
 
         if user.locked_until and user.locked_until > datetime.now(UTC):
@@ -100,6 +107,7 @@ class AuthService:
                 ip_address=ip_address,
                 user_agent=user_agent,
             )
+            await self._db.commit()
             raise AuthenticationError("Invalid email or password.")
 
         if not user.is_active:
