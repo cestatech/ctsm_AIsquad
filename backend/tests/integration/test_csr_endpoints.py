@@ -147,7 +147,7 @@ class TestCSREndpoints:
         assert artifact.json()["artifact_type"] == "CSR"
 
         exported = await iclient.get(
-            f"/api/v1/artifacts/{data['artifact_id']}/export/json",
+            f"/api/v1/artifacts/{data['artifact_id']}/download",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert exported.status_code == 200

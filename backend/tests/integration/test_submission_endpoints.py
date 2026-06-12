@@ -114,6 +114,22 @@ async def _await_package_assembly(package_id: str, org_id: UUID) -> None:
     await execute_submission_assembly(UUID(package_id), org_id)
 
 
+async def _create_study(
+    iclient: AsyncClient, idb: AsyncSession, admin_tok: str, *, name: str
+) -> Study:
+    """Create a study isolated from i_study, which accumulates PENDING_REVIEW AI
+    decisions from other integration test modules and would fail readiness checks."""
+    resp = await iclient.post(
+        "/api/v1/studies",
+        json={"name": name, "protocol_number": f"SUB-{uuid4().hex[:6]}"},
+        headers={"Authorization": f"Bearer {admin_tok}"},
+    )
+    assert resp.status_code == 201, resp.text
+    study = await idb.get(Study, UUID(resp.json()["id"]))
+    assert study is not None
+    return study
+
+
 @pytest.mark.asyncio(loop_scope="session")
 class TestSubmissionEndpoints:
     async def test_readiness_not_ready_without_approved(
@@ -147,23 +163,25 @@ class TestSubmissionEndpoints:
         self,
         iclient: AsyncClient,
         idb: AsyncSession,
-        i_study: Study,
         i_org: Organization,
         i_admin: User,
         admin_tok: str,
     ):
-        await _seed_approved_pipeline_artifacts(idb, i_org, i_study, i_admin)
+        study = await _create_study(
+            iclient, idb, admin_tok, name="Full Submission Flow Study"
+        )
+        await _seed_approved_pipeline_artifacts(idb, i_org, study, i_admin)
         await idb.commit()
 
         readiness = await iclient.get(
-            f"/api/v1/submissions/studies/{i_study.id}/readiness",
+            f"/api/v1/submissions/studies/{study.id}/readiness",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert readiness.status_code == 200
         assert readiness.json()["ready"] is True
 
         create = await iclient.post(
-            f"/api/v1/submissions/studies/{i_study.id}/create",
+            f"/api/v1/submissions/studies/{study.id}/create",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert create.status_code == 200
@@ -193,7 +211,7 @@ class TestSubmissionEndpoints:
         assert len(download.content) > 100
 
         listing = await iclient.get(
-            f"/api/v1/submissions/studies/{i_study.id}",
+            f"/api/v1/submissions/studies/{study.id}",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert listing.status_code == 200
@@ -203,23 +221,25 @@ class TestSubmissionEndpoints:
         self,
         iclient: AsyncClient,
         idb: AsyncSession,
-        i_study: Study,
         i_org: Organization,
         i_admin: User,
         contributor_tok: str,
         admin_tok: str,
     ):
-        await _seed_approved_pipeline_artifacts(idb, i_org, i_study, i_admin)
+        study = await _create_study(
+            iclient, idb, admin_tok, name="Contributor RBAC Submission Study"
+        )
+        await _seed_approved_pipeline_artifacts(idb, i_org, study, i_admin)
         await idb.commit()
 
         create = await iclient.post(
-            f"/api/v1/submissions/studies/{i_study.id}/create",
+            f"/api/v1/submissions/studies/{study.id}/create",
             headers={"Authorization": f"Bearer {contributor_tok}"},
         )
         assert create.status_code == 403
 
         admin_create = await iclient.post(
-            f"/api/v1/submissions/studies/{i_study.id}/create",
+            f"/api/v1/submissions/studies/{study.id}/create",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert admin_create.status_code == 200
@@ -236,17 +256,19 @@ class TestSubmissionEndpoints:
         self,
         iclient: AsyncClient,
         idb: AsyncSession,
-        i_study: Study,
         i_org: Organization,
         i_admin: User,
         reviewer_tok: str,
         admin_tok: str,
     ):
-        await _seed_approved_pipeline_artifacts(idb, i_org, i_study, i_admin)
+        study = await _create_study(
+            iclient, idb, admin_tok, name="Reviewer RBAC Submission Study"
+        )
+        await _seed_approved_pipeline_artifacts(idb, i_org, study, i_admin)
         await idb.commit()
 
         create = await iclient.post(
-            f"/api/v1/submissions/studies/{i_study.id}/create",
+            f"/api/v1/submissions/studies/{study.id}/create",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert create.status_code == 200
@@ -269,7 +291,6 @@ class TestSubmissionEndpoints:
         self,
         iclient: AsyncClient,
         idb: AsyncSession,
-        i_study: Study,
         i_org: Organization,
         i_admin: User,
         reviewer_tok: str,
@@ -278,17 +299,28 @@ class TestSubmissionEndpoints:
         import io
         import zipfile
 
-        await _seed_approved_pipeline_artifacts(idb, i_org, i_study, i_admin)
+        from app.models.submission import SubmissionPackage, SubmissionPackageStatus
+
+        study = await _create_study(
+            iclient, idb, admin_tok, name="eCTD XML Export Study"
+        )
+        await _seed_approved_pipeline_artifacts(idb, i_org, study, i_admin)
         await idb.commit()
 
         create = await iclient.post(
-            f"/api/v1/submissions/studies/{i_study.id}/create",
+            f"/api/v1/submissions/studies/{study.id}/create",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert create.status_code == 200
         package_id = create.json()["package_id"]
 
-        # Package is still DRAFT (not assembled): export must 409.
+        # Force the package back to DRAFT (the background assembly task runs
+        # synchronously under the test ASGI transport, so by the time `create`
+        # returns the package is already READY): export must 409 while not ready.
+        package = await idb.get(SubmissionPackage, UUID(package_id))
+        package.status = SubmissionPackageStatus.DRAFT
+        await idb.commit()
+
         not_ready = await iclient.get(
             f"/api/v1/submissions/{package_id}/ectd-xml",
             headers={"Authorization": f"Bearer {admin_tok}"},
@@ -298,8 +330,6 @@ class TestSubmissionEndpoints:
 
         # Promote the package to READY with a manifest directly — the endpoint
         # contract is what's under test here, not the assembly executor.
-        from app.models.submission import SubmissionPackage, SubmissionPackageStatus
-
         package = await idb.get(SubmissionPackage, UUID(package_id))
         package.status = SubmissionPackageStatus.READY
         package.manifest = {
@@ -334,4 +364,4 @@ class TestSubmissionEndpoints:
             index_xml = zf.read("index.xml")
         assert names == ["index-md5.txt", "index.xml"]
         assert b"dtd-version" in index_xml
-        assert str(i_study.id).encode() in index_xml
+        assert str(study.id).encode() in index_xml

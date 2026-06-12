@@ -7,8 +7,6 @@ from uuid import uuid4
 import pytest
 from httpx import AsyncClient
 
-from app.models.study import Study
-
 _CSV = b"subject_id,age,treatment\nS001,45,A\nS002,52,B\nS003,38,A\n"
 
 _COLUMN_MAPS: dict[str, tuple[str, str]] = {
@@ -16,6 +14,18 @@ _COLUMN_MAPS: dict[str, tuple[str, str]] = {
     "age": ("AGE", "DM.AGE"),
     "treatment": ("TREATMENT", "CM.CMTRT"),
 }
+
+
+async def _create_study(iclient: AsyncClient, admin_tok: str, *, name: str) -> str:
+    """Create a study isolated from i_study, which accumulates unmapped/unapproved
+    uploads from other tests in this module and would fail readiness checks."""
+    resp = await iclient.post(
+        "/api/v1/studies",
+        json={"name": name, "protocol_number": f"SDTM-{uuid4().hex[:6]}"},
+        headers={"Authorization": f"Bearer {admin_tok}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
 
 
 async def _approve_all_study_mappings(
@@ -84,17 +94,20 @@ async def _approve_all_study_mappings(
 @pytest.mark.asyncio(loop_scope="session")
 class TestStudySDTMReadiness:
     async def test_readiness_false_before_approval(
-        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+        self, iclient: AsyncClient, admin_tok: str
     ):
+        study_id = await _create_study(
+            iclient, admin_tok, name="SDTM Readiness Not Ready Study"
+        )
         upload = await iclient.post(
-            f"/api/v1/studies/{i_study.id}/uploads",
+            f"/api/v1/studies/{study_id}/uploads",
             files={"file": ("unmapped.csv", _CSV, "text/csv")},
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert upload.status_code == 201
 
         resp = await iclient.get(
-            f"/api/v1/raw-data/studies/{i_study.id}/sdtm-readiness",
+            f"/api/v1/raw-data/studies/{study_id}/sdtm-readiness",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert resp.status_code == 200
@@ -103,12 +116,15 @@ class TestStudySDTMReadiness:
         assert data["dataset_count"] >= 1
 
     async def test_readiness_true_when_all_approved(
-        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+        self, iclient: AsyncClient, admin_tok: str
     ):
-        await _approve_all_study_mappings(iclient, i_study.id, admin_tok)
+        study_id = await _create_study(
+            iclient, admin_tok, name="SDTM Readiness Ready Study"
+        )
+        await _approve_all_study_mappings(iclient, study_id, admin_tok)
 
         resp = await iclient.get(
-            f"/api/v1/raw-data/studies/{i_study.id}/sdtm-readiness",
+            f"/api/v1/raw-data/studies/{study_id}/sdtm-readiness",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert resp.status_code == 200
@@ -121,12 +137,13 @@ class TestStudySDTMReadiness:
 @pytest.mark.asyncio(loop_scope="session")
 class TestStudySDTMGeneration:
     async def test_generate_study_sdtm_creates_artifact(
-        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+        self, iclient: AsyncClient, admin_tok: str
     ):
-        await _approve_all_study_mappings(iclient, i_study.id, admin_tok)
+        study_id = await _create_study(iclient, admin_tok, name="SDTM Generation Study")
+        await _approve_all_study_mappings(iclient, study_id, admin_tok)
 
         resp = await iclient.post(
-            f"/api/v1/raw-data/studies/{i_study.id}/generate-sdtm",
+            f"/api/v1/raw-data/studies/{study_id}/generate-sdtm",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert resp.status_code == 200
@@ -174,11 +191,14 @@ class TestStudySDTMGeneration:
 @pytest.mark.asyncio(loop_scope="session")
 class TestDefineXmlExport:
     async def test_export_define_xml_for_sdtm_artifact(
-        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+        self, iclient: AsyncClient, admin_tok: str
     ):
-        await _approve_all_study_mappings(iclient, i_study.id, admin_tok)
+        study_id = await _create_study(
+            iclient, admin_tok, name="SDTM Define XML Export Study"
+        )
+        await _approve_all_study_mappings(iclient, study_id, admin_tok)
         gen = await iclient.post(
-            f"/api/v1/raw-data/studies/{i_study.id}/generate-sdtm",
+            f"/api/v1/raw-data/studies/{study_id}/generate-sdtm",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert gen.status_code == 200

@@ -163,7 +163,7 @@ class TestTLFEndpoints:
         )
         assert resp.status_code == 422
 
-    async def test_render_tlf_artifact_downloads_rtf_and_audits(
+    async def test_render_tlf_artifact_downloads_pdf_and_audits(
         self,
         iclient: AsyncClient,
         idb: AsyncSession,
@@ -180,10 +180,9 @@ class TestTLFEndpoints:
         )
 
         assert resp.status_code == 200
-        assert resp.headers["content-type"] == "application/rtf"
-        assert 'filename="CSR_TLF_Package.rtf"' in resp.headers["content-disposition"]
-        assert resp.content.startswith(b"{\\rtf1")
-        assert b"Demographics" in resp.content
+        assert resp.headers["content-type"] == "application/pdf"
+        assert resp.headers["content-disposition"].endswith('.pdf"')
+        assert resp.content.startswith(b"%PDF")
 
         audit_result = await idb.execute(
             select(AuditLog).where(
