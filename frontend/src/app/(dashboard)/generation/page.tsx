@@ -6,23 +6,12 @@ import { useAuthStore } from "@/store/authStore";
 import { useStudyPermissions } from "@/hooks/useStudyPermissions";
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { generationApi } from "@/lib/api/generation";
+import {
+  ACTIVE_GENERATION_STATUSES,
+  GENERATION_ARTIFACT_TYPE_LABELS,
+  GENERATION_STATUS_COLORS,
+} from "@/lib/generationLabels";
 import type { ArtifactType, GenerationJob } from "@/types";
-
-const STATUS_COLORS: Record<string, string> = {
-  PENDING:   "bg-slate-100 text-slate-600",
-  QUEUED:    "bg-amber-100 text-amber-600",
-  RUNNING:   "bg-blue-100 text-blue-700",
-  COMPLETED: "bg-emerald-100 text-emerald-700",
-  FAILED:    "bg-red-100 text-red-700",
-  CANCELLED: "bg-slate-100 text-slate-500",
-};
-
-const ARTIFACT_TYPE_LABELS: Record<string, string> = {
-  PROTOCOL: "Protocol", ICF: "ICF", SAP: "SAP", EDC_CRF: "eCRF",
-  TRACEABILITY_MATRIX: "Traceability Matrix", SDTM_DATASET: "SDTM Dataset",
-  ADAM_DATASET: "ADaM Dataset", TLF: "TLF", VALIDATION_REPORT: "Validation Report",
-  CSR: "CSR", SUBMISSION_PACKAGE: "Submission Package", OTHER: "Other",
-};
 
 const ARTIFACT_TYPES: ArtifactType[] = [
   "PROTOCOL", "ICF", "SAP", "EDC_CRF", "SDTM_DATASET",
@@ -30,7 +19,6 @@ const ARTIFACT_TYPES: ArtifactType[] = [
 ];
 
 const PAGE_SIZE = 25;
-const ACTIVE_STATUSES = new Set(["PENDING", "QUEUED", "RUNNING"]);
 
 function JobRow({
   job,
@@ -51,12 +39,12 @@ function JobRow({
   return (
     <tr className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
       <td className="px-4 py-3">
-        <span className={`text-xs px-2 py-0.5 font-medium ${STATUS_COLORS[job.status] ?? "bg-slate-100 text-slate-600"}`}>
+        <span className={`text-xs px-2 py-0.5 font-medium ${GENERATION_STATUS_COLORS[job.status] ?? "bg-slate-100 text-slate-600"}`}>
           {job.status}
         </span>
       </td>
       <td className="px-4 py-3 text-xs text-slate-700 font-medium">
-        {ARTIFACT_TYPE_LABELS[job.artifact_type] ?? job.artifact_type}
+        {GENERATION_ARTIFACT_TYPE_LABELS[job.artifact_type] ?? job.artifact_type}
       </td>
       <td className="px-4 py-3 text-xs font-mono text-slate-500">{job.study_id.slice(0, 8)}…</td>
       <td className="px-4 py-3 text-xs text-slate-500 font-mono">{job.model_id}</td>
@@ -78,7 +66,7 @@ function JobRow({
         })}
       </td>
       <td className="px-4 py-3 text-xs">
-        {canStop && ACTIVE_STATUSES.has(job.status) ? (
+        {canStop && ACTIVE_GENERATION_STATUSES.has(job.status) ? (
           <button
             type="button"
             onClick={() => onStop(job.id)}
@@ -273,7 +261,7 @@ export default function GenerationPage() {
                   className="w-full border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 bg-white"
                 >
                   {ARTIFACT_TYPES.map((t) => (
-                    <option key={t} value={t}>{ARTIFACT_TYPE_LABELS[t] ?? t}</option>
+                    <option key={t} value={t}>{GENERATION_ARTIFACT_TYPE_LABELS[t] ?? t}</option>
                   ))}
                 </select>
               </div>

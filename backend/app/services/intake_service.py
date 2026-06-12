@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
+from app.core.permissions import Permission, check_permission
 from app.models.graph import GraphEdgeType, GraphNodeType
 from app.models.intake import (
     IntakeMessage,
@@ -229,6 +230,7 @@ class IntakeService:
         CIP: logs an INTAKE_GREETING decision, registers the intake and study
         as graph nodes, and links them before any AI inference runs.
         """
+        check_permission(actor, Permission.ARTIFACT_CREATE)
         existing = await self._db.execute(
             select(SponsorIntake).where(
                 SponsorIntake.study_id == study_id,
@@ -384,6 +386,7 @@ class IntakeService:
         captures exactly what the user said, what domain we're covering, which
         domains are now complete, and why Claude chose the next question.
         """
+        check_permission(actor, Permission.ARTIFACT_CREATE)
         intake = await self._get_active(intake_id, organization_id)
         visible_messages = [m for m in intake.messages if not m.is_hidden]
         if (
@@ -548,6 +551,7 @@ class IntakeService:
         to the intake session. Every field in the brief is traceable to this
         decision record.
         """
+        check_permission(actor, Permission.ARTIFACT_CREATE)
         intake = await self._load_session(intake_id, organization_id)
 
         if intake.status == IntakeStatus.COMPILED and intake.brief:

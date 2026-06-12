@@ -22,6 +22,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.permissions import Permission, check_permission
 from app.core.phi_masking import mask_sample_values
 from app.models.audit import AuditAction
 from app.models.graph import GraphEdgeType, GraphNodeType
@@ -81,6 +82,7 @@ class UploadService:
         user_agent: str | None = None,
     ) -> UploadedFile:
         """Store a file, parse/profile its columns, and register in the CIP graph."""
+        check_permission(actor, Permission.ARTIFACT_CREATE)
         await self._study_repo.get(study_id, actor.organization_id)
 
         content = await file.read()

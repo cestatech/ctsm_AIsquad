@@ -6,9 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
 from app.models.raw_data import RawField
+from app.services.generation_fallback import DUMMY_GENERATION_NOTICE
 from app.services.sdtm_generation_service import SDTMGenerationService
 
 
@@ -200,6 +201,62 @@ class TestMergeDomains:
 
 
 @pytest.mark.asyncio
+class TestBuildSdtmContentFallback:
+    async def test_call_claude_failure_uses_deterministic_fallback(self):
+        svc = SDTMGenerationService(AsyncMock())
+        svc._client = MagicMock()
+        svc._settings = MagicMock(SDTM_IG_VERSION="3.3", pinnacle21_configured=False)
+        dataset = MagicMock()
+        dataset.id = uuid4()
+        dataset.dataset_name = "demographics"
+        field = _make_field()
+        rows = [{"AGE": "45"}]
+        svc._call_claude = AsyncMock(
+            side_effect=HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "AI_PARSE_ERROR",
+                    "message": "SDTM agent failed after 3 attempts",
+                },
+            )
+        )
+
+        content = await svc._build_sdtm_content(
+            dataset=dataset,
+            fields=[field],
+            raw_rows=rows,
+            study_name="Study",
+            protocol_number="PROT-001",
+        )
+
+        assert content["generation_mode"] == "DUMMY"
+        assert content["derivation_method"] == "deterministic_fallback"
+        assert content["generation_notice"] == DUMMY_GENERATION_NOTICE
+        assert len(content["domains"]) == 1
+        assert len(content["domains"][0]["observations"]) == 1
+
+    async def test_no_client_uses_deterministic_fallback_labels(self):
+        svc = SDTMGenerationService(AsyncMock())
+        svc._client = None
+        svc._settings = MagicMock(SDTM_IG_VERSION="3.3", pinnacle21_configured=False)
+        dataset = MagicMock()
+        dataset.id = uuid4()
+        dataset.dataset_name = "demographics"
+
+        content = await svc._build_sdtm_content(
+            dataset=dataset,
+            fields=[_make_field()],
+            raw_rows=[{"AGE": "30"}],
+            study_name="Study",
+            protocol_number="PROT-001",
+        )
+
+        assert content["generation_mode"] == "DUMMY"
+        assert content["derivation_method"] == "deterministic_fallback"
+        assert "No Anthropic API key configured" in content["fallback_reason"]
+
+
+@pytest.mark.asyncio
 class TestStudyReadiness:
     async def test_not_ready_when_mappings_pending(self):
         db = AsyncMock()
@@ -272,12 +329,13 @@ class TestGenerateFromDataset:
         svc._study_repo.get = AsyncMock(return_value=study)
         svc._client = None
         svc._artifact_svc.create_artifact = AsyncMock(return_value=artifact)
+        svc._artifact_repo.list_by_study = AsyncMock(return_value=([], 0))
         svc._ai_decision.begin_decision = AsyncMock(return_value=decision)
         svc._ai_decision.complete_decision = AsyncMock()
         svc._validation.trigger = AsyncMock(return_value=validation_run)
         svc._audit.log = AsyncMock()
         svc._register_cip_links = AsyncMock()
-        svc._link_study_traceability = AsyncMock()
+        svc._graph.link_pipeline_artifact_to_study = AsyncMock()
 
         with (
             patch(

@@ -8,15 +8,7 @@ import { studiesApi } from "@/lib/api/studies";
 import { artifactsApi } from "@/lib/api/artifacts";
 import { approvalsApi } from "@/lib/api/approvals";
 import { usersApi } from "@/lib/api/users";
-
-function rel(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
+import { formatRelativeTime } from "@/lib/formatRelativeTime";
 
 const ARTIFACT_STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600",
@@ -56,7 +48,7 @@ export default function DashboardPage() {
   const { data: approvalsData } = useQuery({
     queryKey: ["approvals-queue", token],
     queryFn: () => approvalsApi.queue({ page_size: 5 }, token!),
-    enabled: !!token,
+    enabled: !!token && perms.canApproveArtifact,
   });
 
   const { data: usersData } = useQuery({
@@ -166,7 +158,7 @@ export default function DashboardPage() {
                         {artifact.name}
                       </p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        v{artifact.current_version_number} · {rel(artifact.updated_at)}
+                        v{artifact.current_version_number} · {formatRelativeTime(artifact.updated_at)}
                       </p>
                     </div>
                     <span

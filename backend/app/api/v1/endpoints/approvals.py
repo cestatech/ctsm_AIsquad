@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.permissions import Permission, check_permission
 from app.models.approval import Approval
 from app.models.user import User
 from app.repositories.artifact_repository import ArtifactRepository
@@ -36,7 +37,8 @@ async def get_queue(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ApprovalQueueResponse:
-    """Return all IN_REVIEW artifacts in the authenticated user's organization."""
+    """Return IN_REVIEW artifacts for reviewers and admins in the organization."""
+    check_permission(current_user, Permission.ARTIFACT_APPROVE)
     repo = ArtifactRepository(db)
     offset = (page - 1) * page_size
     artifacts, total = await repo.list_in_review(

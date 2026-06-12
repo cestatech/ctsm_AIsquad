@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from typing import AsyncGenerator
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -34,6 +36,24 @@ from app.models.user import User
 # ---------------------------------------------------------------------------
 # Session and client  (scope="session" matches test_engine)
 # ---------------------------------------------------------------------------
+
+_BACKGROUND_EXECUTOR_MODULES = (
+    "app.services.validation_executor",
+    "app.services.generation_executor",
+    "app.services.submission_executor",
+)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _bind_background_executors_to_test_db(test_engine) -> AsyncGenerator[None, None]:
+    """Background tasks must use the integration test DB, not the app default."""
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    with ExitStack() as stack:
+        for module in _BACKGROUND_EXECUTOR_MODULES:
+            stack.enter_context(
+                patch(f"{module}.async_session_factory", factory)
+            )
+        yield
 
 
 @pytest_asyncio.fixture(scope="session")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from uuid import UUID
 
@@ -21,8 +22,14 @@ from app.models.statistical_qc import (
 from app.models.user import User
 from app.repositories.statistical_qc_repository import StatisticalQCRepository
 from app.services.audit_service import AuditService
+from app.services.generation_fallback import (
+    NO_API_KEY_FALLBACK_REASON,
+    format_fallback_reasoning,
+)
 from app.services.intelligence_service import AIDecisionService
 from app.services.r_program_runner import run_dual_program_comparison
+
+logger = logging.getLogger(__name__)
 
 _MODEL_ID = "claude-sonnet-4-20250514"
 _PRIMARY_AGENT = "stat-primary-programmer"
@@ -251,7 +258,7 @@ class DualProgrammerQCService:
             },
         )
 
-        primary_program = await self._generate_program(
+        primary_program, primary_fallback = await self._generate_program(
             role_prompt=prompts["primary_role"],
             task=prompts["task"],
             outputs=prompts["outputs"],
@@ -262,9 +269,15 @@ class DualProgrammerQCService:
 
         await self._ai.complete_decision(
             decision=primary_decision,
-            output={"r_program_lines": primary_program.count("\n") + 1},
-            reasoning="Primary statistical programmer R program generated",
-            confidence=0.8,
+            output={
+                "r_program_lines": primary_program.count("\n") + 1,
+                "generation_mode": "DUMMY" if primary_fallback else None,
+            },
+            reasoning=format_fallback_reasoning(
+                "Primary statistical programmer R program generated",
+                primary_fallback,
+            ),
+            confidence=0.8 if not primary_fallback else 0.5,
         )
 
         qc_decision = await self._ai.begin_decision(
@@ -280,7 +293,7 @@ class DualProgrammerQCService:
             },
         )
 
-        qc_program = await self._generate_program(
+        qc_program, qc_fallback = await self._generate_program(
             role_prompt=prompts["qc_role"],
             task=prompts["task"],
             outputs=prompts["outputs"],
@@ -291,9 +304,15 @@ class DualProgrammerQCService:
 
         await self._ai.complete_decision(
             decision=qc_decision,
-            output={"r_program_lines": qc_program.count("\n") + 1},
-            reasoning="Independent QC statistical programmer R program generated",
-            confidence=0.8,
+            output={
+                "r_program_lines": qc_program.count("\n") + 1,
+                "generation_mode": "DUMMY" if qc_fallback else None,
+            },
+            reasoning=format_fallback_reasoning(
+                "Independent QC statistical programmer R program generated",
+                qc_fallback,
+            ),
+            confidence=0.8 if not qc_fallback else 0.5,
         )
 
         preflight = None
@@ -395,16 +414,31 @@ class DualProgrammerQCService:
         input_payload: dict,
         workflow_step: StatisticalQCWorkflow,
         variant: str,
-    ) -> str:
-        if self._client:
-            return await self._call_claude_for_r(
-                role_prompt=role_prompt,
-                task=task,
-                outputs=outputs,
-                input_payload=input_payload,
-            )
+    ) -> tuple[str, str | None]:
         primary_tpl, qc_tpl = _r_templates()[workflow_step]
-        return primary_tpl if variant == "primary" else qc_tpl
+        template = primary_tpl if variant == "primary" else qc_tpl
+        if self._client:
+            try:
+                program = await self._call_claude_for_r(
+                    role_prompt=role_prompt,
+                    task=task,
+                    outputs=outputs,
+                    input_payload=input_payload,
+                )
+                return program, None
+            except (anthropic.APIError, TimeoutError) as exc:
+                logger.warning(
+                    "Statistical programmer API call failed, using R template: %s",
+                    exc,
+                )
+                return template, f"Anthropic API error: {exc}"
+            except Exception as exc:
+                logger.warning(
+                    "Statistical programmer generation failed, using R template: %s",
+                    exc,
+                )
+                return template, f"AI generation failed: {exc}"
+        return template, NO_API_KEY_FALLBACK_REASON
 
     async def _call_claude_for_r(
         self,

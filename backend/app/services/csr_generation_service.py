@@ -7,6 +7,7 @@ Phase 7 pipeline: TLF artifact(s) + Protocol/SAP context → CSR artifact
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from uuid import UUID
@@ -40,8 +41,15 @@ from app.services.data_cut_service import (
     prepare_pipeline_artifact,
 )
 from app.services.csr_prose_service import assemble_context
+from app.services.generation_fallback import (
+    NO_API_KEY_FALLBACK_REASON,
+    apply_dummy_generation_labels,
+    format_fallback_reasoning,
+)
 from app.services.generators.csr_generator import CSRGenerator
 from app.services.validation_service import ValidationService
+
+logger = logging.getLogger(__name__)
 
 _CSR_BLOCKED_MESSAGE = (
     "CSR generation requires SDTM, ADaM, and TLF outputs for the selected data cut. "
@@ -448,9 +456,15 @@ class CSRGenerationService:
                 actor=actor,
                 ai_decision_id=decision.id,
             )
-        await self._link_study_traceability(
+        study = await self._study_repo.get(study_id, actor.organization_id)
+        await self._graph.link_pipeline_artifact_to_study(
+            organization_id=actor.organization_id,
             study_id=study_id,
-            artifact=artifact,
+            study_name=study.name,
+            artifact_id=artifact.id,
+            artifact_name=artifact.name,
+            artifact_node_type=GraphNodeType.CSR_SECTION,
+            artifact_external_type="csr_artifact",
             actor=actor,
             ai_decision_id=decision.id,
         )
@@ -461,12 +475,16 @@ class CSRGenerationService:
                 "artifact_id": str(artifact.id),
                 "sections": [s["number"] for s in content.get("sections", [])],
                 "source_tlf_artifact_ids": [str(a.id) for a in tlf_artifacts],
+                "generation_mode": content.get("generation_mode"),
             },
-            reasoning=(
-                f"Assembled ICH E3 CSR with {len(content.get('sections', []))} sections "
-                f"from {len(merged_tables)} TLF table(s)"
+            reasoning=format_fallback_reasoning(
+                (
+                    f"Assembled ICH E3 CSR with {len(content.get('sections', []))} sections "
+                    f"from {len(merged_tables)} TLF table(s)"
+                ),
+                content.get("fallback_reason"),
             ),
-            confidence=0.82,
+            confidence=0.82 if not content.get("fallback_reason") else 0.5,
             output_artifact_ids=[artifact.id],
         )
 
@@ -602,7 +620,45 @@ class CSRGenerationService:
                 },
             )
 
-        return self._deterministic_csr(
+        fallback_reason: str | None = None
+        if self._client:
+            try:
+                return await self._call_claude(
+                    study=study,
+                    merged_tables=merged_tables,
+                    protocol_content=protocol_content,
+                    sap_content=sap_content,
+                    tlf_artifact_ids=tlf_artifact_ids,
+                    upstream=upstream,
+                    data_cut=data_cut,
+                )
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, dict) else {}
+                if exc.status_code != status.HTTP_502_BAD_GATEWAY or detail.get(
+                    "code"
+                ) != "AI_PARSE_ERROR":
+                    raise
+                fallback_reason = str(detail.get("message", exc))
+                logger.warning(
+                    "CSR agent parse failed, using deterministic fallback: %s",
+                    fallback_reason,
+                )
+            except (anthropic.APIError, TimeoutError) as exc:
+                fallback_reason = f"Anthropic API error: {exc}"
+                logger.warning(
+                    "CSR agent API call failed, using deterministic fallback: %s",
+                    exc,
+                )
+            except Exception as exc:
+                fallback_reason = f"AI generation failed: {exc}"
+                logger.warning(
+                    "CSR agent failed, using deterministic fallback: %s",
+                    exc,
+                )
+        else:
+            fallback_reason = NO_API_KEY_FALLBACK_REASON
+
+        content = self._deterministic_csr(
             study=study,
             merged_tables=merged_tables,
             protocol_content=protocol_content,
@@ -611,6 +667,7 @@ class CSRGenerationService:
             upstream=upstream,
             data_cut=data_cut,
         )
+        return apply_dummy_generation_labels(content, fallback_reason=fallback_reason)
 
     async def _evaluate_csr_readiness(
         self,
@@ -1446,42 +1503,3 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
                 ai_decision_id=ai_decision_id,
                 actor=actor,
             )
-
-    async def _link_study_traceability(
-        self,
-        *,
-        study_id: UUID,
-        artifact: Artifact,
-        actor: User,
-        ai_decision_id: UUID,
-    ) -> None:
-        study = await self._study_repo.get(study_id, actor.organization_id)
-        study_node, _ = await self._graph.register_domain_record(
-            organization_id=actor.organization_id,
-            node_type=GraphNodeType.STUDY,
-            external_id=study_id,
-            external_type="study",
-            label=study.name,
-            study_id=study_id,
-            actor=actor,
-        )
-        csr_node, _ = await self._graph.register_domain_record(
-            organization_id=actor.organization_id,
-            node_type=GraphNodeType.CSR_SECTION,
-            external_id=artifact.id,
-            external_type="csr_artifact",
-            label=artifact.name,
-            study_id=study_id,
-            properties={"artifact_id": str(artifact.id)},
-            actor=actor,
-        )
-        await self._graph.create_relationship(
-            organization_id=actor.organization_id,
-            source_node_id=csr_node.id,
-            target_node_id=study_node.id,
-            edge_type=GraphEdgeType.PART_OF,
-            study_id=study_id,
-            is_ai_generated=True,
-            ai_decision_id=ai_decision_id,
-            actor=actor,
-        )

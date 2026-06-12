@@ -1,4 +1,5 @@
 import { buildArtifactFallbackFilename } from "@/lib/artifactDownload";
+import { downloadAuthenticatedBlob } from "@/lib/download";
 import { apiClient } from "./client";
 import type { Artifact, ArtifactVersion, PaginatedResponse } from "@/types";
 
@@ -62,101 +63,40 @@ export const artifactsApi = {
   getVersion: (id: string, versionId: string, token: string) =>
     apiClient.get<ArtifactVersion>(`/artifacts/${id}/versions/${versionId}`, { token }),
 
-  exportArtifact: async (
+  exportArtifact: (
     id: string,
     format: "docx" | "pdf" | "csv" | "zip" | "xml",
     token: string,
     artifact?: Pick<Artifact, "artifact_type" | "name" | "current_version_number">
-  ): Promise<{ blob: Blob; filename: string }> => {
-    const response = await fetch(
+  ): Promise<{ blob: Blob; filename: string }> =>
+    downloadAuthenticatedBlob(
       `${API_URL}/artifacts/${id}/export?format=${format}`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: "include",
-      }
-    );
-    if (!response.ok) {
-      let detail = "Failed to download artifact";
-      try {
-        const err = await response.json();
-        const raw = (err as { detail?: string | { message?: string } }).detail;
-        detail =
-          typeof raw === "string"
-            ? raw
-            : (raw as { message?: string })?.message ?? detail;
-      } catch {
-        /* non-JSON error body */
-      }
-      throw new Error(detail);
-    }
-    const disposition = response.headers.get("Content-Disposition") ?? "";
-    const match = disposition.match(/filename="([^"]+)"/);
-    const filename =
-      match?.[1] ??
-      (artifact ? buildArtifactFallbackFilename(artifact, format) : `artifact.${format}`);
-    const blob = await response.blob();
-    return { blob, filename };
-  },
+      token,
+      artifact ? buildArtifactFallbackFilename(artifact, format) : `artifact.${format}`
+    ),
 
-  downloadCsv: async (id: string, token: string): Promise<{ blob: Blob; filename: string }> => {
-    const response = await fetch(`${API_URL}/artifacts/${id}/download-csv`, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "include",
-    });
-    if (!response.ok) {
-      let detail = "Failed to download CSV";
-      try {
-        const err = await response.json();
-        detail = (err as { detail?: string | { message?: string } }).detail
-          ? typeof (err as { detail: unknown }).detail === "string"
-            ? (err as { detail: string }).detail
-            : ((err as { detail: { message?: string } }).detail?.message ?? detail)
-          : detail;
-      } catch {
-        /* non-JSON error body */
-      }
-      throw new Error(detail);
-    }
-    const disposition = response.headers.get("Content-Disposition") ?? "";
-    const match = disposition.match(/filename="([^"]+)"/);
-    const filename = match?.[1] ?? "synthetic_data.csv";
-    const blob = await response.blob();
-    return { blob, filename };
-  },
+  downloadCsv: (id: string, token: string): Promise<{ blob: Blob; filename: string }> =>
+    downloadAuthenticatedBlob(
+      `${API_URL}/artifacts/${id}/download-csv`,
+      token,
+      "synthetic_data.csv"
+    ),
 
   downloadContent: async (id: string, token: string): Promise<Blob> => {
-    const response = await fetch(`${API_URL}/artifacts/${id}/download`, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "include",
-    });
-    if (!response.ok) {
-      let detail = "Failed to download artifact";
-      try {
-        const err = await response.json();
-        detail = (err as { detail?: string }).detail ?? detail;
-      } catch {
-        /* non-JSON error body */
-      }
-      throw new Error(detail);
-    }
-    return response.blob();
+    const { blob } = await downloadAuthenticatedBlob(
+      `${API_URL}/artifacts/${id}/download`,
+      token,
+      "artifact.json"
+    );
+    return blob;
   },
 
   downloadDefineXml: async (id: string, token: string): Promise<Blob> => {
-    const response = await fetch(`${API_URL}/artifacts/${id}/define-xml`, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "include",
-    });
-    if (!response.ok) {
-      let detail = "Failed to download define.xml";
-      try {
-        const err = await response.json();
-        detail = (err as { detail?: string }).detail ?? detail;
-      } catch {
-        /* non-JSON error body */
-      }
-      throw new Error(detail);
-    }
-    return response.blob();
+    const { blob } = await downloadAuthenticatedBlob(
+      `${API_URL}/artifacts/${id}/define-xml`,
+      token,
+      "define.xml"
+    );
+    return blob;
   },
 };

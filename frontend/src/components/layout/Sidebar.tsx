@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", alwaysShow: true, group: "main" },
   { label: "Studies", href: "/studies", alwaysShow: true, group: "main" },
   { label: "Approvals", href: "/approvals", permission: "canApproveArtifact" as const, group: "main" },
-  { label: "Validation", href: "/validation", permission: "canRunValidation" as const, group: "main" },
+  { label: "Conformance Runs", href: "/validation", permission: "canRunValidation" as const, group: "main" },
   { label: "AI Generation", href: "/generation", permission: "canTriggerGeneration" as const, group: "main" },
   { label: "Audit Log", href: "/audit", permission: "canViewAuditLog" as const, group: "main" },
   { label: "Users", href: "/users", permission: "canManageUsers" as const, group: "main" },
@@ -29,7 +29,7 @@ const INTELLIGENCE_NAV_ITEMS = [
   { label: "AI Decisions", href: "/intelligence/decisions", alwaysShow: true },
   { label: "Human Overrides", href: "/intelligence/overrides", alwaysShow: true },
   { label: "Lineage", href: "/intelligence/lineage", alwaysShow: true },
-  { label: "Validation", href: "/intelligence/validation", permission: "canRunValidation" as const },
+  { label: "CIP Validation", href: "/intelligence/validation", permission: "canRunValidation" as const },
   { label: "Synthetic Data", href: "/intelligence/synthetic", alwaysShow: true },
 ];
 

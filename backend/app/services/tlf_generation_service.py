@@ -25,8 +25,16 @@ from app.services.audit_service import AuditService
 from app.services.context_graph_service import ContextGraphService
 from app.services.data_cut_service import extract_data_cut, prepare_pipeline_artifact
 from app.services.dual_programmer_qc_service import DualProgrammerQCService
+from app.services.generation_fallback import (
+    apply_dummy_generation_labels,
+    format_fallback_reasoning,
+)
 from app.services.intelligence_service import AIDecisionService, DataLineageService
 from app.services.validation_service import ValidationService
+
+_TLF_TEMPLATE_FALLBACK_REASON = (
+    "Template-based TLF specification (no live AI inference)"
+)
 
 _AGENT_NAME = "tlf-generation-agent"
 _MODEL_ID = "claude-sonnet-4-20250514"
@@ -128,9 +136,13 @@ class TLFGenerationService:
             output={
                 "artifact_id": str(artifact.id),
                 "tables": [t["id"] for t in content.get("tables", [])],
+                "generation_mode": content.get("generation_mode"),
             },
-            reasoning="Derived TLF tables from ADaM specification",
-            confidence=0.8,
+            reasoning=format_fallback_reasoning(
+                "Derived TLF tables from ADaM specification",
+                content.get("fallback_reason"),
+            ),
+            confidence=0.8 if not content.get("fallback_reason") else 0.5,
             output_artifact_ids=[artifact.id],
         )
 
@@ -185,9 +197,14 @@ class TLFGenerationService:
             actor=actor,
             ai_decision_id=decision.id,
         )
-        await self._link_study_traceability(
+        await self._graph.link_pipeline_artifact_to_study(
+            organization_id=actor.organization_id,
             study_id=study.id,
-            artifact=artifact,
+            study_name=study.name,
+            artifact_id=artifact.id,
+            artifact_name=artifact.name,
+            artifact_node_type=GraphNodeType.TLF,
+            artifact_external_type="tlf_artifact",
             actor=actor,
             ai_decision_id=decision.id,
         )
@@ -265,7 +282,7 @@ class TLFGenerationService:
             "program_name": "t_02_exposure.R",
         })
 
-        return {
+        content = {
             "document_type": "TLF_SPECIFICATION",
             "version": "1.0",
             "study_name": study_name,
@@ -277,6 +294,9 @@ class TLFGenerationService:
             "output_formats": ["CSV", "RTF"],
             "regulatory_references": ["ICH E3", "CDISC TLF Standards"],
         }
+        return apply_dummy_generation_labels(
+            content, fallback_reason=_TLF_TEMPLATE_FALLBACK_REASON
+        )
 
     async def _resolve_graph_node(
         self,
@@ -400,43 +420,3 @@ class TLFGenerationService:
                 source_graph_node_id=adam_node.id,
                 target_graph_node_id=tlf_node.id,
             )
-
-    async def _link_study_traceability(
-        self,
-        *,
-        study_id: UUID,
-        artifact: Artifact,
-        actor: User,
-        ai_decision_id: UUID,
-    ) -> None:
-        """Attach TLF package to the study milestone chain."""
-        study = await self._study_repo.get(study_id, actor.organization_id)
-        study_node, _ = await self._graph.register_domain_record(
-            organization_id=actor.organization_id,
-            node_type=GraphNodeType.STUDY,
-            external_id=study_id,
-            external_type="study",
-            label=study.name,
-            study_id=study_id,
-            actor=actor,
-        )
-        tlf_node, _ = await self._graph.register_domain_record(
-            organization_id=actor.organization_id,
-            node_type=GraphNodeType.TLF,
-            external_id=artifact.id,
-            external_type="tlf_artifact",
-            label=artifact.name,
-            study_id=study_id,
-            properties={"artifact_id": str(artifact.id)},
-            actor=actor,
-        )
-        await self._graph.create_relationship(
-            organization_id=actor.organization_id,
-            source_node_id=tlf_node.id,
-            target_node_id=study_node.id,
-            edge_type=GraphEdgeType.PART_OF,
-            study_id=study_id,
-            is_ai_generated=True,
-            ai_decision_id=ai_decision_id,
-            actor=actor,
-        )

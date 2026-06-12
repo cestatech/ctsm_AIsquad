@@ -5,13 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
 
 from app.models.artifact import Artifact, ArtifactStatus, ArtifactType, ArtifactVersion
-from app.models.study import Study
 
 _CSV = b"subject_id,age,treatment\nS001,45,A\nS002,52,B\n"
 
@@ -22,17 +21,31 @@ _COLUMN_MAPS: dict[str, tuple[str, str]] = {
 }
 
 
+async def _create_study(iclient: AsyncClient, admin_tok: str, *, name: str) -> UUID:
+    """Create an isolated study for ADaM pipeline tests."""
+    resp = await iclient.post(
+        "/api/v1/studies",
+        json={
+            "name": name,
+            "protocol_number": f"AD-{uuid4().hex[:6]}",
+        },
+        headers={"Authorization": f"Bearer {admin_tok}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return UUID(resp.json()["id"])
+
+
 async def _create_sdtm_artifact(
     iclient: AsyncClient,
     idb,
-    i_study: Study,
+    study_id: UUID,
     i_org,
     i_admin,
     admin_tok: str,
 ) -> str:
     """Upload, map, approve, and generate SDTM; return artifact id."""
     upload = await iclient.post(
-        f"/api/v1/studies/{i_study.id}/uploads",
+        f"/api/v1/studies/{study_id}/uploads",
         files={"file": ("adam_src.csv", _CSV, "text/csv")},
         headers={"Authorization": f"Bearer {admin_tok}"},
     )
@@ -77,7 +90,7 @@ async def _create_sdtm_artifact(
         artifact = Artifact(
             id=uuid4(),
             organization_id=i_org.id,
-            study_id=i_study.id,
+            study_id=study_id,
             artifact_type=ArtifactType.SDTM_DATASET,
             name="Seeded SDTM",
             status=ArtifactStatus.DRAFT,
@@ -150,16 +163,18 @@ class TestADAMReadiness:
         self,
         iclient: AsyncClient,
         idb,
-        i_study: Study,
         i_org,
         i_admin,
         admin_tok: str,
     ):
+        study_id = await _create_study(
+            iclient, admin_tok, name="ADaM Readiness Study"
+        )
         await _create_sdtm_artifact(
-            iclient, idb, i_study, i_org, i_admin, admin_tok
+            iclient, idb, study_id, i_org, i_admin, admin_tok
         )
         resp = await iclient.get(
-            f"/api/v1/adam/studies/{i_study.id}/adam-readiness",
+            f"/api/v1/adam/studies/{study_id}/adam-readiness",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert resp.status_code == 200
@@ -174,13 +189,15 @@ class TestADAMGeneration:
         self,
         iclient: AsyncClient,
         idb,
-        i_study: Study,
         i_org,
         i_admin,
         admin_tok: str,
     ):
+        study_id = await _create_study(
+            iclient, admin_tok, name="ADaM Single Artifact Study"
+        )
         sdtm_id = await _create_sdtm_artifact(
-            iclient, idb, i_study, i_org, i_admin, admin_tok
+            iclient, idb, study_id, i_org, i_admin, admin_tok
         )
         resp = await iclient.post(
             f"/api/v1/adam/artifacts/{sdtm_id}/generate-adam",
@@ -202,17 +219,19 @@ class TestADAMGeneration:
         self,
         iclient: AsyncClient,
         idb,
-        i_study: Study,
         i_org,
         i_admin,
         admin_tok: str,
     ):
+        study_id = await _create_study(
+            iclient, admin_tok, name="ADaM Full Study Generation"
+        )
         await _create_sdtm_artifact(
-            iclient, idb, i_study, i_org, i_admin, admin_tok
+            iclient, idb, study_id, i_org, i_admin, admin_tok
         )
         resp = await iclient.post(
-            f"/api/v1/adam/studies/{i_study.id}/generate-adam",
+            f"/api/v1/adam/studies/{study_id}/generate-adam",
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.text
         assert resp.json()["dataset_count"] >= 1

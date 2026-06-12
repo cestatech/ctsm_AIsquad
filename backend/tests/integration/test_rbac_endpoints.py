@@ -133,6 +133,15 @@ class TestContributorRestrictions:
         )
         assert resp.status_code == 403
 
+    async def test_contributor_cannot_list_approvals_queue(
+        self, iclient: AsyncClient, contributor_tok: str
+    ):
+        resp = await iclient.get(
+            "/api/v1/approvals/queue",
+            headers={"Authorization": f"Bearer {contributor_tok}"},
+        )
+        assert resp.status_code == 403
+
     async def test_contributor_cannot_approve_artifact(
         self, iclient: AsyncClient, contributor_tok: str, i_artifact
     ):

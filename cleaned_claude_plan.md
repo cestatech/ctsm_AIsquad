@@ -1,27 +1,5 @@
 # Cleaned Claude Code Output
 
-## 1. Terminal Session Metadata
-
-```text
-eshaanraj@Eshaans-MacBook-Air-6 ctsm_AIsquad % claude
- ▐▛███▜▌   Claude Code v2.1.170
-▝▜█████▛▘  Sonnet 4.6 · Claude Pro
-  ▘▘ ▝▝    ~/ctsm_AIsquad
- ▐▛███▜▌   Claude Code v2.1.170
-▝▜█████▛▘  Fable 5 · Claude Pro
-  ▘▘ ▝▝    ~/ctsm_AIsquad
- ▎ Fable 5 is here! Our newest model for complex, long-running work
- ▎ Included in your plan limits until Jun 22, then switch to usage credits to continue.
-❯ /plan
-  ⎿  Enabled plan mode
-❯ /model
-  ⎿  Set model to Fable 5 and saved as your default for new sessions
-```
-
-## 2. Original Prompt Sent to Claude
-
-# Scan my codebase and help me plan what we should build next with Fable.
-
 ## Context
 
 This repository is for Celerius, an AI-native clinical trial lifecycle platform. The product goal is to support an auditable workflow from sponsor intake through protocol/SAP/eCRF generation, raw data handling, SDTM, ADaM, TLFs, CSR, and submission packaging.

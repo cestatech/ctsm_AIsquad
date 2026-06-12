@@ -46,6 +46,11 @@ from app.services.data_cut_service import (
     prepare_pipeline_artifact,
 )
 from app.services.dual_programmer_qc_service import DualProgrammerQCService
+from app.services.generation_fallback import (
+    NO_API_KEY_FALLBACK_REASON,
+    apply_dummy_generation_labels,
+    format_fallback_reasoning,
+)
 from app.services.generators.base_generator import BaseGenerator
 from app.services.pinnacle21_service import Pinnacle21Service
 from app.services.validation_service import ValidationService
@@ -307,6 +312,7 @@ class SDTMGenerationService:
         total_mappings = 0
         source_ids: list[UUID] = []
         shared_data_cut = None
+        study_fallback_reason: str | None = None
 
         for dataset in datasets:
             fields = await self._field_repo.list_for_dataset(
@@ -341,6 +347,8 @@ class SDTMGenerationService:
             merged_derived.extend(partial.get("derived_variables", []))
             total_rows += partial.get("row_count", 0)
             total_mappings += partial.get("mapping_count", 0)
+            if partial.get("fallback_reason"):
+                study_fallback_reason = partial["fallback_reason"]
             source_ids.append(dataset.id)
             datasets_fields.append((dataset, fields))
 
@@ -372,6 +380,12 @@ class SDTMGenerationService:
             "row_count": total_rows,
             "mapping_count": total_mappings,
         }
+        if study_fallback_reason:
+            apply_dummy_generation_labels(
+                content, fallback_reason=study_fallback_reason
+            )
+        elif self._client:
+            content["derivation_method"] = "ai"
         if shared_data_cut is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -438,11 +452,28 @@ class SDTMGenerationService:
                 actor=actor,
                 ai_decision_id=decision.id,
             )
-        await self._link_study_traceability(
+        study = await self._study_repo.get(study_id, actor.organization_id)
+        artifacts, _ = await self._artifact_repo.list_by_study(
+            study_id, actor.organization_id, limit=50, offset=0
+        )
+        from app.models.artifact import ArtifactType
+
+        protocol = next(
+            (a for a in artifacts if a.artifact_type == ArtifactType.PROTOCOL),
+            None,
+        )
+        await self._graph.link_pipeline_artifact_to_study(
+            organization_id=actor.organization_id,
             study_id=study_id,
-            artifact=artifact,
+            study_name=study.name,
+            artifact_id=artifact.id,
+            artifact_name=artifact.name,
+            artifact_node_type=GraphNodeType.SDTM_DOMAIN,
+            artifact_external_type="sdtm_artifact",
             actor=actor,
             ai_decision_id=decision.id,
+            protocol_artifact_id=protocol.id if protocol else None,
+            protocol_artifact_name=protocol.name if protocol else None,
         )
 
         field_count = sum(len(f) for _, f in datasets_fields)
@@ -452,12 +483,16 @@ class SDTMGenerationService:
                 "artifact_id": str(artifact.id),
                 "domains": [d["domain"] for d in content.get("domains", [])],
                 "source_dataset_ids": [str(i) for i in source_dataset_ids],
+                "generation_mode": content.get("generation_mode"),
             },
-            reasoning=(
-                f"Derived SDTM from {field_count} approved mappings "
-                f"across {len(source_dataset_ids)} dataset(s)"
+            reasoning=format_fallback_reasoning(
+                (
+                    f"Derived SDTM from {field_count} approved mappings "
+                    f"across {len(source_dataset_ids)} dataset(s)"
+                ),
+                content.get("fallback_reason"),
             ),
-            confidence=0.85,
+            confidence=0.85 if not content.get("fallback_reason") else 0.5,
             output_artifact_ids=[artifact.id],
         )
 
@@ -648,27 +683,44 @@ class SDTMGenerationService:
             if f.mapped_sdtm_variable_id
         ]
 
+        fallback_reason: str | None = None
         if self._client:
-            ai_spec = await self._call_claude(
-                study_name=study_name,
-                protocol_number=protocol_number,
-                mapping_spec=mapping_spec,
-                raw_rows=raw_rows,
-            )
-            ai_domains = self._materialize_sdtm_domains(
-                ai_spec,
-                mapping_spec=mapping_spec,
-                raw_rows=raw_rows,
-                protocol_number=protocol_number,
-            )
-            derivation_method = "ai"
+            try:
+                ai_spec = await self._call_claude(
+                    study_name=study_name,
+                    protocol_number=protocol_number,
+                    mapping_spec=mapping_spec,
+                    raw_rows=raw_rows,
+                )
+                ai_domains = self._materialize_sdtm_domains(
+                    ai_spec,
+                    mapping_spec=mapping_spec,
+                    raw_rows=raw_rows,
+                    protocol_number=protocol_number,
+                )
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, dict) else {}
+                if exc.status_code != status.HTTP_502_BAD_GATEWAY or detail.get(
+                    "code"
+                ) not in ("AI_PARSE_ERROR", "SDTM_DERIVATION_EMPTY"):
+                    raise
+                fallback_reason = str(detail.get("message", exc))
+                logger.warning(
+                    "SDTM agent failed, using deterministic fallback: %s",
+                    fallback_reason,
+                )
+                ai_domains = self._deterministic_domains(
+                    mapping_spec=mapping_spec,
+                    raw_rows=raw_rows,
+                    protocol_number=protocol_number,
+                )
         else:
+            fallback_reason = NO_API_KEY_FALLBACK_REASON
             ai_domains = self._deterministic_domains(
                 mapping_spec=mapping_spec,
                 raw_rows=raw_rows,
                 protocol_number=protocol_number,
             )
-            derivation_method = "deterministic"
 
         obs_count = sum(
             len(d.get("observations", [])) for d in ai_domains.get("domains", [])
@@ -679,13 +731,12 @@ class SDTMGenerationService:
                 detail={
                     "code": "SDTM_DERIVATION_EMPTY",
                     "message": (
-                        "SDTM agent returned a derivation spec that produced no "
-                        "observations from the source rows."
+                        "SDTM derivation produced no observations from the source rows."
                     ),
                 },
             )
 
-        return {
+        content = {
             "document_type": "SDTM_DATASET",
             "sdtm_ig_version": self._settings.SDTM_IG_VERSION,
             "source_dataset_id": str(dataset.id),
@@ -699,8 +750,12 @@ class SDTMGenerationService:
             "derived_variables": ai_domains.get("derived_variables", []),
             "row_count": len(raw_rows),
             "mapping_count": len(mapping_spec),
-            "derivation_method": derivation_method,
         }
+        if fallback_reason:
+            apply_dummy_generation_labels(content, fallback_reason=fallback_reason)
+        else:
+            content["derivation_method"] = "ai"
+        return content
 
     async def _call_claude(
         self,
@@ -1089,73 +1144,3 @@ Return the compact SDTM derivation spec JSON. Do not include observations arrays
                     ai_decision_id=ai_decision_id,
                     actor=actor,
                 )
-
-    async def _link_study_traceability(
-        self,
-        *,
-        study_id: UUID,
-        artifact: Artifact,
-        actor: User,
-        ai_decision_id: UUID,
-    ) -> None:
-        """Link SDTM artifact to study and protocol for traceability chain."""
-        study = await self._study_repo.get(study_id, actor.organization_id)
-        study_node, _ = await self._graph.register_domain_record(
-            organization_id=actor.organization_id,
-            node_type=GraphNodeType.STUDY,
-            external_id=study_id,
-            external_type="study",
-            label=study.name,
-            study_id=study_id,
-            actor=actor,
-        )
-        sdtm_node, _ = await self._graph.register_domain_record(
-            organization_id=actor.organization_id,
-            node_type=GraphNodeType.SDTM_DOMAIN,
-            external_id=artifact.id,
-            external_type="sdtm_artifact",
-            label=artifact.name,
-            study_id=study_id,
-            properties={"artifact_id": str(artifact.id)},
-            actor=actor,
-        )
-        await self._graph.create_relationship(
-            organization_id=actor.organization_id,
-            source_node_id=sdtm_node.id,
-            target_node_id=study_node.id,
-            edge_type=GraphEdgeType.PART_OF,
-            study_id=study_id,
-            is_ai_generated=True,
-            ai_decision_id=ai_decision_id,
-            actor=actor,
-        )
-
-        artifacts, _ = await self._artifact_repo.list_by_study(
-            study_id, actor.organization_id, limit=50, offset=0
-        )
-        from app.models.artifact import ArtifactType
-
-        protocol = next(
-            (a for a in artifacts if a.artifact_type == ArtifactType.PROTOCOL),
-            None,
-        )
-        if protocol is not None:
-            protocol_node, _ = await self._graph.register_domain_record(
-                organization_id=actor.organization_id,
-                node_type=GraphNodeType.PROTOCOL,
-                external_id=protocol.id,
-                external_type="artifact",
-                label=protocol.name,
-                study_id=study_id,
-                actor=actor,
-            )
-            await self._graph.create_relationship(
-                organization_id=actor.organization_id,
-                source_node_id=sdtm_node.id,
-                target_node_id=protocol_node.id,
-                edge_type=GraphEdgeType.DERIVED_FROM,
-                study_id=study_id,
-                is_ai_generated=True,
-                ai_decision_id=ai_decision_id,
-                actor=actor,
-            )

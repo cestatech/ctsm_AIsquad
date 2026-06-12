@@ -58,7 +58,7 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -r backend/requirements.txt
-      - name: Run tests
+      - name: Run unit tests
         env:
           APP_ENV: development
           DATABASE_URL: postgresql+asyncpg://celerius_test:celerius_test@localhost:5432/celerius_test
@@ -69,7 +69,20 @@ jobs:
           STORAGE_LOCAL_PATH: /tmp/celerius-test-storage
         run: |
           cd backend
-          pytest tests/ -v --cov=app --cov-report=xml --cov-fail-under=0
+          pip install pytest-timeout==2.3.1
+          PYTHONUNBUFFERED=1 pytest tests/unit -v --tb=short --durations=10
+      - name: Run integration tests
+        env:
+          APP_ENV: development
+          DATABASE_URL: postgresql+asyncpg://celerius_test:celerius_test@localhost:5432/celerius_test
+          REDIS_URL: redis://localhost:6379/0
+          APP_SECRET_KEY: test-secret-key-for-ci-only-32chars
+          JWT_SECRET_KEY: test-jwt-secret-for-ci-only-32chars
+          STORAGE_BACKEND: filesystem
+          STORAGE_LOCAL_PATH: /tmp/celerius-test-storage
+        run: |
+          cd backend
+          PYTHONUNBUFFERED=1 pytest tests/integration -v --tb=short --durations=15 --cov=app --cov-report=xml --cov-fail-under=0
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:

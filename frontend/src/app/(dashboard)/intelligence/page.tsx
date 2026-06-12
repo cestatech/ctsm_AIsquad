@@ -122,18 +122,27 @@ export default function IntelligencePage() {
         <div className="grid grid-cols-2 gap-4">
           {visibleScreens.map((screen) => {
             const count = screen.badge ? badgeCounts[screen.badge] : 0;
-            const href =
-              "studyScoped" in screen && screen.studyScoped && studyId
-                ? `/studies/${studyId}/generated-data`
-                : screen.href;
-            return (
-              <Link
-                key={screen.href}
-                href={href}
-                className="bg-white border border-slate-200 px-5 py-4 hover:border-brand-400 hover:shadow-sm transition-all group"
-              >
+            const isStudyScoped =
+              "studyScoped" in screen && screen.studyScoped === true;
+            const needsStudy = isStudyScoped && !studyId;
+            const href = isStudyScoped && studyId
+              ? `/studies/${studyId}/generated-data`
+              : screen.href;
+            const cardClass =
+              "bg-white border border-slate-200 px-5 py-4 transition-all " +
+              (needsStudy
+                ? "opacity-60 cursor-not-allowed"
+                : "hover:border-brand-400 hover:shadow-sm group");
+
+            const inner = (
+              <>
                 <div className="flex items-start justify-between gap-3 mb-2">
-                  <h2 className="font-display font-semibold text-slate-900 group-hover:text-brand-700 transition-colors">
+                  <h2
+                    className={
+                      "font-display font-semibold text-slate-900 " +
+                      (needsStudy ? "" : "group-hover:text-brand-700 transition-colors")
+                    }
+                  >
                     {screen.title}
                   </h2>
                   {screen.badge && count > 0 && (
@@ -142,7 +151,25 @@ export default function IntelligencePage() {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 leading-relaxed">{screen.description}</p>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  {needsStudy
+                    ? "Select a study using the picker above to access generated pipeline outputs."
+                    : screen.description}
+                </p>
+              </>
+            );
+
+            if (needsStudy) {
+              return (
+                <div key={screen.href} className={cardClass} aria-disabled="true">
+                  {inner}
+                </div>
+              );
+            }
+
+            return (
+              <Link key={screen.href} href={href} className={cardClass}>
+                {inner}
               </Link>
             );
           })}

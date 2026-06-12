@@ -1,3 +1,4 @@
+import { downloadAuthenticatedBlob } from "@/lib/download";
 import { approvalsApi } from "./approvals";
 import { artifactsApi } from "./artifacts";
 import { intelligenceApi } from "./intelligence";
@@ -164,38 +165,6 @@ function mapSdtmType(type: string): string {
   return type;
 }
 
-async function downloadBinary(
-  path: string,
-  token: string,
-  fallbackFilename: string
-): Promise<{ blob: Blob; filename: string }> {
-  const response = await fetch(`${API_URL}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    credentials: "include",
-  });
-  if (!response.ok) {
-    let detail = "Download failed";
-    try {
-      const err = (await response.json()) as {
-        detail?: string | { message?: string };
-      };
-      const raw = err.detail;
-      detail =
-        typeof raw === "string"
-          ? raw
-          : raw?.message ?? detail;
-    } catch {
-      /* non-JSON body */
-    }
-    throw new Error(detail);
-  }
-  const disposition = response.headers.get("Content-Disposition") ?? "";
-  const match = disposition.match(/filename="([^"]+)"/);
-  const filename = match?.[1] ?? fallbackFilename;
-  const blob = await response.blob();
-  return { blob, filename };
-}
-
 export const sdtmApi = {
   getArtifact: (artifactId: string, token: string) =>
     artifactsApi.get(artifactId, token),
@@ -261,8 +230,8 @@ export const sdtmApi = {
     ),
 
   downloadDefineXml: (artifactId: string, token: string) =>
-    downloadBinary(
-      `/artifacts/${artifactId}/define-xml`,
+    downloadAuthenticatedBlob(
+      `${API_URL}/artifacts/${artifactId}/define-xml`,
       token,
       "define.xml"
     ),

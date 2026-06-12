@@ -7,6 +7,7 @@ Phase 5 pipeline: SDTM_DATASET artifact → AI-assisted ADaM specification artif
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from uuid import UUID
@@ -37,8 +38,16 @@ from app.services.data_cut_service import (
     prepare_pipeline_artifact,
 )
 from app.services.dual_programmer_qc_service import DualProgrammerQCService
+from app.services.generation_fallback import (
+    DUMMY_GENERATION_NOTICE,
+    NO_API_KEY_FALLBACK_REASON,
+    apply_dummy_generation_labels,
+    format_fallback_reasoning,
+)
 from app.services.validation_service import ValidationService
 from app.models.statistical_qc import StatisticalQCWorkflow
+
+logger = logging.getLogger(__name__)
 
 _AGENT_NAME = "adam-derivation-agent"
 _MODEL_ID = "claude-sonnet-4-20250514"
@@ -364,9 +373,15 @@ class ADAMGenerationService:
                 actor=actor,
                 ai_decision_id=decision.id,
             )
-        await self._link_study_traceability(
+        study = await self._study_repo.get(study_id, actor.organization_id)
+        await self._graph.link_pipeline_artifact_to_study(
+            organization_id=actor.organization_id,
             study_id=study_id,
-            artifact=artifact,
+            study_name=study.name,
+            artifact_id=artifact.id,
+            artifact_name=artifact.name,
+            artifact_node_type=GraphNodeType.ADAM_DATASET,
+            artifact_external_type="adam_artifact",
             actor=actor,
             ai_decision_id=decision.id,
         )
@@ -377,12 +392,16 @@ class ADAMGenerationService:
                 "artifact_id": str(artifact.id),
                 "datasets": [d["dataset"] for d in content.get("datasets", [])],
                 "source_sdtm_artifact_ids": [str(a.id) for a in source_artifacts],
+                "generation_mode": content.get("generation_mode"),
             },
-            reasoning=(
-                f"Derived ADaM from {len(merged_domains)} SDTM domain(s) "
-                f"across {len(source_artifacts)} artifact(s)"
+            reasoning=format_fallback_reasoning(
+                (
+                    f"Derived ADaM from {len(merged_domains)} SDTM domain(s) "
+                    f"across {len(source_artifacts)} artifact(s)"
+                ),
+                content.get("fallback_reason"),
             ),
-            confidence=0.85,
+            confidence=0.85 if not content.get("fallback_reason") else 0.5,
             output_artifact_ids=[artifact.id],
         )
 
@@ -503,15 +522,47 @@ class ADAMGenerationService:
         sdtm_domains: list[dict],
         source_sdtm_artifact_ids: list[UUID],
     ) -> dict:
+        fallback_reason: str | None = None
         if self._client:
-            ai_spec = await self._call_claude(
-                study_name=study_name,
-                protocol_number=protocol_number,
-                sdtm_domains=sdtm_domains,
-            )
-            datasets = ai_spec.get("datasets", [])
-            trace_notes = ai_spec.get("traceability_notes", [])
+            try:
+                ai_spec = await self._call_claude(
+                    study_name=study_name,
+                    protocol_number=protocol_number,
+                    sdtm_domains=sdtm_domains,
+                )
+                datasets = ai_spec.get("datasets", [])
+                trace_notes = ai_spec.get("traceability_notes", [])
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, dict) else {}
+                if exc.status_code != status.HTTP_502_BAD_GATEWAY or detail.get(
+                    "code"
+                ) != "AI_PARSE_ERROR":
+                    raise
+                fallback_reason = str(detail.get("message", exc))
+                logger.warning(
+                    "ADaM agent parse failed, using deterministic fallback: %s",
+                    fallback_reason,
+                )
+                spec = self._deterministic_adam(
+                    protocol_number=protocol_number,
+                    sdtm_domains=sdtm_domains,
+                )
+                datasets = spec["datasets"]
+                trace_notes = spec["traceability_notes"]
+            except (anthropic.APIError, TimeoutError) as exc:
+                fallback_reason = f"Anthropic API error: {exc}"
+                logger.warning(
+                    "ADaM agent API call failed, using deterministic fallback: %s",
+                    exc,
+                )
+                spec = self._deterministic_adam(
+                    protocol_number=protocol_number,
+                    sdtm_domains=sdtm_domains,
+                )
+                datasets = spec["datasets"]
+                trace_notes = spec["traceability_notes"]
         else:
+            fallback_reason = NO_API_KEY_FALLBACK_REASON
             spec = self._deterministic_adam(
                 protocol_number=protocol_number,
                 sdtm_domains=sdtm_domains,
@@ -528,7 +579,7 @@ class ADAMGenerationService:
             ):
                 trace_notes.append(f"{code} auto-derived from SDTM source domain(s)")
 
-        return {
+        content = {
             "document_type": "ADAM_SPECIFICATION",
             "version": "1.0",
             "adam_ig_version": self._settings.ADAM_IG_VERSION,
@@ -545,6 +596,11 @@ class ADAMGenerationService:
             ],
             "sdtm_domain_count": len(sdtm_domains),
         }
+        if fallback_reason:
+            apply_dummy_generation_labels(content, fallback_reason=fallback_reason)
+            if DUMMY_GENERATION_NOTICE not in content["traceability_notes"]:
+                content["traceability_notes"].insert(0, DUMMY_GENERATION_NOTICE)
+        return content
 
     async def _call_claude(
         self,
@@ -1059,42 +1115,3 @@ Derive ADaM analysis datasets with full variable derivations and population flag
                             ai_decision_id=ai_decision_id,
                             actor=actor,
                         )
-
-    async def _link_study_traceability(
-        self,
-        *,
-        study_id: UUID,
-        artifact: Artifact,
-        actor: User,
-        ai_decision_id: UUID,
-    ) -> None:
-        study = await self._study_repo.get(study_id, actor.organization_id)
-        study_node, _ = await self._graph.register_domain_record(
-            organization_id=actor.organization_id,
-            node_type=GraphNodeType.STUDY,
-            external_id=study_id,
-            external_type="study",
-            label=study.name,
-            study_id=study_id,
-            actor=actor,
-        )
-        adam_node, _ = await self._graph.register_domain_record(
-            organization_id=actor.organization_id,
-            node_type=GraphNodeType.ADAM_DATASET,
-            external_id=artifact.id,
-            external_type="adam_artifact",
-            label=artifact.name,
-            study_id=study_id,
-            properties={"artifact_id": str(artifact.id)},
-            actor=actor,
-        )
-        await self._graph.create_relationship(
-            organization_id=actor.organization_id,
-            source_node_id=adam_node.id,
-            target_node_id=study_node.id,
-            edge_type=GraphEdgeType.PART_OF,
-            study_id=study_id,
-            is_ai_generated=True,
-            ai_decision_id=ai_decision_id,
-            actor=actor,
-        )

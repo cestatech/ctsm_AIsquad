@@ -378,6 +378,73 @@ class ContextGraphService:
         )
         return edge
 
+    async def link_pipeline_artifact_to_study(
+        self,
+        *,
+        organization_id: UUID,
+        study_id: UUID,
+        study_name: str,
+        artifact_id: UUID,
+        artifact_name: str,
+        artifact_node_type: GraphNodeType,
+        artifact_external_type: str,
+        actor: User,
+        ai_decision_id: UUID,
+        protocol_artifact_id: UUID | None = None,
+        protocol_artifact_name: str | None = None,
+    ) -> None:
+        """Register a pipeline artifact node and link it to the study graph."""
+        study_node, _ = await self.register_domain_record(
+            organization_id=organization_id,
+            node_type=GraphNodeType.STUDY,
+            external_id=study_id,
+            external_type="study",
+            label=study_name,
+            study_id=study_id,
+            actor=actor,
+        )
+        artifact_node, _ = await self.register_domain_record(
+            organization_id=organization_id,
+            node_type=artifact_node_type,
+            external_id=artifact_id,
+            external_type=artifact_external_type,
+            label=artifact_name,
+            study_id=study_id,
+            properties={"artifact_id": str(artifact_id)},
+            actor=actor,
+        )
+        await self.create_relationship(
+            organization_id=organization_id,
+            source_node_id=artifact_node.id,
+            target_node_id=study_node.id,
+            edge_type=GraphEdgeType.PART_OF,
+            study_id=study_id,
+            is_ai_generated=True,
+            ai_decision_id=ai_decision_id,
+            actor=actor,
+        )
+
+        if protocol_artifact_id is not None and protocol_artifact_name is not None:
+            protocol_node, _ = await self.register_domain_record(
+                organization_id=organization_id,
+                node_type=GraphNodeType.PROTOCOL,
+                external_id=protocol_artifact_id,
+                external_type="artifact",
+                label=protocol_artifact_name,
+                study_id=study_id,
+                actor=actor,
+            )
+            await self.create_relationship(
+                organization_id=organization_id,
+                source_node_id=artifact_node.id,
+                target_node_id=protocol_node.id,
+                edge_type=GraphEdgeType.DERIVED_FROM,
+                study_id=study_id,
+                is_ai_generated=True,
+                ai_decision_id=ai_decision_id,
+                actor=actor,
+            )
+
     # ------------------------------------------------------------------
     # Direct event emission
     # ------------------------------------------------------------------

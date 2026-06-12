@@ -9,35 +9,13 @@ import { useStudyPermissions } from "@/hooks/useStudyPermissions";
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { generationApi } from "@/lib/api/generation";
 import { studiesApi } from "@/lib/api/studies";
+import { formatRelativeTime } from "@/lib/formatRelativeTime";
+import {
+  ACTIVE_GENERATION_STATUSES,
+  GENERATION_ARTIFACT_TYPE_LABELS,
+  GENERATION_STATUS_COLORS,
+} from "@/lib/generationLabels";
 import type { GenerationJob } from "@/types";
-
-const STATUS_COLORS: Record<string, string> = {
-  PENDING: "bg-slate-100 text-slate-600",
-  QUEUED: "bg-amber-100 text-amber-700",
-  RUNNING: "bg-blue-100 text-blue-700",
-  COMPLETED: "bg-emerald-100 text-emerald-700",
-  FAILED: "bg-red-100 text-red-700",
-  CANCELLED: "bg-slate-100 text-slate-400",
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  PROTOCOL: "Protocol", ICF: "Informed Consent Form", SAP: "Statistical Analysis Plan",
-  EDC_CRF: "eCRF / EDC Form", TRACEABILITY_MATRIX: "Traceability Matrix",
-  SDTM_DATASET: "SDTM Dataset", ADAM_DATASET: "ADaM Dataset",
-  TLF: "Tables, Listings & Figures", VALIDATION_REPORT: "Validation Report",
-  CSR: "Clinical Study Report", SUBMISSION_PACKAGE: "Submission Package", OTHER: "Other",
-};
-
-function rel(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
-const ACTIVE_STATUSES = new Set(["PENDING", "QUEUED", "RUNNING"]);
 
 function JobRow({
   job,
@@ -62,15 +40,15 @@ function JobRow({
   return (
     <tr className="hover:bg-slate-50 transition-colors">
       <td className="px-4 py-3 text-xs font-mono text-slate-500">{job.id.slice(0, 8)}…</td>
-      <td className="px-4 py-3 text-sm text-slate-800">{TYPE_LABELS[job.artifact_type] ?? job.artifact_type}</td>
+      <td className="px-4 py-3 text-sm text-slate-800">{GENERATION_ARTIFACT_TYPE_LABELS[job.artifact_type] ?? job.artifact_type}</td>
       <td className="px-4 py-3">
-        <span className={`text-xs px-2 py-0.5 font-medium ${STATUS_COLORS[job.status] ?? "bg-slate-100 text-slate-600"}`}>
+        <span className={`text-xs px-2 py-0.5 font-medium ${GENERATION_STATUS_COLORS[job.status] ?? "bg-slate-100 text-slate-600"}`}>
           {job.status}
         </span>
       </td>
       <td className="px-4 py-3 text-xs text-slate-500">{job.model_id}</td>
       <td className="px-4 py-3 text-xs text-slate-400">{duration ?? "—"}</td>
-      <td className="px-4 py-3 text-xs text-slate-400">{rel(job.created_at)}</td>
+      <td className="px-4 py-3 text-xs text-slate-400">{formatRelativeTime(job.created_at)}</td>
       <td className="px-4 py-3 text-xs">
         <div className="flex items-center gap-3">
           {job.output_artifact_id ? (
@@ -89,7 +67,7 @@ function JobRow({
           ) : (
             <span className="text-slate-300">—</span>
           )}
-          {canStop && ACTIVE_STATUSES.has(job.status) && (
+          {canStop && ACTIVE_GENERATION_STATUSES.has(job.status) && (
             <button
               type="button"
               onClick={() => onStop(job.id)}
@@ -228,7 +206,7 @@ export default function StudyGenerationPage() {
           </table>
         </div>
 
-        {jobs.some((j) => ACTIVE_STATUSES.has(j.status)) && (
+        {jobs.some((j) => ACTIVE_GENERATION_STATUSES.has(j.status)) && (
           <p className="text-xs text-slate-400 mt-3 text-center">
             Active jobs — page auto-refreshes every 5 seconds. Use Stop to cancel queued or running work.
           </p>

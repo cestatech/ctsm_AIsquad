@@ -5,11 +5,13 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import anthropic
 import pytest
 from fastapi import HTTPException
 
 from app.models.artifact import ArtifactType
 from app.services.adam_generation_service import ADAMGenerationService
+from app.services.generation_fallback import DUMMY_GENERATION_NOTICE
 
 
 class TestDeterministicAdam:
@@ -161,6 +163,60 @@ class TestAssertSdtmReady:
 
 
 @pytest.mark.asyncio
+class TestBuildAdamContentFallback:
+    async def test_api_error_uses_deterministic_fallback_labels(self):
+        svc = ADAMGenerationService(AsyncMock())
+        svc._client = MagicMock()
+        svc._settings = MagicMock(ADAM_IG_VERSION="1.3", pinnacle21_configured=False)
+        sdtm_domains = [{
+            "domain": "DM",
+            "variables": ["USUBJID", "AGE"],
+            "observations": [{"USUBJID": "S001", "AGE": "30"}],
+        }]
+        svc._call_claude = AsyncMock(
+            side_effect=anthropic.APIError(
+                message="rate limit",
+                request=MagicMock(),
+                body=None,
+            )
+        )
+
+        content = await svc._build_adam_content(
+            study_name="Study",
+            protocol_number="PROT-001",
+            sdtm_domains=sdtm_domains,
+            source_sdtm_artifact_ids=[uuid4()],
+        )
+
+        assert content["generation_mode"] == "DUMMY"
+        assert content["derivation_method"] == "deterministic_fallback"
+        assert content["generation_notice"] == DUMMY_GENERATION_NOTICE
+        assert "Anthropic API error" in content["fallback_reason"]
+        assert any(d["dataset"] == "ADSL" for d in content["datasets"])
+
+    async def test_no_client_uses_deterministic_fallback_labels(self):
+        svc = ADAMGenerationService(AsyncMock())
+        svc._client = None
+        svc._settings = MagicMock(ADAM_IG_VERSION="1.3", pinnacle21_configured=False)
+        sdtm_domains = [{
+            "domain": "DM",
+            "variables": ["USUBJID"],
+            "observations": [{"USUBJID": "S001"}],
+        }]
+
+        content = await svc._build_adam_content(
+            study_name="Study",
+            protocol_number="PROT-001",
+            sdtm_domains=sdtm_domains,
+            source_sdtm_artifact_ids=[uuid4()],
+        )
+
+        assert content["generation_mode"] == "DUMMY"
+        assert content["derivation_method"] == "deterministic_fallback"
+        assert "No Anthropic API key configured" in content["fallback_reason"]
+
+
+@pytest.mark.asyncio
 class TestGenerateFromSdtmArtifact:
     async def test_generate_creates_adam_artifact(self):
         db = AsyncMock()
@@ -201,6 +257,14 @@ class TestGenerateFromSdtmArtifact:
         version = MagicMock()
         version.content = {
             "document_type": "SDTM_DATASET",
+            "data_source": {
+                "data_source_type": "LIVE_FINAL",
+                "data_cut_label": "Final",
+                "is_synthetic": False,
+                "study_id": str(study_id),
+                "created_by": str(actor.id),
+                "created_at": "2026-01-01T00:00:00+00:00",
+            },
             "domains": [{
                 "domain": "DM",
                 "variables": ["STUDYID", "USUBJID", "SUBJID", "AGE"],
@@ -218,7 +282,7 @@ class TestGenerateFromSdtmArtifact:
         svc._validation.trigger = AsyncMock(return_value=validation_run)
         svc._audit.log = AsyncMock()
         svc._register_cip_links = AsyncMock()
-        svc._link_study_traceability = AsyncMock()
+        svc._graph.link_pipeline_artifact_to_study = AsyncMock()
 
         with (
             patch(

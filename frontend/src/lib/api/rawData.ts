@@ -1,3 +1,4 @@
+import { downloadAuthenticatedBlob } from "@/lib/download";
 import { apiClient } from "./client";
 import type {
   UploadedFile,
@@ -81,17 +82,12 @@ export const rawDataApi = {
     ),
 
   downloadMappingExport: async (datasetId: string, token: string): Promise<Blob> => {
-    const response = await fetch(
+    const { blob } = await downloadAuthenticatedBlob(
       `${API_URL}/raw-data/datasets/${datasetId}/mapping/export`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: "include",
-      }
+      token,
+      "mapping-export.csv"
     );
-    if (!response.ok) {
-      throw new Error("Failed to export mappings");
-    }
-    return response.blob();
+    return blob;
   },
 
   rejectMapping: (

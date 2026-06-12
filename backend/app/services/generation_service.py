@@ -1,7 +1,7 @@
 """AI Generation service — create and track AI artifact generation jobs.
 
-Every job creation logs an AIDecision record per CIP mandatory rules.
-Actual generation execution runs as an async background task (not yet wired).
+AI decisions are logged by BaseGenerator.run() when the background executor runs
+each job. Job creation here only persists the queue record and audit trail.
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ from app.models.user import User
 from app.repositories.generation_repository import GenerationRepository
 from app.schemas.generation import GenerationJobCreate
 from app.services.audit_service import AuditService
-from app.services.intelligence_service import AIDecisionService
 
 
 class GenerationService:
@@ -30,7 +29,6 @@ class GenerationService:
         self._db = db
         self._repo = GenerationRepository(db)
         self._audit = AuditService(db)
-        self._ai_decision = AIDecisionService(db)
 
     async def create_job(
         self,
@@ -40,19 +38,6 @@ class GenerationService:
         user_agent: str | None = None,
     ) -> GenerationJob:
         check_permission(actor, Permission.AI_GENERATION_TRIGGER)
-
-        # CIP requirement: log AI decision before executing
-        decision = await self._ai_decision.begin_decision(
-            organization_id=actor.organization_id,
-            agent_name="generation-service",
-            decision_type="ARTIFACT_GENERATION",
-            input_context={
-                "study_id": str(body.study_id),
-                "artifact_type": body.artifact_type,
-                "model_id": body.model_id,
-                "prompt_template_id": body.prompt_template_id,
-            },
-        )
 
         job = await self._repo.create(
             organization_id=actor.organization_id,
@@ -65,10 +50,6 @@ class GenerationService:
             triggered_by_id=actor.id,
         )
 
-        await self._ai_decision.complete_decision(
-            decision=decision,
-            output={"generation_job_id": str(job.id)},
-        )
         await self._audit.log(
             action=AuditAction.AI_GENERATION_STARTED,
             resource_type="generation_job",
