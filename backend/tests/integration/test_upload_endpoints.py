@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 
+import openpyxl
 import pytest
 from httpx import AsyncClient
 
@@ -52,6 +54,34 @@ class TestUploadFile:
         )
         assert resp.status_code == 201
 
+    async def test_admin_can_upload_xlsx(
+        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+    ):
+        output = io.BytesIO()
+        workbook = openpyxl.Workbook()
+        worksheet = workbook.active
+        worksheet.append(["subject_id", "age"])
+        worksheet.append(["S001", 45])
+        workbook.save(output)
+
+        resp = await iclient.post(
+            f"/api/v1/studies/{i_study.id}/uploads",
+            files={
+                "file": (
+                    "subjects.xlsx",
+                    output.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+
+        assert resp.status_code == 201
+        assert (
+            resp.json()["mime_type"]
+            == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
     async def test_synthetic_filename_auto_labeled(
         self, iclient: AsyncClient, i_study: Study, admin_tok: str
     ):
@@ -96,6 +126,24 @@ class TestUploadFile:
             headers={"Authorization": f"Bearer {admin_tok}"},
         )
         assert resp.status_code == 415
+
+    async def test_binary_renamed_to_csv_returns_structured_422(
+        self, iclient: AsyncClient, i_study: Study, admin_tok: str
+    ):
+        resp = await iclient.post(
+            f"/api/v1/studies/{i_study.id}/uploads",
+            files={
+                "file": (
+                    "subjects.csv",
+                    b"\x89PNG\r\n\x1a\n\x00binary payload",
+                    "text/csv",
+                )
+            },
+            headers={"Authorization": f"Bearer {admin_tok}"},
+        )
+
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["code"] == "FILE_TYPE_MISMATCH"
 
 
 @pytest.mark.asyncio(loop_scope="session")
