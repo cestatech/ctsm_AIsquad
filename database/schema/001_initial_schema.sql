@@ -90,7 +90,6 @@ CREATE TYPE audit_action AS ENUM (
     -- AI
     'ai.generation_started', 'ai.generation_completed', 'ai.generation_failed',
     'ai.mapping_suggested',
-    'ai.mapping_suggested',
     -- Data
     'data.file_uploaded', 'data.file_parsed', 'data.file_deleted',
     'data.field_mapped', 'data.mapping_approved',
