@@ -22,7 +22,7 @@ async def _seed_sdtm_and_generate(
     from tests.integration.test_adam_endpoints import _create_sdtm_artifact
 
     return await _create_sdtm_artifact(
-        iclient, idb, i_study, i_org, i_admin, admin_tok
+        iclient, idb, i_study.id, i_org, i_admin, admin_tok
     )
 
 

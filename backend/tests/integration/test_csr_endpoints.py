@@ -195,7 +195,7 @@ class TestCSREndpoints:
         from tests.integration.test_adam_endpoints import _create_sdtm_artifact
 
         sdtm_id = await _create_sdtm_artifact(
-            iclient, idb, i_study, i_org, i_admin, admin_tok
+            iclient, idb, i_study.id, i_org, i_admin, admin_tok
         )
         resp = await iclient.post(
             f"/api/v1/csr/artifacts/{sdtm_id}/generate-csr",
