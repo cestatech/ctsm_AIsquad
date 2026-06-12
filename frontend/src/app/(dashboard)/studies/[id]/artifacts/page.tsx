@@ -182,7 +182,9 @@ export default function ArtifactListPage({ params }: { params: { id: string } })
                         href={
                           a.artifact_type === "SDTM_DATASET"
                             ? `/studies/${studyId}/sdtm/${a.id}`
-                            : `/studies/${studyId}/artifacts/${a.id}`
+                            : a.artifact_type === "TLF"
+                              ? `/studies/${studyId}/tlf/${a.id}/catalog`
+                              : `/studies/${studyId}/artifacts/${a.id}`
                         }
                         className="font-medium text-slate-900 hover:text-brand-700 transition-colors"
                       >

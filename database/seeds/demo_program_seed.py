@@ -149,6 +149,9 @@ async def seed_demo_program(
             db, org.id, study, admin, profile
         )
         await _approve_submission_pipeline_artifacts(db, org.id, admin, pipeline)
+        await _seed_pipeline_graph_traceability(
+            db, org.id, study, admin, artifacts, pipeline
+        )
         submission_lines.append(
             "Submission pipeline: SDTM, ADaM, TLF, CSR seeded and APPROVED"
         )
@@ -726,8 +729,9 @@ def _submission_pipeline_specs(profile: DemoProfile) -> list[tuple[ArtifactType,
                 "protocol_number": protocol,
                 "tables": [
                     {
-                        "table_id": "T-01",
+                        "id": "T-01",
                         "title": "Summary of Demographics and Baseline Characteristics",
+                        "section": "14.1",
                         "columns": ["Parameter", "Treatment A (N=XX)"],
                         "rows": [["Age (years)", "54.0 (10.2)"]],
                     }
@@ -800,6 +804,91 @@ async def _approve_submission_pipeline_artifacts(
                 admin,
                 comments="Demo seed — approved for submission packaging walkthrough",
             )
+
+
+async def _seed_pipeline_graph_traceability(
+    db: AsyncSession,
+    org_id,
+    study: Study,
+    admin: User,
+    document_artifacts: dict[str, Artifact],
+    pipeline_artifacts: list[Artifact],
+) -> None:
+    """Register TLF in the graph and link SAP → TLF for catalog traceability demos."""
+    sap_artifact = document_artifacts.get("SAP")
+    tlf_artifact = next(
+        (a for a in pipeline_artifacts if a.artifact_type == ArtifactType.TLF),
+        None,
+    )
+    if sap_artifact is None or tlf_artifact is None:
+        return
+
+    graph = ContextGraphService(db)
+    sap_node = await graph.find_node_for_domain_record(
+        sap_artifact.id, "artifact", org_id
+    )
+    if sap_node is None:
+        return
+
+    tlf_node, _ = await graph.register_domain_record(
+        organization_id=org_id,
+        node_type=GraphNodeType.TLF,
+        external_id=tlf_artifact.id,
+        external_type="tlf_artifact",
+        label=tlf_artifact.name,
+        study_id=study.id,
+        properties={
+            "artifact_id": str(tlf_artifact.id),
+            "artifact_type": ArtifactType.TLF.value,
+        },
+        actor=admin,
+    )
+
+    result = await db.execute(
+        select(ArtifactVersion).where(
+            ArtifactVersion.id == tlf_artifact.current_version_id
+        )
+    )
+    tlf_version = result.scalar_one_or_none()
+    tlf_content = (tlf_version.content if tlf_version else {}) or {}
+
+    tlf_index = 0
+    for output_type in ("table", "listing", "figure"):
+        for item in tlf_content.get(f"{output_type}s", []) or []:
+            if not isinstance(item, dict):
+                continue
+            title = (
+                item.get("title")
+                or item.get("id")
+                or item.get("table_id")
+                or "Output"
+            )
+            await graph.create_relationship(
+                organization_id=org_id,
+                source_node_id=sap_node.id,
+                target_node_id=tlf_node.id,
+                edge_type=GraphEdgeType.USED_IN,
+                study_id=study.id,
+                properties={
+                    "sap_section": str(item.get("section") or "14.1"),
+                    "output_title": str(title),
+                    "output_type": output_type,
+                    "tlf_index": tlf_index,
+                    "status": "specified",
+                },
+                actor=admin,
+            )
+            tlf_index += 1
+
+    if tlf_index == 0:
+        await graph.create_relationship(
+            organization_id=org_id,
+            source_node_id=sap_node.id,
+            target_node_id=tlf_node.id,
+            edge_type=GraphEdgeType.USED_IN,
+            study_id=study.id,
+            actor=admin,
+        )
 
 
 async def _seed_graph(

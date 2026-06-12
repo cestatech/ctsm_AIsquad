@@ -19,8 +19,9 @@ from app.api.deps import get_current_user, get_db
 from app.models.artifact import ArtifactType
 from app.models.user import User
 from app.repositories.artifact_repository import ArtifactRepository
-from app.schemas.tlf import TLFGenerationResponse
+from app.schemas.tlf import ListingFigureCatalog, ListingFigureEntry, TLFGenerationResponse
 from app.services.artifact_service import ArtifactService
+from app.services.listing_figure_catalog_service import ListingFigureCatalogService
 from app.services.tlf_generation_service import TLFGenerationService
 from app.services.validation_executor import execute_validation_run
 
@@ -98,4 +99,35 @@ async def render_tlf_artifact(
         content=result.content,
         media_type=result.media_type,
         headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
+    )
+
+
+@router.get(
+    "/artifacts/{artifact_id}/catalog",
+    response_model=ListingFigureCatalog,
+    summary="Listing and figure catalog from SAP traceability",
+)
+async def get_tlf_catalog(
+    artifact_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ListingFigureCatalog:
+    """Return SAP-mapped TLF outputs for a TLF artifact."""
+    svc = ListingFigureCatalogService(db)
+    catalog = await svc.build_catalog(
+        tlf_artifact_id=artifact_id,
+        organization_id=current_user.organization_id,
+    )
+    return ListingFigureCatalog(
+        sap_artifact_id=catalog.sap_artifact_id,
+        entries=[
+            ListingFigureEntry(
+                sap_section=entry.sap_section,
+                output_title=entry.output_title,
+                output_type=entry.output_type,
+                tlf_index=entry.tlf_index,
+                status=entry.status,
+            )
+            for entry in catalog.entries
+        ],
     )
