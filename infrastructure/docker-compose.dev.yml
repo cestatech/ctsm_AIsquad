@@ -52,8 +52,10 @@ services:
     container_name: celerius_backend
     restart: unless-stopped
     env_file:
-      - ../.env
-      - ../backend/.env
+      - path: ../.env
+        required: false
+      - path: ../backend/.env
+        required: false
     ports:
       - "8000:8000"
     environment:
