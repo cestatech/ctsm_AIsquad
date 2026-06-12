@@ -8,6 +8,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.services.storage.filesystem import FilesystemStorageBackend
+from app.services.storage_service import StorageService
 from app.services.upload_service import UploadService
 
 
@@ -61,12 +63,15 @@ class TestReadTabularRows:
         full.parent.mkdir(parents=True)
         full.write_text("SUBJECT_ID,SEX\n001,F\n002,M\n", encoding="utf-8")
 
+        storage = StorageService(FilesystemStorageBackend(storage_root))
+        storage.put_bytes(str(rel), full.read_bytes())
         rows = UploadService.read_tabular_rows(
             file_path=str(rel),
             mime_type="text/csv",
             filename="sample.csv",
             dataset_name="sample.csv",
             storage_root=str(storage_root),
+            storage=storage,
         )
         assert len(rows) == 2
         assert rows[0]["SUBJECT_ID"] == "001"

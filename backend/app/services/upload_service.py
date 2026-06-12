@@ -37,6 +37,7 @@ from app.repositories.upload_repository import UploadRepository
 from app.services.audit_service import AuditService
 from app.services.context_graph_service import ContextGraphService
 from app.services.intelligence_service import DataLineageService
+from app.services.storage_service import StorageService, get_storage_service
 
 _ALLOWED_MIME_TYPES = {
     "text/csv",
@@ -57,7 +58,11 @@ _MAX_PROFILE_ROWS = 10_000        # cap profiling scan to avoid OOM
 class UploadService:
     """Handles file storage, parsing, profiling, and CIP graph registration."""
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        storage: StorageService | None = None,
+    ) -> None:
         self._db = db
         self._repo = UploadRepository(db)
         self._study_repo = StudyRepository(db)
@@ -67,6 +72,7 @@ class UploadService:
         self._graph = ContextGraphService(db)
         self._lineage = DataLineageService(db)
         self._settings = get_settings()
+        self._storage = storage or get_storage_service()
 
     async def upload_file(
         self,
@@ -104,17 +110,11 @@ class UploadService:
 
         file_hash = hashlib.sha256(content).hexdigest()
         stored_filename = f"{uuid.uuid4()}_{file.filename or 'upload'}"
-        org_prefix = (
-            Path(self._settings.STORAGE_LOCAL_PATH)
-            / "org"
-            / str(actor.organization_id)
-            / "studies"
-            / str(study_id)
-            / "uploads"
+        storage_key = self._storage.put(
+            f"studies/{study_id}/uploads/{stored_filename}",
+            content,
+            organization_id=actor.organization_id,
         )
-        org_prefix.mkdir(parents=True, exist_ok=True)
-        file_path = org_prefix / stored_filename
-        file_path.write_bytes(content)
 
         extracted_metadata = self._extract_legacy_metadata(content, mime_type, file.filename or "")
 
@@ -156,7 +156,7 @@ class UploadService:
             uploaded_by_id=actor.id,
             original_filename=file.filename or stored_filename,
             stored_filename=stored_filename,
-            file_path=str(file_path),
+            file_path=storage_key,
             file_size_bytes=len(content),
             mime_type=mime_type,
             description=description or notes,
@@ -605,14 +605,20 @@ class UploadService:
         dataset_name: str,
         max_rows: int = 500,
         storage_root: str | None = None,
+        storage: StorageService | None = None,
     ) -> list[dict]:
         """Read raw row dicts from a stored CSV/XLSX/JSON file for SDTM derivation."""
-        path = Path(file_path)
-        if storage_root and not path.is_absolute():
-            path = UploadService.resolve_storage_path(file_path, storage_root)
-        if not path.exists():
-            return []
-        content = path.read_bytes()
+        storage_svc = storage or get_storage_service()
+        normalized = StorageService.normalize_path(file_path)
+        if storage_svc.exists(normalized):
+            content = storage_svc.get(normalized)
+        else:
+            path = Path(file_path)
+            if storage_root and not path.is_absolute():
+                path = UploadService.resolve_storage_path(file_path, storage_root)
+            if not path.exists():
+                return []
+            content = path.read_bytes()
         if mime_type == "application/json" or filename.lower().endswith(".json"):
             return UploadService.read_json_edc_rows(
                 content, dataset_name, max_rows=max_rows
