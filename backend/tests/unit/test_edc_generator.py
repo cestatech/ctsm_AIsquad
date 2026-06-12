@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import pytest
 
 from app.models.artifact import ArtifactType
 from app.services.generation_executor import _GENERATOR_MAP

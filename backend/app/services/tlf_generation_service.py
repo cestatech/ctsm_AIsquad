@@ -12,7 +12,7 @@ from app.core.config import get_settings
 from app.core.permissions import Permission, check_permission
 from app.models.artifact import Artifact, ArtifactType
 from app.models.audit import AuditAction
-from app.models.graph import GraphEdgeType, GraphNodeType
+from app.models.graph import GraphNodeType
 from app.models.intelligence import DataLineageType
 from app.models.statistical_qc import StatisticalQCWorkflow
 from app.models.user import User

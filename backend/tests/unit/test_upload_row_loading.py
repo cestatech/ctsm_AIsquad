@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 
 from app.services.upload_service import UploadService
 

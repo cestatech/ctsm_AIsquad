@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import zipfile
-from typing import Any
 
 from app.services.export.csv_exporter import export_adam_dataset_csv, export_sdtm_domain_csv
 

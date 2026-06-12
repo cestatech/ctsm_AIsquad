@@ -325,9 +325,6 @@ class CSRGenerationService:
         user_agent: str | None,
     ) -> CSRGenerationResult:
         tlf_ids = [a.id for a in tlf_artifacts]
-        context_ids = [
-            a.id for a in study_artifacts.values() if a is not None
-        ]
         merged_tables = self._merge_tlf_tables(tlf_contents)
         data_cut = extract_data_cut(
             tlf_artifacts[0].extra_data if tlf_artifacts else None,
@@ -1282,11 +1279,9 @@ Assemble a complete ICH E3 CSR shell with TLF references embedded in sections 12
     ) -> dict:
         enriched: list[dict] = []
         decision_ids: list[str] = []
-        study_dict = self._study_context_dict(study)
         tlf_content = tlf_contents[0] if tlf_contents else {}
 
         for section in content.get("sections", []):
-            section_id = str(section.get("number", ""))
             prose, decision_id = await self._generate_section_prose(
                 actor=actor,
                 study=study,

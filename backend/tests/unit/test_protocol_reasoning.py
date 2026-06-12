@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
 
 from app.models.artifact import ArtifactType
 from app.services.generators.reasoning_builder import build_artifact_reasoning
